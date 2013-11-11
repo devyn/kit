@@ -1,2 +1,11 @@
 tools/*
 !tools/get_tools.sh
+
+.*.swp
+*.o
+*.bin
+
+*.iso
+*.img
+
+build/
