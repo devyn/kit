@@ -29,7 +29,7 @@ enum vga_color
 };
 
 #define VGA_WIDTH  80
-#define VGA_HEIGHT 24
+#define VGA_HEIGHT 25
 
 uint8_t make_color(enum vga_color fg, enum vga_color bg);
 uint16_t make_vgaentry(char c, uint8_t color);
