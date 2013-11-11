@@ -22,10 +22,10 @@ all-kernel: build/kernel/kernel.bin
 build/kernel/kernel.bin: ${KERNEL_OBJECTS} kernel/linker.ld build/kernel/.dir
 	${CC} -T kernel/linker.ld -o build/kernel/kernel.bin ${KERNEL_OBJECTS} ${LDFLAGS} ${KERNEL_LDFLAGS}
 
-build/kernel/boot.o: build/kernel/.dir
+build/kernel/boot.o: kernel/boot.s build/kernel/.dir
 	${AS} kernel/boot.s -o build/kernel/boot.o ${ASFLAGS} ${KERNEL_ASFLAGS}
 
-build/kernel/kernel.o: build/kernel/.dir
+build/kernel/kernel.o: kernel/kernel.c build/kernel/.dir
 	${CC} -c kernel/kernel.c -o build/kernel/kernel.o ${CCFLAGS} ${KERNEL_CCFLAGS}
 
 build/kernel/.dir: build/.dir
