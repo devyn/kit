@@ -132,6 +132,12 @@ int terminal_writeuint32(uint32_t integer, uint32_t base)
   if (base < 2 || base > 36)
     return -1;
 
+  if (integer == 0)
+  {
+    terminal_putchar('0');
+    return 0;
+  }
+
   char string[33];
   size_t position = 32;
 
