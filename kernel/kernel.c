@@ -2,7 +2,7 @@
 // http://wiki.osdev.org/Bare_Bones
 
 #include <stdint.h>
- 
+
 #include "terminal.h"
 
 /* Check if the compiler thinks if we are targeting the wrong operating system. */
@@ -15,12 +15,12 @@ extern "C" /* Use C linkage for kernel_main. */
 #endif
 void kernel_main()
 {
-	terminal_initialize();
+  terminal_initialize();
   terminal_setcolor(make_color(COLOR_WHITE, COLOR_RED));
   terminal_clear();
 
   terminal_setcolor(make_color(COLOR_RED, COLOR_WHITE));
-	terminal_writestring("Kit Version 0.1\n");
+  terminal_writestring("Kit Version 0.1\n");
 
   terminal_setcolor(make_color(COLOR_WHITE, COLOR_RED));
   terminal_writestring("\n* says Hello! *\n\n");
