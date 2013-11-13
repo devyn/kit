@@ -3,6 +3,7 @@
 
 #include <stdint.h>
 
+#include "multiboot.h"
 #include "terminal.h"
 
 /* Check if the compiler thinks if we are targeting the wrong operating system. */
@@ -13,7 +14,7 @@
 #if defined(__cplusplus)
 extern "C" /* Use C linkage for kernel_main. */
 #endif
-void kernel_main()
+void kernel_main(struct multiboot_info *mboot)
 {
   terminal_initialize();
   terminal_setcolor(make_color(COLOR_WHITE, COLOR_RED));
@@ -35,9 +36,31 @@ void kernel_main()
 
   terminal_setcolor(make_color(COLOR_BLACK, COLOR_GREEN));
 
-  for (uint32_t i = 0; i < 20; i++)
+  for (uint32_t i = 0; i < 16; i++)
   {
     terminal_writeuint32(i, 16);
-    terminal_newline();
+    terminal_putchar('\n');
+  }
+
+  if (mboot->flags & MULTIBOOT_INFO_MEMORY)
+  {
+    terminal_writestring("\nAvailable memory: ");
+    terminal_writeuint32(mboot->mem_lower + mboot->mem_upper, 10);
+    terminal_writestring(" KB\n");
+  }
+  else
+  {
+    terminal_writestring("\nE: Bootloader did not provide valid memory information!\n");
+  }
+
+  if (mboot->flags & MULTIBOOT_INFO_CMDLINE)
+  {
+    terminal_writestring("Kernel command line: ");
+    terminal_writestring((char *) mboot->cmdline);
+    terminal_putchar('\n');
+  }
+  else
+  {
+    terminal_writestring("E: Bootloader did not provide kernel command line!\n");
   }
 }
