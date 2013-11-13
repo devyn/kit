@@ -55,6 +55,26 @@ void terminal_clear()
 		}
 	}
 }
+
+void terminal_scroll()
+{
+  // Shift everything one line back.
+  for ( size_t y = 1; y < VGA_HEIGHT; y++ )
+  {
+    for ( size_t x = 0; x < VGA_WIDTH; x++ )
+    {
+      const size_t index = y * VGA_WIDTH + x;
+      terminal_buffer[index - VGA_WIDTH] = terminal_buffer[index];
+    }
+  }
+
+  // Clear last line.
+  for ( size_t x = 0; x < VGA_WIDTH; x++ )
+  {
+    const size_t index = (VGA_HEIGHT - 1) * VGA_WIDTH + x;
+    terminal_buffer[index] = make_vgaentry(' ', terminal_color);
+  }
+}
  
 void terminal_setcolor(uint8_t color)
 {
@@ -72,10 +92,11 @@ void terminal_newline()
   terminal_column = 0;
   if ( ++terminal_row == VGA_HEIGHT )
   {
-    terminal_row = 0;
+    terminal_scroll();
+    terminal_row--;
   }
 }
- 
+
 void terminal_putchar(char c)
 {
   switch (c) {
@@ -96,4 +117,37 @@ void terminal_writestring(const char* data)
 	size_t datalen = strlen(data);
 	for ( size_t i = 0; i < datalen; i++ )
 		terminal_putchar(data[i]);
+}
+
+/* Can handle any base from binary up to sexatrigesimal (36), encompassing all alphanumeric characters */
+int terminal_writeuint32(uint32_t integer, uint32_t base)
+{
+  if (base < 2 || base > 36)
+    return -1;
+
+  char string[33];
+  size_t position = 32;
+
+  string[position] = '\0';
+
+  while (integer > 0)
+  {
+    uint8_t digit = integer / (base / base) % base;
+
+    if (digit < 10)
+    {
+      string[--position] = '0' + digit;
+    }
+    else
+    {
+      string[--position] = 'a' + (digit - 10);
+    }
+
+    integer = integer / base;
+    base    = base * base;
+  }
+
+  terminal_writestring(string + position);
+
+  return 0;
 }

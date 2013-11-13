@@ -1,5 +1,7 @@
 // Based on OSDev Bare Bones tutorial
 // http://wiki.osdev.org/Bare_Bones
+
+#include <stdint.h>
  
 #include "terminal.h"
 
@@ -28,4 +30,14 @@ void kernel_main()
   terminal_writestring("\xdb\xdb\xdb\xdb\xdb \xdb\xdb\xdb\xdb\xdb \xdb\x20\x20\x20\x20 \xdb\x20\x20\x20\x20 \xdb\x20\x20\x20\xdb\n");
   terminal_writestring("\xdb\x20\x20\x20\xdb \xdb\x20\x20\x20\x20 \xdb\x20\x20\x20\x20 \xdb\x20\x20\x20\x20 \xdb\x20\x20\x20\xdb\n");
   terminal_writestring("\xdb\x20\x20\x20\xdb \xdb\xdb\xdb\xdb\xdb \xdb\xdb\xdb\xdb\xdb \xdb\xdb\xdb\xdb\xdb \x20\xdb\xdb\xdb\x20\n");
+
+  terminal_writestring("\nscrolling...\n");
+
+  terminal_setcolor(make_color(COLOR_BLACK, COLOR_GREEN));
+
+  for (uint32_t i = 0; i < 20; i++)
+  {
+    terminal_writeuint32(i, 16);
+    terminal_newline();
+  }
 }
