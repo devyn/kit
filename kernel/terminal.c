@@ -71,8 +71,7 @@ void terminal_scroll()
   // Clear last line.
   for ( size_t x = 0; x < VGA_WIDTH; x++ )
   {
-    const size_t index = (VGA_HEIGHT - 1) * VGA_WIDTH + x;
-    terminal_buffer[index] = make_vgaentry(' ', terminal_color);
+    terminal_putentryat(' ', terminal_color, x, VGA_HEIGHT - 1);
   }
 }
 
@@ -89,6 +88,14 @@ void terminal_putentryat(char c, uint8_t color, size_t x, size_t y)
 
 void terminal_newline()
 {
+  // Clear to end of line.
+  while (terminal_column < VGA_WIDTH)
+  {
+    terminal_putentryat(' ', terminal_color, terminal_column, terminal_row);
+    terminal_column++;
+  }
+
+  // Go to next line, scrolling if necessary.
   terminal_column = 0;
   if ( ++terminal_row == VGA_HEIGHT )
   {
