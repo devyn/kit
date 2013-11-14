@@ -17,13 +17,13 @@ extern "C" /* Use C linkage for kernel_main. */
 void kernel_main(struct multiboot_info *mboot)
 {
   terminal_initialize();
-  terminal_setcolor(make_color(COLOR_WHITE, COLOR_RED));
+  terminal_setcolor(COLOR_WHITE, COLOR_RED);
   terminal_clear();
 
-  terminal_setcolor(make_color(COLOR_RED, COLOR_WHITE));
+  terminal_setcolor(COLOR_RED, COLOR_WHITE);
   terminal_writestring("Kit Version 0.1\n");
 
-  terminal_setcolor(make_color(COLOR_WHITE, COLOR_RED));
+  terminal_setcolor(COLOR_WHITE, COLOR_RED);
   terminal_writestring("\n* says Hello! *\n\n");
 
   terminal_writestring("\xdb\x20\x20\x20\xdb \xdb\xdb\xdb\xdb\xdb \xdb\x20\x20\x20\x20 \xdb\x20\x20\x20\x20 \x20\xdb\xdb\xdb\x20\n");
@@ -34,7 +34,7 @@ void kernel_main(struct multiboot_info *mboot)
 
   terminal_writestring("\nscrolling...\n");
 
-  terminal_setcolor(make_color(COLOR_BLACK, COLOR_GREEN));
+  terminal_setcolor(COLOR_BLACK, COLOR_GREEN);
 
   for (uint32_t i = 0; i < 16; i++)
   {

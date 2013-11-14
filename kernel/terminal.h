@@ -31,8 +31,7 @@ enum vga_color
 #define VGA_WIDTH  80
 #define VGA_HEIGHT 25
 
-uint8_t  make_color(enum vga_color fg, enum vga_color bg);
-uint16_t make_vgaentry(char c, uint8_t color);
+uint8_t terminal_make_color(enum vga_color fg, enum vga_color bg);
 
 void terminal_initialize();
 void terminal_clear();
@@ -40,8 +39,8 @@ void terminal_clear();
 void terminal_getcursor(size_t *row, size_t *column);
 void terminal_setcursor(size_t  row, size_t  column);
 
-uint8_t terminal_getcolor();
-void    terminal_setcolor(uint8_t color);
+void terminal_getcolor(enum vga_color *fg, enum vga_color *bg);
+void terminal_setcolor(enum vga_color  fg, enum vga_color  bg);
 
 void terminal_putentryat(char c, uint8_t color, size_t x, size_t y);
 

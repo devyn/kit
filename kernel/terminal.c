@@ -8,26 +8,19 @@
 #error "You are not using a cross-compiler, you will most certainly run into trouble"
 #endif
 
-uint8_t make_color(enum vga_color fg, enum vga_color bg)
+uint8_t terminal_make_color(enum vga_color fg, enum vga_color bg)
 {
   return fg | bg << 4;
 }
 
-uint16_t make_vgaentry(char c, uint8_t color)
+uint16_t terminal_make_vgaentry(char c, uint8_t color)
 {
   uint16_t c16 = c;
   uint16_t color16 = color;
   return c16 | color16 << 8;
 }
 
-size_t strlen(const char* str)
-{
-  size_t ret = 0;
-  while ( str[ret] != 0 )
-    ret++;
-  return ret;
-}
-
+// TODO: Move out of terminal.c?
 void outb(uint16_t port, uint8_t value) {
   asm volatile("outb %%al, %%dx" : : "a" (value), "d" (port));
 }
@@ -39,7 +32,7 @@ uint16_t* terminal_buffer;
 
 void terminal_initialize()
 {
-  terminal_color = make_color(COLOR_LIGHT_GREY, COLOR_BLACK);
+  terminal_color = terminal_make_color(COLOR_LIGHT_GREY, COLOR_BLACK);
   terminal_buffer = (uint16_t*) 0xB8000;
 
   terminal_clear();
@@ -55,7 +48,7 @@ void terminal_clear()
     for ( size_t x = 0; x < VGA_WIDTH; x++ )
     {
       const size_t index = y * VGA_WIDTH + x;
-      terminal_buffer[index] = make_vgaentry(' ', terminal_color);
+      terminal_buffer[index] = terminal_make_vgaentry(' ', terminal_color);
     }
   }
 }
@@ -104,20 +97,21 @@ void terminal_setcursor(size_t row, size_t column)
   terminal_updatecursor();
 }
 
-uint8_t terminal_getcolor()
+void terminal_getcolor(enum vga_color *fg, enum vga_color *bg)
 {
-  return terminal_color;
+  *fg =  terminal_color       & 0xff;
+  *bg = (terminal_color >> 4) & 0xff;
 }
 
-void terminal_setcolor(uint8_t color)
+void terminal_setcolor(enum vga_color fg, enum vga_color bg)
 {
-  terminal_color = color;
+  terminal_color = terminal_make_color(fg, bg);
 }
 
 void terminal_putentryat(char c, uint8_t color, size_t x, size_t y)
 {
   const size_t index = y * VGA_WIDTH + x;
-  terminal_buffer[index] = make_vgaentry(c, color);
+  terminal_buffer[index] = terminal_make_vgaentry(c, color);
 }
 
 void terminal_newline()
@@ -163,9 +157,10 @@ void terminal_putchar(char c)
 
 void terminal_writestring(const char *data)
 {
-  size_t datalen = strlen(data);
-  for ( size_t i = 0; i < datalen; i++ )
+  for (size_t i = 0; data[i] != '\0'; i++)
+  {
     terminal_putchar_internal(data[i]);
+  }
 
   terminal_updatecursor();
 }
