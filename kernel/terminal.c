@@ -28,6 +28,10 @@ size_t strlen(const char* str)
   return ret;
 }
 
+void outb(uint16_t port, uint8_t value) {
+  asm volatile("outb %%al, %%dx" : : "a" (value), "d" (port));
+}
+
 size_t terminal_row;
 size_t terminal_column;
 uint8_t terminal_color;
@@ -75,6 +79,36 @@ void terminal_scroll()
   }
 }
 
+void terminal_updatecursor()
+{
+  uint16_t position = (terminal_row * VGA_WIDTH) + terminal_column;
+
+  outb(0x3D4, 0x0F);
+  outb(0x3D5, (uint8_t)(position&0xFF));
+
+  outb(0x3D4, 0x0E);
+  outb(0x3D5, (uint8_t)((position>>8)&0xFF));
+}
+
+void terminal_getcursor(size_t *row, size_t *column)
+{
+  *row    = terminal_row;
+  *column = terminal_column;
+}
+
+void terminal_setcursor(size_t row, size_t column)
+{
+  terminal_row    = row;
+  terminal_column = column;
+
+  terminal_updatecursor();
+}
+
+uint8_t terminal_getcolor()
+{
+  return terminal_color;
+}
+
 void terminal_setcolor(uint8_t color)
 {
   terminal_color = color;
@@ -102,9 +136,11 @@ void terminal_newline()
     terminal_scroll();
     terminal_row--;
   }
+
+  terminal_updatecursor();
 }
 
-void terminal_putchar(char c)
+void terminal_putchar_internal(char c)
 {
   switch (c) {
     case '\n':
@@ -119,11 +155,19 @@ void terminal_putchar(char c)
   }
 }
 
-void terminal_writestring(const char* data)
+void terminal_putchar(char c)
+{
+  terminal_putchar_internal(c);
+  terminal_updatecursor();
+}
+
+void terminal_writestring(const char *data)
 {
   size_t datalen = strlen(data);
   for ( size_t i = 0; i < datalen; i++ )
-    terminal_putchar(data[i]);
+    terminal_putchar_internal(data[i]);
+
+  terminal_updatecursor();
 }
 
 /* Can handle any base from binary up to sexatrigesimal (36), encompassing all alphanumeric characters */
