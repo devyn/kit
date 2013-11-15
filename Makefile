@@ -1,6 +1,8 @@
 TOOLPATH=tools/bin
-CC=${TOOLPATH}/i586-elf-gcc
-AS=${TOOLPATH}/i586-elf-as
+CC=${TOOLPATH}/x86_64-elf-gcc
+AS=${TOOLPATH}/x86_64-elf-as
+
+export PATH := ${TOOLPATH}:${PATH}
 
 all: all-kernel all-iso
 
@@ -12,21 +14,22 @@ build/.dir:
 
 # =Kernel=
 
-KERNEL_CCFLAGS=-std=c99 -pedantic -Wall -Wextra -Werror -ffreestanding -O2
-KERNEL_LDFLAGS=-ffreestanding -O2 -nostdlib -lgcc
+KERNEL_CCFLAGS=-std=c99 -pedantic -Wall -Wextra -Werror -ffreestanding -O2 -m32 -march=i586
+KERNEL_LDFLAGS=-ffreestanding -O2 -nostdlib -m32 -march=i586 -Wl,-m,elf_i386
+KERNEL_ASFLAGS=--32
 
 KERNEL_OBJECTS=build/kernel/boot.o build/kernel/kernel.o build/kernel/terminal.o
 
 all-kernel: build/kernel/kernel.bin
 
 build/kernel/kernel.bin: ${KERNEL_OBJECTS} kernel/linker.ld build/kernel/.dir
-	${CC} -T kernel/linker.ld -o build/kernel/kernel.bin ${KERNEL_OBJECTS} ${LDFLAGS} ${KERNEL_LDFLAGS}
+	${CC} ${LDFLAGS} ${KERNEL_LDFLAGS} -T kernel/linker.ld -o build/kernel/kernel.bin ${KERNEL_OBJECTS}
 
 build/kernel/boot.o: kernel/boot.s build/kernel/.dir
-	${AS} kernel/boot.s -o build/kernel/boot.o ${ASFLAGS} ${KERNEL_ASFLAGS}
+	${AS} ${ASFLAGS} ${KERNEL_ASFLAGS} kernel/boot.s -o build/kernel/boot.o
 
 build/kernel/%.o: kernel/%.c build/kernel/.dir
-	${CC} -c $< -o $@ ${CCFLAGS} ${KERNEL_CCFLAGS}
+	${CC} ${CCFLAGS} ${KERNEL_CCFLAGS} -c $< -o $@
 
 build/kernel/.dir: build/.dir
 	mkdir -p build/kernel

@@ -22,7 +22,7 @@ cd src
 # Set up the environment
 
 export PREFIX="$DEST"
-export TARGET=i586-elf
+export TARGET=x86_64-elf
 export PATH="$PREFIX/bin:$PATH"
 
 # $1: Product
