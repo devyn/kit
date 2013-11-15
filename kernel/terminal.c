@@ -22,7 +22,7 @@ uint16_t terminal_make_vgaentry(char c, uint8_t color)
 
 // TODO: Move out of terminal.c?
 void outb(uint16_t port, uint8_t value) {
-  asm volatile("outb %%al, %%dx" : : "a" (value), "d" (port));
+  __asm__ volatile("outb %%al, %%dx" : : "a" (value), "d" (port));
 }
 
 size_t terminal_row;

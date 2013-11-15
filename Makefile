@@ -12,7 +12,7 @@ build/.dir:
 
 # =Kernel=
 
-KERNEL_CCFLAGS=-std=gnu99 -ffreestanding -O2 -Wall -Wextra
+KERNEL_CCFLAGS=-std=c99 -pedantic -Wall -Wextra -Werror -ffreestanding -O2
 KERNEL_LDFLAGS=-ffreestanding -O2 -nostdlib -lgcc
 
 KERNEL_OBJECTS=build/kernel/boot.o build/kernel/kernel.o build/kernel/terminal.o
