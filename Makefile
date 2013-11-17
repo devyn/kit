@@ -25,8 +25,8 @@ all-kernel: build/kernel/kernel.bin
 build/kernel/kernel.bin: ${KERNEL_OBJECTS} kernel/linker.ld build/kernel/.dir
 	${CC} ${LDFLAGS} ${KERNEL_LDFLAGS} -T kernel/linker.ld -o build/kernel/kernel.bin ${KERNEL_OBJECTS}
 
-build/kernel/boot.o: kernel/boot.s build/kernel/.dir
-	${AS} ${ASFLAGS} ${KERNEL_ASFLAGS} kernel/boot.s -o build/kernel/boot.o
+build/kernel/boot.o: kernel/boot.S build/kernel/.dir
+	${AS} ${ASFLAGS} ${KERNEL_ASFLAGS} kernel/boot.S -o build/kernel/boot.o
 
 build/kernel/%.o: kernel/%.c build/kernel/.dir
 	${CC} ${CCFLAGS} ${KERNEL_CCFLAGS} -c $< -o $@
