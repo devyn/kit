@@ -11,7 +11,12 @@
 #error "You are not using a cross-compiler, you will most certainly run into trouble"
 #endif
 
-extern uint32_t kernel_end;
+/**
+ * These aren't actually meant to be of type int; they're just here so that
+ * we can get the address of them.
+ */
+extern int kernel_start;
+extern int kernel_end;
 
 #if defined(__cplusplus)
 extern "C" /* Use C linkage for kernel_main. */
@@ -58,7 +63,11 @@ void kernel_main(struct multiboot_info *mboot)
     terminal_writestring("E: Bootloader did not provide kernel command line!\n");
   }
 
-  terminal_writestring("Kernel ends at: 0x");
-  terminal_writeuint32(kernel_end, 16);
+  terminal_writestring("Kernel starts at: 0x");
+  terminal_writeuint32((uint32_t) &kernel_start, 16);
+  terminal_putchar('\n');
+
+  terminal_writestring("Kernel ends at:   0x");
+  terminal_writeuint32((uint32_t) &kernel_end, 16);
   terminal_putchar('\n');
 }
