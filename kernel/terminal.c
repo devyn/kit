@@ -47,8 +47,7 @@ void terminal_clear()
   {
     for ( size_t x = 0; x < VGA_WIDTH; x++ )
     {
-      const size_t index = y * VGA_WIDTH + x;
-      terminal_buffer[index] = terminal_make_vgaentry(' ', terminal_color);
+      terminal_putentryat(' ', terminal_color, x, y);
     }
   }
 }
