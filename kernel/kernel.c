@@ -11,6 +11,8 @@
 #error "You are not using a cross-compiler, you will most certainly run into trouble"
 #endif
 
+extern uint32_t kernel_end;
+
 #if defined(__cplusplus)
 extern "C" /* Use C linkage for kernel_main. */
 #endif
@@ -32,19 +34,11 @@ void kernel_main(struct multiboot_info *mboot)
   terminal_writestring("\xdb\x20\x20\x20\xdb \xdb\x20\x20\x20\x20 \xdb\x20\x20\x20\x20 \xdb\x20\x20\x20\x20 \xdb\x20\x20\x20\xdb\n");
   terminal_writestring("\xdb\x20\x20\x20\xdb \xdb\xdb\xdb\xdb\xdb \xdb\xdb\xdb\xdb\xdb \xdb\xdb\xdb\xdb\xdb \x20\xdb\xdb\xdb\x20\n");
 
-  terminal_writestring("\nscrolling...\n");
-
-  terminal_setcolor(COLOR_BLACK, COLOR_GREEN);
-
-  for (uint32_t i = 0; i < 16; i++)
-  {
-    terminal_writeuint32(i, 16);
-    terminal_putchar('\n');
-  }
+  terminal_putchar('\n');
 
   if (mboot->flags & MULTIBOOT_INFO_MEMORY)
   {
-    terminal_writestring("\nAvailable memory: ");
+    terminal_writestring("Available memory: ");
     terminal_writeuint32(mboot->mem_lower + mboot->mem_upper, 10);
     terminal_writestring(" KB\n");
   }
@@ -63,4 +57,8 @@ void kernel_main(struct multiboot_info *mboot)
   {
     terminal_writestring("E: Bootloader did not provide kernel command line!\n");
   }
+
+  terminal_writestring("Kernel ends at: 0x");
+  terminal_writeuint32(kernel_end, 16);
+  terminal_putchar('\n');
 }
