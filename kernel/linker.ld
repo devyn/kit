@@ -46,5 +46,14 @@ SECTIONS
   /* The compiler may produce other sections, by default it will put them in
      a segment with the same name. Simply add stuff here as needed. */
 
+  /* STABS debugging */
+  .stab          BLOCK(4K) : { *(.stab) }
+  .stabstr                 : { *(.stabstr) }
+  .stab.excl               : { *(.stab.excl) }
+  .stab.exclstr            : { *(.stab.exclstr) }
+  .stab.index              : { *(.stab.index) }
+  .stab.indexstr           : { *(.stab.indexstr) }
+  .comment                 : { *(.comment) }
+
   kernel_end = .;
 }

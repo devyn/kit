@@ -14,9 +14,9 @@ build/.dir:
 
 # =Kernel=
 
-KERNEL_CCFLAGS=-std=c99 -pedantic -Wall -Wextra -Werror -ffreestanding -O2 -m32 -march=i586
-KERNEL_LDFLAGS=-ffreestanding -O2 -nostdlib -m32 -march=i586 -Wl,-m,elf_i386
-KERNEL_ASFLAGS=--32
+KERNEL_CCFLAGS=-gstabs -std=c99 -pedantic -Wall -Wextra -Werror -ffreestanding -O2 -m32 -march=i586
+KERNEL_LDFLAGS=-gstabs -ffreestanding -O2 -nostdlib -m32 -march=i586 -Wl,-m,elf_i386
+KERNEL_ASFLAGS=--gstabs --32
 
 KERNEL_OBJECTS=build/kernel/boot.o build/kernel/kernel.o build/kernel/terminal.o
 
@@ -58,4 +58,10 @@ clean-iso:
 run-qemu: build/kit.iso
 	qemu-system-x86_64 -cdrom build/kit.iso -boot d
 
-.PHONY: all all-kernel all-iso clean clean-kernel clean-iso run-qemu
+run-qemu-monitor: build/kernel/kernel.bin
+	qemu-system-x86_64 -kernel build/kernel/kernel.bin -monitor stdio
+
+run-qemu-debug: build/kernel/kernel.bin
+	qemu-system-x86_64 -kernel build/kernel/kernel.bin -s -S
+
+.PHONY: all all-kernel all-iso clean clean-kernel clean-iso run-qemu run-qemu-monitor run-qemu-debug
