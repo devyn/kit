@@ -29,10 +29,14 @@ stack_bottom:
 stack_top:
 
 .section .data
+# This is where we will store the multiboot information structure.
+.global kernel_multiboot_info
+kernel_multiboot_info:
+.skip 88 # 88 bytes - see multiboot information format
 
+.section .rodata
 .Lerr_noCPUID:    .ascii "E: Your processor does not support the CPUID instruction.\0"
 .Lerr_noLongMode: .ascii "E: Your processor does not support x86_64 long mode.\0"
-
 .Lerr_fatal:      .ascii "Kit can not continue to boot. Please restart your computer.\0"
 
 # The linker script specifies _start as the entry point to the kernel and the
@@ -49,9 +53,14 @@ _start:
   # our stack (as it grows downwards).
   movl $stack_top, %esp
 
-  # Push the multiboot information struct address onto the stack. We'll be
-  # using it when we call kernel_main().
-  pushl %ebx
+.preserveMultiboot:
+  # At the moment, a pointer to the multiboot information structure is stored
+  # in EBX. Let's copy that to the space we made in kernel_multiboot_info for it.
+
+  movl %ebx,                   %esi # *EBX is source
+  movl $kernel_multiboot_info, %edi # kernel_multiboot_info is destination
+  movl $(88 >> 2),             %ecx # 88 bytes / 4 bytes per long
+  rep movsl                         # Do the copy
 
 .checkCPUID:
   # Is CPUID supported?
@@ -102,9 +111,6 @@ _start:
   # We are now ready to actually execute C code. We cannot embed that in an
   # assembly file, so we'll create a kernel.c file in a moment. In that file,
   # we'll create a C entry point called kernel_main and call it here.
-  #
-  # Note that EBX (Multiboot information struct) was pushed onto the stack at
-  # the very beginning. This will be the first argument to kernel_main().
   call kernel_main
 
   # Halt the system.

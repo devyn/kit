@@ -18,10 +18,15 @@
 extern int kernel_start;
 extern int kernel_end;
 
+/**
+ * Our bootstrap program copies the multiboot info here.
+ */
+extern struct multiboot_info kernel_multiboot_info;
+
 #if defined(__cplusplus)
 extern "C" /* Use C linkage for kernel_main. */
 #endif
-void kernel_main(struct multiboot_info *mboot)
+void kernel_main()
 {
   terminal_initialize();
   terminal_setcolor(COLOR_WHITE, COLOR_RED);
@@ -41,10 +46,10 @@ void kernel_main(struct multiboot_info *mboot)
 
   terminal_putchar('\n');
 
-  if (mboot->flags & MULTIBOOT_INFO_MEMORY)
+  if (kernel_multiboot_info.flags & MULTIBOOT_INFO_MEMORY)
   {
     terminal_writestring("Available memory: ");
-    terminal_writeuint32(mboot->mem_lower + mboot->mem_upper, 10);
+    terminal_writeuint32(kernel_multiboot_info.mem_lower + kernel_multiboot_info.mem_upper, 10);
     terminal_writestring(" KB\n");
   }
   else
@@ -52,10 +57,10 @@ void kernel_main(struct multiboot_info *mboot)
     terminal_writestring("\nE: Bootloader did not provide valid memory information!\n");
   }
 
-  if (mboot->flags & MULTIBOOT_INFO_CMDLINE)
+  if (kernel_multiboot_info.flags & MULTIBOOT_INFO_CMDLINE)
   {
     terminal_writestring("Kernel command line: ");
-    terminal_writestring((char *) mboot->cmdline);
+    terminal_writestring((char *) kernel_multiboot_info.cmdline);
     terminal_putchar('\n');
   }
   else
