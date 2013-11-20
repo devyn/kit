@@ -170,11 +170,11 @@ _bootstrap:
   # indicate Present (bit 0) and Read/Write (bit 1) respectively
 
   movl $0x2003, (%edi)         # Set PML4T[0] to 0x2003 (0x2000 + P,R)
-  addl $0x1000,  %edi          # Advance destination 1 KB to 0x2000
+  addl $0x1000,  %edi          # Advance destination 4 KB to 0x2000
   movl $0x3003, (%edi)         # Set PDPT[0] to 0x3003 (0x3000 + P,R)
-  addl $0x1000,  %edi          # Advance destination 1 KB to 0x3000
+  addl $0x1000,  %edi          # Advance destination 4 KB to 0x3000
   movl $0x4003, (%edi)         # Set PDT[0] to 0x4003 (0x4000 + P,R)
-  addl $0x1000,  %edi          # Advance destination 1 KB to 0x4000
+  addl $0x1000,  %edi          # Advance destination 4 KB to 0x4000
 
   # Set up PT to identity map the first 2 MB of memory as promised.
 
