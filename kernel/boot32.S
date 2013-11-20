@@ -8,6 +8,10 @@
 .set MAGIC,    0x1BADB002       # 'magic number' lets bootloader find the header
 .set CHECKSUM, -(MAGIC + FLAGS) # checksum of above, to prove we are multiboot
 
+# GDT-related constants
+.set GDT64_CODE_SEL, 0x08
+.set GDT64_DATA_SEL, 0x10
+
 # Declare a header as in the Multiboot Standard. We put this into a special
 # section so we can force the header to be in the start of the final program.
 # You don't need to understand all these details as it is just magic values that
@@ -209,8 +213,8 @@ _bootstrap:
 .jumpToBoot64:
   # Load the GDT and jump to our 64-bit bootstrapping code.
 
-  lgdt gdt64_pointer           # Load Global Descriptor Table.
-  jmp  $0x10, $_bootstrap64    # Far jump to _bootstrap64 with GDT64 Code segment.
+  lgdt gdt64_pointer                   # Load Global Descriptor Table.
+  jmp  $GDT64_CODE_SEL, $_bootstrap64  # Jump to _bootstrap64 with GDT64 Code selector.
 
 .Lhalt:
   # Halt the system if something went wrong.
