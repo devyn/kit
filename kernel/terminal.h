@@ -48,6 +48,6 @@ void terminal_newline();
 void terminal_putchar(char c);
 
 void terminal_writestring(const char *data);
-int  terminal_writeuint32(uint32_t integer, uint8_t base);
+int  terminal_writeuint64(uint64_t integer, uint8_t base);
 
 #endif

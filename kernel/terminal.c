@@ -165,7 +165,7 @@ void terminal_writestring(const char *data)
 }
 
 /* Can handle any base from binary up to sexatrigesimal (36), encompassing all alphanumeric characters */
-int terminal_writeuint32(uint32_t integer, uint8_t base)
+int terminal_writeuint64(uint64_t integer, uint8_t base)
 {
   if (base < 2 || base > 36)
     return -1;

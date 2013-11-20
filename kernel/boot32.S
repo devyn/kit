@@ -39,13 +39,15 @@ kernel_multiboot_info:
 .Lerr_noLongMode: .ascii "E: Your processor does not support x86_64 long mode.\0"
 .Lerr_fatal:      .ascii "Kit can not continue to boot. Please restart your computer.\0"
 
-# The linker script specifies _start as the entry point to the kernel and the
-# bootloader will jump to this position once the kernel has been loaded. It
-# doesn't make sense to return from this function as the bootloader is gone.
+# The linker script specifies _bootstrap as the entry point to the kernel
+# and the bootloader will jump to this position once the kernel has been
+# loaded. It doesn't make sense to return from this function as the
+# bootloader is gone.
 .section .text
-.global _start
-.type _start, @function
-_start:
+.code32
+.global _bootstrap
+.type _bootstrap, @function
+_bootstrap:
   # Disable interrupts.
   cli
 
@@ -111,7 +113,7 @@ _start:
   # We are now ready to actually execute C code. We cannot embed that in an
   # assembly file, so we'll create a kernel.c file in a moment. In that file,
   # we'll create a C entry point called kernel_main and call it here.
-  call kernel_main
+  #call kernel_main
 
   # Halt the system.
 .Lhalt:
@@ -188,6 +190,6 @@ _start:
   popa
   ret
 
-# Set the size of the _start symbol to the current location '.' minus its start.
+# Set the size of the _bootstrap symbol to the current location '.' minus its start.
 # This is useful when debugging or when you implement call tracing.
-.size _start, . - _start
+.size _bootstrap, . - _bootstrap

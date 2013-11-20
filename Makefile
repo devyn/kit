@@ -14,19 +14,19 @@ build/.dir:
 
 # =Kernel=
 
-KERNEL_CCFLAGS=-gstabs -std=c99 -pedantic -Wall -Wextra -Werror -ffreestanding -O2 -m32 -march=i586
-KERNEL_LDFLAGS=-gstabs -ffreestanding -O2 -nostdlib -m32 -march=i586 -Wl,-m,elf_i386
-KERNEL_ASFLAGS=--gstabs --32
+KERNEL_CCFLAGS=-std=c99 -pedantic -Wall -Wextra -Werror -ffreestanding -O2 -mno-red-zone -mno-mmx -mno-sse -mno-sse2 -mno-sse3 -mno-3dnow
+KERNEL_LDFLAGS=-ffreestanding -O2 -nostdlib -Wl,-z,max-page-size=0x1000
+KERNEL_ASFLAGS=
 
-KERNEL_OBJECTS=build/kernel/boot.o build/kernel/kernel.o build/kernel/terminal.o
+KERNEL_OBJECTS=build/kernel/boot32.o build/kernel/kernel.o build/kernel/terminal.o
 
 all-kernel: build/kernel/kernel.bin
 
 build/kernel/kernel.bin: ${KERNEL_OBJECTS} kernel/linker.ld build/kernel/.dir
 	${CC} ${LDFLAGS} ${KERNEL_LDFLAGS} -T kernel/linker.ld -o build/kernel/kernel.bin ${KERNEL_OBJECTS}
 
-build/kernel/boot.o: kernel/boot.S build/kernel/.dir
-	${AS} ${ASFLAGS} ${KERNEL_ASFLAGS} kernel/boot.S -o build/kernel/boot.o
+build/kernel/boot32.o: kernel/boot32.S build/kernel/.dir
+	${AS} ${ASFLAGS} ${KERNEL_ASFLAGS} kernel/boot32.S -o build/kernel/boot32.o
 
 build/kernel/%.o: kernel/%.c build/kernel/.dir
 	${CC} ${CCFLAGS} ${KERNEL_CCFLAGS} -c $< -o $@

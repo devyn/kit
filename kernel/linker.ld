@@ -3,7 +3,7 @@
 
 /* The bootloader will look at this image and start execution at the symbol
    designated as the entry point. */
-ENTRY(_start)
+ENTRY(_bootstrap)
 
 /* Tell where the various sections of the object files will be put in the final
    kernel image. */
@@ -12,41 +12,59 @@ SECTIONS
   /* Begin putting sections at 1 MiB, a conventional place for kernels to be
      loaded at by the bootloader. */
   . = 1M;
-  kernel_start = .;
+  _bootstrap_begin = .;
 
-  /* First put the multiboot header, as it is required to be put very early
-     early in the image or the bootloader won't recognize the file format.
-     Next we'll put the .text section. */
-  .text BLOCK(4K) : ALIGN(4K)
+  /* This is our bootstrap program that runs in protected mode, and includes the
+   * multiboot header. */
+  .bootstrap BLOCK(4K) :
   {
-    *(.multiboot)
-    *(.text)
+    build/kernel/boot32.o (.multiboot)
+    build/kernel/boot32.o (.text)
   }
+  . = ALIGN(4K);
+
+  .bootstrap_data :
+  {
+    build/kernel/boot32.o (.bootstrap_stack)
+    build/kernel/boot32.o (.rodata)
+    build/kernel/boot32.o (.data)
+  }
+  . = ALIGN(4K);
+
+  _kernel_begin = .;
+
+  .text :
+  {
+    *(EXCLUDE_FILE(build/kernel/boot32.o) .text)
+  }
+  . = ALIGN(4K);
 
   /* Read-only data. */
-  .rodata BLOCK(4K) : ALIGN(4K)
+  .rodata :
   {
-    *(.rodata)
+    *(EXCLUDE_FILE(build/kernel/boot32.o) .rodata)
   }
+  . = ALIGN(4K);
 
   /* Read-write data (initialized) */
-  .data BLOCK(4K) : ALIGN(4K)
+  .data :
   {
-    *(.data)
+    *(EXCLUDE_FILE(build/kernel/boot32.o) .data)
   }
+  . = ALIGN(4K);
 
-  /* Read-write data (uninitialized) and stack */
-  .bss BLOCK(4K) : ALIGN(4K)
+  /* Read-write data (uninitialized) */
+  .bss :
   {
     *(COMMON)
     *(.bss)
-    *(.bootstrap_stack)
   }
 
   /* The compiler may produce other sections, by default it will put them in
      a segment with the same name. Simply add stuff here as needed. */
 
   /* STABS debugging */
+  /*
   .stab          BLOCK(4K) : { *(.stab) }
   .stabstr                 : { *(.stabstr) }
   .stab.excl               : { *(.stab.excl) }
@@ -54,6 +72,13 @@ SECTIONS
   .stab.index              : { *(.stab.index) }
   .stab.indexstr           : { *(.stab.indexstr) }
   .comment                 : { *(.comment) }
+  */
 
-  kernel_end = .;
+  _kernel_end = .;
+
+  /* only enable this when not debugging */
+  /DISCARD/ :
+  {
+    *(.comment)
+  }
 }
