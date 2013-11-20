@@ -28,6 +28,37 @@ stack_bottom:
 .skip 16384 # 16 KiB
 stack_top:
 
+.section .bootstrap_gdt64
+
+gdt64:
+gdt64_null:
+  .word 0             # Limit (low)
+  .word 0             # Base (low)
+  .byte 0             # Base (middle)
+  .byte 0             # Access
+  .byte 0             # low nibble: Limit (high)
+  .byte 0             # Base (high)
+
+gdt64_code:
+  .word 0             # Limit (low)
+  .word 0             # Base (low)
+  .byte 0             # Base (middle)
+  .byte 0b10011000    # Access: Present, <>, ring 0, executable
+  .byte 0b00100000    # high nibble: Long mode bit set, low nibble: Limit (high)
+  .byte 0             # Base (high)
+
+gdt64_data:
+  .word 0             # Limit (low)
+  .word 0             # Base (low)
+  .byte 0             # Base (middle)
+  .byte 0b10010000    # Access: Present, <>, ring 0
+  .byte 0b00000000    # low nibble: Limit (high)
+  .byte 0             # Base (high)
+
+gdt64_pointer:
+  .word . - gdt64 - 1 # Limit
+  .quad gdt64         # Base
+
 .section .data
 # This is where we will store the multiboot information structure.
 .global kernel_multiboot_info
@@ -109,14 +140,80 @@ _bootstrap:
   test $(1 << 29), %edx # Test bit 21 (LM) on EDX
   jz .LnoLongMode       # If not set, long mode is not supported.
 
-.runKernel:
-  # We are now ready to actually execute C code. We cannot embed that in an
-  # assembly file, so we'll create a kernel.c file in a moment. In that file,
-  # we'll create a C entry point called kernel_main and call it here.
-  #call kernel_main
+.initializePaging:
+  # Set up (temporary) paging the way x86_64 long mode likes it.
+  # The result of this is a page table in which the first two megabytes of physical
+  # memory are identity mapped (0-2MB physical -> 0-2MB virtual)
 
-  # Halt the system.
+  # Disable paging (though it probably isn't enabled at the moment anyway)
+
+  movl %cr0, %eax              # Load control register 0 for modification in EAX
+  andl $((1 << 31) - 1), %eax  # Clear bit 31 (PG), which determines paging state
+  movl %eax, %cr0              # Save control register 0
+
+  # Clear some memory at 0x1000 for our temporary page table
+
+  movl $0x1000, %edi           # Destination: 0x1000
+  movl %edi,    %cr3           # Set control register 3 (PML4T location) to destination
+  xorl %eax,    %eax           # Set output to zero
+  movl $4096,   %ecx           # Set count to 4096 (16 KB)
+  rep  stosl                   # Execute clear
+
+  movl %cr3,    %edi           # Set destination to control register 3 again
+
+  # Set up PML4T, PDPT, and PDT, eventually pointing to 0x4000 as the PT location
+  # Note the 3 at the end of each address - we need to set the least two bits which
+  # indicate Present (bit 0) and Read/Write (bit 1) respectively
+
+  movl $0x2003, (%edi)         # Set PML4T[0] to 0x2003 (0x2000 + P,R)
+  addl $0x1000,  %edi          # Advance destination 1 KB to 0x2000
+  movl $0x3003, (%edi)         # Set PDPT[0] to 0x3003 (0x3000 + P,R)
+  addl $0x1000,  %edi          # Advance destination 1 KB to 0x3000
+  movl $0x4003, (%edi)         # Set PDT[0] to 0x4003 (0x4000 + P,R)
+  addl $0x1000,  %edi          # Advance destination 1 KB to 0x4000
+
+  # Set up PT to identity map the first 2 MB of memory as promised.
+
+  movl $0x00000003,  %eax      # Initial value is address 0 with the Present and Read/Write bits set
+  movl $512,         %ecx      # 512 entries * 1024 bytes mapped per entry = 2 megabytes
+
+.LsetPageTableEntries:
+  movl %eax,        (%edi)     # Set current table entry to value (normally quad)
+  addl $0x1000,      %eax      # Advance value (each entry maps 1 KB)
+  addl $8,           %edi      # Advance entry destination (8 bytes per quad)
+  loop .LsetPageTableEntries   # Loop until ECX runs out
+
+  # Enable Physical Address Extension (PAE). This does not enable paging (yet).
+
+  movl %cr4, %eax              # Load control register 4 for modification
+  orl  $(1 << 5), %eax         # Set bit 5 (PAE)
+  movl %eax, %cr4              # Save control register 4
+
+.initializeLongMode:
+  # Do everything necessary to switch to long mode short of loading the GDT64 and
+  # jumping to 64-bit code. After this we will be in 64-bit compatibility mode.
+
+  # Set the long mode (LM) bit in the Extended Feature Enable Register (EFER)
+
+  movl $0xC0000080, %ecx       # Select the EFER MSR at code 0xC0000080
+  rdmsr                        # Load EFER into EAX for modification
+  orl  $(1 << 8), %eax         # Set bit 8 (LM)
+  wrmsr                        # Write EFER
+
+  # Finally, enable paging.
+  
+  movl %cr0, %eax              # Load control register 0 for modification
+  orl  $(1 << 31), %eax        # Set bit 31 (PG)
+  movl %eax, %cr0              # Save control register 0
+
+.jumpToBoot64:
+  # Load the GDT and jump to our 64-bit bootstrapping code.
+
+  lgdt gdt64_pointer           # Load Global Descriptor Table.
+  jmp  $0x10, $_bootstrap64    # Far jump to _bootstrap64 with GDT64 Code segment.
+
 .Lhalt:
+  # Halt the system if something went wrong.
   cli
   hlt
   jmp .Lhalt

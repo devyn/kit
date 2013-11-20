@@ -18,7 +18,7 @@ KERNEL_CCFLAGS=-std=c99 -pedantic -Wall -Wextra -Werror -ffreestanding -O2 -mno-
 KERNEL_LDFLAGS=-ffreestanding -O2 -nostdlib -Wl,-z,max-page-size=0x1000
 KERNEL_ASFLAGS=
 
-KERNEL_OBJECTS=build/kernel/boot32.o build/kernel/kernel.o build/kernel/terminal.o
+KERNEL_OBJECTS=build/kernel/boot32.o build/kernel/boot64.o build/kernel/kernel.o build/kernel/terminal.o
 
 all-kernel: build/kernel/kernel.bin
 
@@ -27,6 +27,9 @@ build/kernel/kernel.bin: ${KERNEL_OBJECTS} kernel/linker.ld build/kernel/.dir
 
 build/kernel/boot32.o: kernel/boot32.S build/kernel/.dir
 	${AS} ${ASFLAGS} ${KERNEL_ASFLAGS} kernel/boot32.S -o build/kernel/boot32.o
+
+build/kernel/boot64.o: kernel/boot64.S build/kernel/.dir
+	${AS} ${ASFLAGS} ${KERNEL_ASFLAGS} kernel/boot64.S -o build/kernel/boot64.o
 
 build/kernel/%.o: kernel/%.c build/kernel/.dir
 	${CC} ${CCFLAGS} ${KERNEL_CCFLAGS} -c $< -o $@

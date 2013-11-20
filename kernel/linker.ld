@@ -11,50 +11,44 @@ SECTIONS
 {
   /* Begin putting sections at 1 MiB, a conventional place for kernels to be
      loaded at by the bootloader. */
-  . = 1M;
+  . = 0x100000;
   _bootstrap_begin = .;
 
-  /* This is our bootstrap program that runs in protected mode, and includes the
-   * multiboot header. */
   .bootstrap BLOCK(4K) :
   {
     build/kernel/boot32.o (.multiboot)
     build/kernel/boot32.o (.text)
   }
-  . = ALIGN(4K);
 
-  .bootstrap_data :
+  .bootstrap_data BLOCK(4K) : ALIGN(4K)
   {
+    build/kernel/boot32.o (.bootstrap_gdt64)
     build/kernel/boot32.o (.bootstrap_stack)
     build/kernel/boot32.o (.rodata)
     build/kernel/boot32.o (.data)
   }
-  . = ALIGN(4K);
 
   _kernel_begin = .;
 
-  .text :
+  .text BLOCK(4K) : ALIGN(4K)
   {
     *(EXCLUDE_FILE(build/kernel/boot32.o) .text)
   }
-  . = ALIGN(4K);
 
   /* Read-only data. */
-  .rodata :
+  .rodata BLOCK(4K) : ALIGN(4K)
   {
     *(EXCLUDE_FILE(build/kernel/boot32.o) .rodata)
   }
-  . = ALIGN(4K);
 
   /* Read-write data (initialized) */
-  .data :
+  .data BLOCK(4K) : ALIGN(4K)
   {
     *(EXCLUDE_FILE(build/kernel/boot32.o) .data)
   }
-  . = ALIGN(4K);
 
   /* Read-write data (uninitialized) */
-  .bss :
+  .bss BLOCK(4K) : ALIGN(4K)
   {
     *(COMMON)
     *(.bss)
