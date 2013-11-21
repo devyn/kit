@@ -1,5 +1,7 @@
-# Based on OSDev Bare Bones tutorial
-# http://wiki.osdev.org/Bare_Bones
+# Credit and inspiration for various bits of code in this:
+# - http://wiki.osdev.org/Bare_Bones
+# - http://wiki.osdev.org/User:Stephanvanschaik/Setting_Up_Long_Mode
+# - http://wiki.osdev.org/Creating_a_64-bit_kernel
 
 # Declare constants used for creating a multiboot header.
 .set ALIGN,    1<<0             # align loaded modules on page boundaries
