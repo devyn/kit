@@ -147,7 +147,8 @@ _bootstrap:
 .initializePaging:
   # Set up (temporary) paging the way x86_64 long mode likes it.
   # The result of this is a page table in which the first two megabytes of physical
-  # memory are identity mapped (0-2MB physical -> 0-2MB virtual)
+  # memory are identity mapped (0-2MB virtual -> 0-2MB physical), as well as mapped
+  # at 0xffff800000000000 which is the "higher half" on x86_64 with 48-bit paging.
 
   # Disable paging (though it probably isn't enabled at the moment anyway)
 
@@ -160,12 +161,12 @@ _bootstrap:
   movl $0x1000, %edi           # Destination: 0x1000
   movl %edi,    %cr3           # Set control register 3 (PML4T location) to destination
   xorl %eax,    %eax           # Set output to zero
-  movl $4096,   %ecx           # Set count to 4096 (16 KB)
+  movl $8192,   %ecx           # Set count to 4096 (32 KB)
   rep  stosl                   # Execute clear
 
   movl %cr3,    %edi           # Set destination to control register 3 again
 
-  # Set up PML4T, PDPT, and PDT, eventually pointing to 0x4000 as the PT location
+  # Set up PML4T, PDPT, and PDT, eventually pointing to 0x4000 as the low PT location
   # Note the 3 at the end of each address - we need to set the least two bits which
   # indicate Present (bit 0) and Read/Write (bit 1) respectively
 
@@ -176,13 +177,28 @@ _bootstrap:
   movl $0x4003, (%edi)         # Set PDT[0] to 0x4003 (0x4000 + P,R)
   addl $0x1000,  %edi          # Advance destination 4 KB to 0x4000
 
-  # Set up PT to identity map the first 2 MB of memory as promised.
+  # Also map the first two physical megabytes of memory at 0xffff800000000000,
+  # which is the start of kernel space. This is a bit more complicated.
 
+  # Create another PDPT, PDT, and PT to be linked to PML4T[256].
+
+  movl $0x5003, 0x1800         # Set PML4T[256] to 0x5003 (0x5000 + P, R)
+  movl $0x5000,  %edi          # New PDPT at 0x5000
+  movl $0x6003, (%edi)         # Set PDPT[0] to 0x6003 (0x6000 + P,R)
+  addl $0x1000,  %edi          # New PDT at 0x6000
+  movl $0x7003, (%edi)         # Set PDT[0] to 0x7003 (0x7000 + P,R)
+  addl $0x1000,  %edi          # New PT at 0x7000
+
+  # Set up PT to identity map the first 2 MB of memory as promised,
+  # and also set the high PT (at 0x7000) to the same.
+
+  movl $0x4000,      %edi      # Our two tables are at 0x4000 and 0x7000 (= 0x4000 + 0x3000)
   movl $0x00000003,  %eax      # Initial value is address 0 with the Present and Read/Write bits set
   movl $512,         %ecx      # 512 entries * 1024 bytes mapped per entry = 2 megabytes
 
 .LsetPageTableEntries:
   movl %eax,        (%edi)     # Set current table entry to value (normally quad)
+  movl %eax,  0x3000(%edi)     # Set current table entry on 0x7000 to value
   addl $0x1000,      %eax      # Advance value (each entry maps 1 KB)
   addl $8,           %edi      # Advance entry destination (8 bytes per quad)
   loop .LsetPageTableEntries   # Loop until ECX runs out

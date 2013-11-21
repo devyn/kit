@@ -6,8 +6,9 @@ _bootstrap64:
   # Make sure interrupts are cleared
   cli
 
-  # Meh, let's just call kernel_main
-  call kernel_main
+  # Call kernel_main
+  movabs $kernel_main, %rbx
+  callq *%rbx
 
 .Lhalt:
   # Halt once kernel_main returns.

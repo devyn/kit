@@ -5,74 +5,80 @@
    designated as the entry point. */
 ENTRY(_bootstrap)
 
+KERNEL_LMA = 0x100000;           /* Physical address */
+KERNEL_VMA = 0xffff800000000000; /* Virtual (higher half) address */
+
 /* Tell where the various sections of the object files will be put in the final
    kernel image. */
 SECTIONS
 {
-  /* Begin putting sections at 1 MiB, a conventional place for kernels to be
-     loaded at by the bootloader. */
-  . = 0x100000;
+  /* 32-bit and 64-bit bootstrap routines at 1 MB */
+  .                = KERNEL_LMA;
   _bootstrap_begin = .;
 
-  .bootstrap BLOCK(4K) :
+  .bootstrap :
   {
     build/kernel/boot32.o (.multiboot)
     build/kernel/boot32.o (.text)
+    . = ALIGN(4K);
   }
 
-  .bootstrap_data BLOCK(4K) : ALIGN(4K)
+  .bootstrap64 :
+  {
+    build/kernel/boot64.o (.text)
+    . = ALIGN(4K);
+  }
+
+  .bootstrap_data :
   {
     build/kernel/boot32.o (.bootstrap_gdt64)
     build/kernel/boot32.o (.bootstrap_stack)
     build/kernel/boot32.o (.rodata)
     build/kernel/boot32.o (.data)
+    . = ALIGN(4K);
   }
 
-  _kernel_begin = .;
+  /* 64-bit kernel in the higher half of the 48-bit addressing scheme */
+  .             += KERNEL_VMA;
+  _kernel_begin  = .;
 
-  .text BLOCK(4K) : ALIGN(4K)
+  /* Kernel executable code. */
+  .text : AT(ADDR(.text) - KERNEL_VMA)
   {
-    *(EXCLUDE_FILE(build/kernel/boot32.o) .text)
+    *(EXCLUDE_FILE(build/kernel/boot*.o) .text)
+    . = ALIGN(4K);
   }
 
   /* Read-only data. */
-  .rodata BLOCK(4K) : ALIGN(4K)
+  .rodata : AT(ADDR(.rodata) - KERNEL_VMA)
   {
-    *(EXCLUDE_FILE(build/kernel/boot32.o) .rodata)
+    *(EXCLUDE_FILE(build/kernel/boot*.o) .rodata*)
+    . = ALIGN(4K);
   }
 
   /* Read-write data (initialized) */
-  .data BLOCK(4K) : ALIGN(4K)
+  .data : AT(ADDR(.rodata) - KERNEL_VMA)
   {
-    *(EXCLUDE_FILE(build/kernel/boot32.o) .data)
+    *(EXCLUDE_FILE(build/kernel/boot*.o) .data)
+    . = ALIGN(4K);
   }
 
   /* Read-write data (uninitialized) */
-  .bss BLOCK(4K) : ALIGN(4K)
+  .bss : AT(ADDR(.bss) - KERNEL_VMA)
   {
-    *(COMMON)
-    *(.bss)
+    *(EXCLUDE_FILE(build/kernel/boot*.o) COMMON)
+    *(EXCLUDE_FILE(build/kernel/boot*.o) .bss)
+    . = ALIGN(4K);
   }
 
   /* The compiler may produce other sections, by default it will put them in
      a segment with the same name. Simply add stuff here as needed. */
 
-  /* STABS debugging */
-  /*
-  .stab          BLOCK(4K) : { *(.stab) }
-  .stabstr                 : { *(.stabstr) }
-  .stab.excl               : { *(.stab.excl) }
-  .stab.exclstr            : { *(.stab.exclstr) }
-  .stab.index              : { *(.stab.index) }
-  .stab.indexstr           : { *(.stab.indexstr) }
-  .comment                 : { *(.comment) }
-  */
-
   _kernel_end = .;
 
-  /* only enable this when not debugging */
   /DISCARD/ :
   {
     *(.comment)
+    *(.eh_frame)
   }
 }

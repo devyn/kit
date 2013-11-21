@@ -14,7 +14,7 @@ build/.dir:
 
 # =Kernel=
 
-KERNEL_CCFLAGS=-std=c99 -pedantic -Wall -Wextra -Werror -ffreestanding -O2 -mno-red-zone -mno-mmx -mno-sse -mno-sse2 -mno-sse3 -mno-3dnow
+KERNEL_CCFLAGS=-std=c99 -pedantic -Wall -Wextra -Werror -ffreestanding -fno-exceptions -fomit-frame-pointer -mcmodel=large -O2 -mno-red-zone -mno-mmx -mno-sse -mno-sse2 -mno-sse3 -mno-3dnow
 KERNEL_LDFLAGS=-ffreestanding -O2 -nostdlib -Wl,-z,max-page-size=0x1000
 KERNEL_ASFLAGS=
 
@@ -59,12 +59,6 @@ clean-iso:
 # =Testing=
 
 run-qemu: build/kit.iso
-	qemu-system-x86_64 -cdrom build/kit.iso -boot d
+	qemu-system-x86_64 -cdrom build/kit.iso -boot d ${QEMUFLAGS}
 
-run-qemu-monitor: build/kernel/kernel.bin
-	qemu-system-x86_64 -kernel build/kernel/kernel.bin -monitor stdio
-
-run-qemu-debug: build/kernel/kernel.bin
-	qemu-system-x86_64 -kernel build/kernel/kernel.bin -s -S
-
-.PHONY: all all-kernel all-iso clean clean-kernel clean-iso run-qemu run-qemu-monitor run-qemu-debug
+.PHONY: all all-kernel all-iso clean clean-kernel clean-iso run-qemu
