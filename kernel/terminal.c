@@ -2,6 +2,7 @@
 // http://wiki.osdev.org/Bare_Bones
 
 #include "terminal.h"
+#include "x86_64.h"
 
 /* Check if the compiler thinks if we are targeting the wrong operating system. */
 #if defined(__linux__)
@@ -18,11 +19,6 @@ uint16_t terminal_make_vgaentry(char c, uint8_t color)
   uint16_t c16 = c;
   uint16_t color16 = color;
   return c16 | color16 << 8;
-}
-
-// TODO: Move out of terminal.c?
-void outb(uint16_t port, uint8_t value) {
-  __asm__ volatile("outb %%al, %%dx" : : "a" (value), "d" (port));
 }
 
 size_t terminal_row;
@@ -75,11 +71,11 @@ void terminal_updatecursor()
 {
   uint16_t position = (terminal_row * VGA_WIDTH) + terminal_column;
 
-  outb(0x3D4, 0x0F);
-  outb(0x3D5, (uint8_t)(position&0xFF));
+  outb(0x0F,                   0x3D4);
+  outb(position & 0xFF,        0x3D5);
 
-  outb(0x3D4, 0x0E);
-  outb(0x3D5, (uint8_t)((position>>8)&0xFF));
+  outb(0x0E,                   0x3D4);
+  outb((position >> 8) & 0xFF, 0x3D5);
 }
 
 void terminal_getcursor(size_t *row, size_t *column)
