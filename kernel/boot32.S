@@ -255,7 +255,7 @@ _bootstrap:
 # Some minimal terminal functions
 
 .termclear:
-  pusha
+  pushal
 
   movl $0xB8000, %edi # video memory
   movl $0xf20,   %eax # white-on-black spaces
@@ -264,11 +264,11 @@ _bootstrap:
   cld
   rep stosw
 
-  popa
+  popal
   ret
 
 .termmsg:
-  pusha
+  pushal
 
   # EAX: pointer to C-style string
   # EDX: offset to print to
@@ -287,18 +287,18 @@ _bootstrap:
   jmp  .LtermmsgLoopStr
 
 .LtermmsgLoopEnd:
-  popa
+  popal
   ret
 
 .termfatal:
-  pusha
+  pushal
 
   # EAX: pointer to C-style string
 
   call .termclear
-  popa
+  popal
 
-  pusha
+  pushal
   movl $0, %edx
   call .termmsg             # Print caller-supplied message
 
@@ -306,7 +306,7 @@ _bootstrap:
   movl $80,          %edx
   call .termmsg             # Print fatal message
 
-  popa
+  popal
   ret
 
 # Set the size of the _bootstrap symbol to the current location '.' minus its start.
