@@ -4,11 +4,6 @@
 #include "terminal.h"
 #include "x86_64.h"
 
-/* Check if the compiler thinks if we are targeting the wrong operating system. */
-#if defined(__linux__)
-#error "You are not using a cross-compiler, you will most certainly run into trouble"
-#endif
-
 uint8_t terminal_make_color(enum vga_color fg, enum vga_color bg)
 {
   return fg | bg << 4;

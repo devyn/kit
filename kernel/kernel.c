@@ -6,11 +6,6 @@
 #include "multiboot.h"
 #include "terminal.h"
 
-/* Check if the compiler thinks if we are targeting the wrong operating system. */
-#if defined(__linux__)
-#error "You are not using a cross-compiler, you will most certainly run into trouble"
-#endif
-
 /**
  * These aren't actually meant to be of type int; they're just here so that
  * we can get the address of them.
