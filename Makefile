@@ -18,7 +18,7 @@ KERNEL_CCFLAGS=-std=c99 -pedantic -Wall -Wextra -Werror -ffreestanding -fno-exce
 KERNEL_LDFLAGS=-ffreestanding -O2 -nostdlib -Wl,-z,max-page-size=0x1000
 KERNEL_ASFLAGS=
 
-KERNEL_OBJECTS=build/kernel/boot32.o build/kernel/boot64.o build/kernel/kernel.o build/kernel/terminal.o
+KERNEL_OBJECTS=$(addprefix build/kernel/, boot32.o boot64.o kernel.o terminal.o memory.o x86_64.o test.o)
 
 all-kernel: build/kernel/kernel.bin
 
