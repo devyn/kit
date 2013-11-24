@@ -57,7 +57,7 @@ SECTIONS
   }
 
   /* Read-write data (initialized) */
-  .data : AT(ADDR(.rodata) - KERNEL_VMA)
+  .data : AT(ADDR(.data) - KERNEL_VMA)
   {
     *(EXCLUDE_FILE(build/kernel/boot*.o) .data)
     . = ALIGN(4K);
