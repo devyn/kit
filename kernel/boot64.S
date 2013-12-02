@@ -1,3 +1,12 @@
+################################################################################
+#
+# kit/kernel/boot64.S
+# - post-boot32 long mode stub which calls the kernel
+#
+# vim:ts=2:sw=2:et:tw=80:ft=asm
+#
+################################################################################
+
 .section .text
 
 # GDT-related constants

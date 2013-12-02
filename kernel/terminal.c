@@ -1,5 +1,15 @@
-// Based on OSDev Bare Bones tutorial
-// http://wiki.osdev.org/Bare_Bones
+/*******************************************************************************
+ *
+ * kit/kernel/terminal.c
+ * - early text mode 80x25 terminal handler
+ *
+ * vim:ts=2:sw=2:et:tw=80:ft=c
+ *
+ * Copyright (C) 2013, Devyn Cairns
+ * Redistribution of this file is permitted under the terms of the simplified
+ * BSD license. See LICENSE for more information.
+ *
+ ******************************************************************************/
 
 #include "terminal.h"
 #include "x86_64.h"

@@ -1,7 +1,20 @@
+################################################################################
+#
+# kit/kernel/boot32.S
+# - handles the transition from multiboot entry (32-bit) to long mode
+#
+# vim:ts=2:sw=2:et:tw=80:ft=asm
+#
+# Copyright (C) 2013, Devyn Cairns
+# Redistribution of this file is permitted under the terms of the simplified BSD
+# license. See LICENSE for more information.
+#
 # Credit and inspiration for various bits of code in this:
 # - http://wiki.osdev.org/Bare_Bones
 # - http://wiki.osdev.org/User:Stephanvanschaik/Setting_Up_Long_Mode
 # - http://wiki.osdev.org/Creating_a_64-bit_kernel
+#
+################################################################################
 
 # Declare constants used for creating a multiboot header.
 .set ALIGN,    1<<0             # align loaded modules on page boundaries
