@@ -149,7 +149,7 @@ void interrupt_handler(interrupt_stack_t stack) {
   terminal_writestring(#value); \
   terminal_writestring("=0x"); \
   terminal_writeuint64((value), 16); \
-  terminal_putchar(' ');
+  terminal_putchar(' ')
 
   DEBUG(stack.ds);
   DEBUG(stack.r15);
