@@ -145,36 +145,36 @@ void interrupt_handler(interrupt_stack_t stack) {
   terminal_writeuint64(stack.index, 16);
   terminal_putchar('\n');
 
-#define DEBUG(str, value) \
-  terminal_writestring(str); \
-  terminal_writestring("0x"); \
+#define DEBUG(value) \
+  terminal_writestring(#value); \
+  terminal_writestring("=0x"); \
   terminal_writeuint64((value), 16); \
   terminal_putchar(' ');
 
-  DEBUG("ds=", stack.ds);
-  DEBUG("r15=", stack.r15);
-  DEBUG("r14=", stack.r14);
-  DEBUG("r13=", stack.r13);
-  DEBUG("r12=", stack.r12);
-  DEBUG("r11=", stack.r11);
-  DEBUG("r10=", stack.r10);
-  DEBUG("r9=", stack.r9);
-  DEBUG("r8=", stack.r8);
-  DEBUG("rsp=", stack.rsp);
-  DEBUG("rbp=", stack.rbp);
-  DEBUG("rdi=", stack.rdi);
-  DEBUG("rsi=", stack.rsi);
-  DEBUG("rdx=", stack.rdx);
-  DEBUG("rcx=", stack.rcx);
-  DEBUG("rbx", stack.rbx);
-  DEBUG("rax=", stack.rax);
-  DEBUG("index=", stack.index);
-  DEBUG("err_code=", stack.err_code);
-  DEBUG("rip=", stack.rip);
-  DEBUG("cs=", stack.cs);
-  DEBUG("rflags=", stack.rflags);
-  DEBUG("user_rsp=", stack.user_rsp);
-  DEBUG("ss=", stack.ss);
+  DEBUG(stack.ds);
+  DEBUG(stack.r15);
+  DEBUG(stack.r14);
+  DEBUG(stack.r13);
+  DEBUG(stack.r12);
+  DEBUG(stack.r11);
+  DEBUG(stack.r10);
+  DEBUG(stack.r9);
+  DEBUG(stack.r8);
+  DEBUG(stack.rsp);
+  DEBUG(stack.rbp);
+  DEBUG(stack.rdi);
+  DEBUG(stack.rsi);
+  DEBUG(stack.rdx);
+  DEBUG(stack.rcx);
+  DEBUG(stack.rbx);
+  DEBUG(stack.rax);
+  DEBUG(stack.index);
+  DEBUG(stack.err_code);
+  DEBUG(stack.rip);
+  DEBUG(stack.cs);
+  DEBUG(stack.rflags);
+  DEBUG(stack.user_rsp);
+  DEBUG(stack.ss);
 
   terminal_putchar('\n');
 }
