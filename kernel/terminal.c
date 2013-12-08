@@ -134,7 +134,7 @@ void terminal_newline()
   terminal_updatecursor();
 }
 
-void terminal_putchar_internal(char c)
+void terminal_writechar_internal(char c)
 {
   switch (c) {
     case '\n':
@@ -149,9 +149,9 @@ void terminal_putchar_internal(char c)
   }
 }
 
-void terminal_putchar(char c)
+void terminal_writechar(char c)
 {
-  terminal_putchar_internal(c);
+  terminal_writechar_internal(c);
   terminal_updatecursor();
 }
 
@@ -159,7 +159,7 @@ void terminal_writestring(const char *data)
 {
   for (size_t i = 0; data[i] != '\0'; i++)
   {
-    terminal_putchar_internal(data[i]);
+    terminal_writechar_internal(data[i]);
   }
 
   terminal_updatecursor();
@@ -173,7 +173,7 @@ int terminal_writeuint64(uint64_t integer, uint8_t base)
 
   if (integer == 0)
   {
-    terminal_putchar('0');
+    terminal_writechar('0');
     return 0;
   }
 

@@ -27,9 +27,9 @@
   terminal_writestring(#value); \
   terminal_writestring("=0x"); \
   terminal_writeuint64((value), 16); \
-  terminal_putchar(' ')
+  terminal_writechar(' ')
 
 #define DEBUG_END_VALUES() \
-  terminal_putchar('\n')
+  terminal_writechar('\n')
 
 #endif

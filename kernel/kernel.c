@@ -71,7 +71,7 @@ void kernel_main()
   {
     terminal_writestring("Kernel command line: ");
     terminal_writestring((char *) ((uint64_t) kernel_multiboot_info.cmdline));
-    terminal_putchar('\n');
+    terminal_writechar('\n');
   }
   else
   {
@@ -81,11 +81,11 @@ void kernel_main()
 
   terminal_writestring("Kernel starts at:    0x");
   terminal_writeuint64((uint64_t) &_kernel_begin, 16);
-  terminal_putchar('\n');
+  terminal_writechar('\n');
 
   terminal_writestring("Kernel ends at:      0x");
   terminal_writeuint64((uint64_t) &_kernel_end, 16);
-  terminal_putchar('\n');
+  terminal_writechar('\n');
 
   if (!test_run("memory.c",    &test_memory_c))    return;
   if (!test_run("interrupt.c", &test_interrupt_c)) return;

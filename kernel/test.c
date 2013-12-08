@@ -28,7 +28,7 @@ bool test_run(const char *name, bool (*testcase)())
   terminal_writestring(name);
 
   terminal_setcolor(COLOR_LIGHT_GREY, COLOR_BLACK);
-  terminal_putchar('\n');
+  terminal_writechar('\n');
 
   bool result = (*testcase)();
 
@@ -46,7 +46,7 @@ bool test_run(const char *name, bool (*testcase)())
   terminal_writestring(name);
 
   terminal_setcolor(COLOR_LIGHT_GREY, COLOR_BLACK);
-  terminal_putchar('\n');
+  terminal_writechar('\n');
 
   return result;
 }
@@ -71,7 +71,7 @@ bool test_memory_c()
   {
     terminal_writestring("  - returned pointer: 0x");
     terminal_writeuint64((uint64_t) ptr, 16);
-    terminal_putchar('\n');
+    terminal_writechar('\n');
   }
 
   HEADING("memory_clear() clears memory\n");
@@ -97,7 +97,7 @@ bool test_memory_c()
       terminal_writestring("; value is 0x");
       terminal_writeuint64((uint64_t) ptr[i], 16);
 
-      terminal_putchar('\n');
+      terminal_writechar('\n');
       return false;
     }
   }
@@ -108,7 +108,7 @@ bool test_memory_c()
 
   terminal_writestring("  - returned pointer: 0x");
   terminal_writeuint64((uint64_t) aligned_ptr, 16);
-  terminal_putchar('\n');
+  terminal_writechar('\n');
 
   if (aligned_ptr != ptr + 1024)
   {

@@ -58,7 +58,7 @@ void terminal_setcolor(enum vga_color  fg, enum vga_color  bg);
 void terminal_putentryat(char c, uint8_t color, size_t x, size_t y);
 
 void terminal_newline();
-void terminal_putchar(char c);
+void terminal_writechar(char c);
 
 void terminal_writestring(const char *data);
 int  terminal_writeuint64(uint64_t integer, uint8_t base);
