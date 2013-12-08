@@ -25,6 +25,7 @@ _bootstrap64:
   movw %ax, %es
   movw %ax, %fs
   movw %ax, %gs
+  movw %ax, %ss
 
   # Call kernel_main
   movabs $kernel_main, %rbx

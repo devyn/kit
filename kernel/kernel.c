@@ -18,9 +18,10 @@
 #include <stdint.h>
 #include <stdbool.h>
 
+#include "x86_64.h"
+
 #include "multiboot.h"
 #include "terminal.h"
-#include "memory.h"
 #include "test.h"
 
 /**
@@ -62,7 +63,8 @@ void kernel_main()
   }
   else
   {
-    terminal_writestring("\nE: Bootloader did not provide valid memory information!\n");
+    terminal_writestring(
+      "\nE: Bootloader did not provide valid memory information!\n");
   }
 
   if (kernel_multiboot_info.flags & MULTIBOOT_INFO_CMDLINE)
@@ -73,7 +75,8 @@ void kernel_main()
   }
   else
   {
-    terminal_writestring("E: Bootloader did not provide kernel command line!\n");
+    terminal_writestring(
+      "E: Bootloader did not provide kernel command line!\n");
   }
 
   terminal_writestring("Kernel starts at:    0x");
@@ -84,5 +87,6 @@ void kernel_main()
   terminal_writeuint64((uint64_t) &_kernel_end, 16);
   terminal_putchar('\n');
 
-  if (!test_run("memory.c", &test_memory_c)) return;
+  if (!test_run("memory.c",    &test_memory_c))    return;
+  if (!test_run("interrupt.c", &test_interrupt_c)) return;
 }

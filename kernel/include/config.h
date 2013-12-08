@@ -1,7 +1,7 @@
 /*******************************************************************************
  *
- * kit/kernel/include/test.h
- * - runtime unit tests
+ * kit/kernel/include/config.h
+ * - compiler/target configuration abstraction
  *
  * vim:ts=2:sw=2:et:tw=80:ft=c
  *
@@ -11,16 +11,11 @@
  *
  ******************************************************************************/
 
-#ifndef TEST_H
-#define TEST_H
+#ifndef CONFIG_H
+#define CONFIG_H
 
-#include <stdbool.h>
-
-/* Run a testcase */
-bool test_run(const char *name, bool (*testcase)());
-
-/* Individual testcases */
-bool test_memory_c();
-bool test_interrupt_c();
+#if defined(__GNUC__) | defined(__clang__)
+#define PACKED __attribute__((__packed__))
+#endif
 
 #endif

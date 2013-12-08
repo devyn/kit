@@ -32,6 +32,12 @@
 #define hlt() \
   __asm__ volatile("hlt")
 
+#define cli() \
+  __asm__ volatile("cli")
+
+#define sti() \
+  __asm__ volatile("sti")
+
 void rep_stosb(void *pointer, uint8_t  value, size_t count);
 void rep_stosq(void *pointer, uint64_t value, size_t count);
 

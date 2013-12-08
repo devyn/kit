@@ -18,7 +18,7 @@ KERNEL_CCFLAGS=-std=c99 -pedantic -Wall -Wextra -Werror -ffreestanding -fno-exce
 KERNEL_LDFLAGS=-ffreestanding -O2 -nostdlib -Wl,-z,max-page-size=0x1000
 KERNEL_ASFLAGS=
 
-KERNEL_OBJECTS=$(addprefix build/kernel/, boot32.o boot64.o kernel.o terminal.o memory.o x86_64.o test.o)
+KERNEL_OBJECTS=$(addprefix build/kernel/, boot32.o boot64.o kernel.o terminal.o memory.o interrupt.o interrupt_isr_stub.o x86_64.o test.o)
 
 all-kernel: build/kernel/kernel.bin
 
@@ -30,6 +30,9 @@ build/kernel/boot32.o: kernel/boot32.S build/kernel/.dir
 
 build/kernel/boot64.o: kernel/boot64.S build/kernel/.dir
 	${AS} ${ASFLAGS} ${KERNEL_ASFLAGS} kernel/boot64.S -o build/kernel/boot64.o
+
+build/kernel/interrupt_isr_stub.o: kernel/interrupt_isr_stub.S build/kernel/.dir
+	${AS} ${ASFLAGS} ${KERNEL_ASFLAGS} kernel/interrupt_isr_stub.S -o build/kernel/interrupt_isr_stub.o
 
 build/kernel/%.o: kernel/%.c build/kernel/.dir
 	${CC} ${CCFLAGS} ${KERNEL_CCFLAGS} -I kernel/include -c $< -o $@

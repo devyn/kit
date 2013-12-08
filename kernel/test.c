@@ -16,6 +16,7 @@
 
 #include "terminal.h"
 #include "memory.h"
+#include "interrupt.h"
 
 #include "test.h"
 
@@ -114,6 +115,24 @@ bool test_memory_c()
     terminal_writestring("  E: not original pointer + 1024\n");
     return false;
   }
+
+  return true;
+}
+
+bool test_interrupt_c()
+{
+  HEADING("interrupt_initialize() doesn't crash the system\n");
+
+  terminal_writestring("Initializing interrupts.\n");
+  interrupt_initialize();
+
+  HEADING("handles two interrupts and comes back without crashing the system\n");
+
+  terminal_writestring("  - sending interrupt 0x1f\n");
+  __asm__ __volatile__("int $0x1f");
+
+  terminal_writestring("  - sending interrupt 0x3\n");
+  __asm__ __volatile__("int $0x3");
 
   return true;
 }

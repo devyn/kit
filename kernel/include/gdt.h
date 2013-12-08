@@ -1,7 +1,7 @@
 /*******************************************************************************
  *
- * kit/kernel/include/test.h
- * - runtime unit tests
+ * kit/kernel/include/gdt.h
+ * - x86_64 GDT-related constants 
  *
  * vim:ts=2:sw=2:et:tw=80:ft=c
  *
@@ -11,16 +11,19 @@
  *
  ******************************************************************************/
 
-#ifndef TEST_H
-#define TEST_H
+#ifndef COMMON_H
+#define COMMON_H
 
-#include <stdbool.h>
+typedef enum gdt_selector
+{
+  GDT_SEL_KERNEL_CODE = 0x08,
+  GDT_SEL_KERNEL_DATA = 0x10
+} gdt_selector_t;
 
-/* Run a testcase */
-bool test_run(const char *name, bool (*testcase)());
-
-/* Individual testcases */
-bool test_memory_c();
-bool test_interrupt_c();
+typedef enum gdt_privilege
+{
+  GDT_PRIVILEGE_KERNEL = 0,
+  GDT_PRIVILEGE_USER   = 3
+} gdt_privilege_t;
 
 #endif

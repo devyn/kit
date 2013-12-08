@@ -70,7 +70,7 @@ gdt64_data:
   .word 0             # Limit (low)
   .word 0             # Base (low)
   .byte 0             # Base (middle)
-  .byte 0b10010000    # Access: Present, <>, ring 0
+  .byte 0b10010010    # Access: Present, <>, ring 0, read/write
   .byte 0b00000000    # low nibble: Limit (high)
   .byte 0             # Base (high)
 
