@@ -14,7 +14,7 @@
 #include "interrupt.h"
 #include "memory.h"
 #include "x86_64.h"
-#include "terminal.h"
+#include "debug.h"
 
 interrupt_gate_t *interrupt_table;
 
@@ -141,40 +141,31 @@ void interrupt_set_gate(uint8_t index, uintptr_t routine_address,
  * Called from interrupt_isr_stub_common.
  */
 void interrupt_handler(interrupt_stack_t stack) {
-  terminal_writestring("!! interrupt not implemented: 0x");
-  terminal_writeuint64(stack.index, 16);
-  terminal_putchar('\n');
+  DEBUG_MESSAGE_HEX("interrupt not implemented", stack.index);
 
-#define DEBUG(value) \
-  terminal_writestring(#value); \
-  terminal_writestring("=0x"); \
-  terminal_writeuint64((value), 16); \
-  terminal_putchar(' ')
-
-  DEBUG(stack.ds);
-  DEBUG(stack.r15);
-  DEBUG(stack.r14);
-  DEBUG(stack.r13);
-  DEBUG(stack.r12);
-  DEBUG(stack.r11);
-  DEBUG(stack.r10);
-  DEBUG(stack.r9);
-  DEBUG(stack.r8);
-  DEBUG(stack.rsp);
-  DEBUG(stack.rbp);
-  DEBUG(stack.rdi);
-  DEBUG(stack.rsi);
-  DEBUG(stack.rdx);
-  DEBUG(stack.rcx);
-  DEBUG(stack.rbx);
-  DEBUG(stack.rax);
-  DEBUG(stack.index);
-  DEBUG(stack.err_code);
-  DEBUG(stack.rip);
-  DEBUG(stack.cs);
-  DEBUG(stack.rflags);
-  DEBUG(stack.user_rsp);
-  DEBUG(stack.ss);
-
-  terminal_putchar('\n');
+  DEBUG_HEX(stack.ds);
+  DEBUG_HEX(stack.r15);
+  DEBUG_HEX(stack.r14);
+  DEBUG_HEX(stack.r13);
+  DEBUG_HEX(stack.r12);
+  DEBUG_HEX(stack.r11);
+  DEBUG_HEX(stack.r10);
+  DEBUG_HEX(stack.r9);
+  DEBUG_HEX(stack.r8);
+  DEBUG_HEX(stack.rsp);
+  DEBUG_HEX(stack.rbp);
+  DEBUG_HEX(stack.rdi);
+  DEBUG_HEX(stack.rsi);
+  DEBUG_HEX(stack.rdx);
+  DEBUG_HEX(stack.rcx);
+  DEBUG_HEX(stack.rbx);
+  DEBUG_HEX(stack.rax);
+  DEBUG_HEX(stack.index);
+  DEBUG_HEX(stack.err_code);
+  DEBUG_HEX(stack.rip);
+  DEBUG_HEX(stack.cs);
+  DEBUG_HEX(stack.rflags);
+  DEBUG_HEX(stack.user_rsp);
+  DEBUG_HEX(stack.ss);
+  DEBUG_END_VALUES();
 }
