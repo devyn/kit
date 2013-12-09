@@ -15,9 +15,11 @@
 #define INTERRUPT_H
 
 #include <stdint.h>
+#include <stdbool.h>
 
 #include "config.h"
 #include "gdt.h"
+#include "x86_64.h"
 
 /**
  * x86_64 IDTR (IDT pointer).
@@ -75,6 +77,16 @@ typedef struct interrupt_stack
 #define INTERRUPT_TABLE_SIZE    (64 * sizeof(interrupt_gate_t))
 
 /**
+ * The index at which exceptions begin.
+ */
+#define INTERRUPT_INDEX_EXC 0
+
+/**
+ * The index at which IRQs begin.
+ */
+#define INTERRUPT_INDEX_IRQ 32
+
+/**
  * Prepare the interrupt table and load it.
  */
 void interrupt_initialize();
@@ -83,18 +95,43 @@ void interrupt_initialize();
  * Enable interrupts.
  * On x86_64, this is simply the sti (set interrupt flag) instruction.
  */
-void interrupt_enable();
+static inline void interrupt_enable()
+{
+  sti();
+}
 
 /**
  * Disable interrupts.
  * On x86_64, this is simply the cli (clear interrupt flag) instruction.
  */
-void interrupt_disable();
+static inline void interrupt_disable()
+{
+  cli();
+}
 
 /**
  * Set interrupt gate in interrupt table.
  */
 void interrupt_set_gate(uint8_t index, uintptr_t routine_address,
   gdt_selector_t selector, interrupt_type_t type, gdt_privilege_t privilege);
+
+/**
+ * Acknowledge IRQ (called when handler is finished).
+ */
+void interrupt_irq_done(uint8_t irq);
+
+/**
+ * Returns true if the IRQ was spurious. Interrupt handler should return and do
+ * nothing else.
+ * Must be checked on IRQ 7, and only on IRQ 7.
+ */
+bool interrupt_handle_spurious_irq7();
+
+/**
+ * Returns true if the IRQ was spurious. Interrupt handler should return and do
+ * nothing else.
+ * Must be checked on IRQ 15, and only on IRQ 15.
+ */
+bool interrupt_handle_spurious_irq15();
 
 #endif

@@ -16,12 +16,46 @@
 
 #include "terminal.h"
 
+#define DEBUG_MESSAGE(message) \
+  __debug_message((message), __FILE__, __LINE__)
+
+static inline void __debug_message(const char *message, const char *file,
+  int line)
+{
+  terminal_writestring(file);
+  terminal_writechar(':');
+  terminal_writeuint64(line, 10);
+  terminal_writestring(": ");
+  terminal_writestring(message);
+  terminal_writechar('\n');
+}
+
 #define DEBUG_MESSAGE_HEX(message, value) \
-  terminal_writestring("W: "); \
-  terminal_writestring(message); \
-  terminal_writestring(" ("); \
-  terminal_writeuint64((value), 16); \
-  terminal_writestring(")\n")
+  __debug_message_hex((message), (value), __FILE__, __LINE__)
+
+static inline void __debug_message_hex(const char *message, uint64_t value,
+  const char *file, int line)
+{
+  terminal_writestring(file);
+  terminal_writechar(':');
+  terminal_writeuint64(line, 10);
+  terminal_writestring(": ");
+  terminal_writestring(message);
+  terminal_writestring(" (0x");
+  terminal_writeuint64(value, 16);
+  terminal_writestring(")\n");
+}
+
+#define DEBUG_BEGIN_VALUES() \
+  __debug_begin_values(__FILE__, __LINE__)
+
+static inline void __debug_begin_values(const char *file, int line)
+{
+  terminal_writestring(file);
+  terminal_writechar(':');
+  terminal_writeuint64(line, 10);
+  terminal_writestring(": ");
+}
 
 #define DEBUG_HEX(value) \
   terminal_writestring(#value); \

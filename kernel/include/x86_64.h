@@ -20,25 +20,56 @@
 #include <stddef.h>
 #include <stdint.h>
 
-#define outb(value, port) \
-  __asm__ volatile("outb %%al, %%dx" : : "a" ((uint8_t) (value)), "d" ((uint16_t) (port)))
+static inline void outb(uint8_t value, uint16_t port)
+{
+  __asm__ volatile("outb %%al, %%dx" : : "a" (value), "d" (port));
+}
 
-#define inb(port, value) \
-  __asm__ volatile("inb %%dx, %%al" : "=a" ((uint8_t) (value)) : "d" ((uint16_t) (port)))
+static inline uint8_t inb(uint16_t port)
+{
+  uint8_t value;
+  __asm__ volatile("inb %%dx, %%al" : "=a" (value) : "d" (port));
+  return value;
+}
 
-#define lidt(pointer) \
-  __asm__ volatile("lidt %0" : : "m" (pointer))
+static inline void lidt(void *pointer)
+{
+  __asm__ volatile("lidt (%0)" : : "r" (pointer));
+}
 
-#define hlt() \
-  __asm__ volatile("hlt")
+static inline void hlt()
+{
+  __asm__ volatile("hlt");
+}
 
-#define cli() \
-  __asm__ volatile("cli")
+static inline void cli()
+{
+  __asm__ volatile("cli");
+}
 
-#define sti() \
-  __asm__ volatile("sti")
+static inline void sti()
+{
+  __asm__ volatile("sti");
+}
 
-void rep_stosb(void *pointer, uint8_t  value, size_t count);
-void rep_stosq(void *pointer, uint64_t value, size_t count);
+static inline void rep_stosb(void *pointer, uint8_t value, size_t count)
+{
+  int d0, d1; // black holes
+
+  __asm__ volatile("cld; rep stosb"
+                  : "=&D" (d0), "=&c" (d1)
+                  : "0" (pointer), "a" (value), "1" (count)
+                  : "memory");
+}
+
+static inline void rep_stosq(void *pointer, uint64_t value, size_t count)
+{
+  int d0, d1; // black holes
+
+  __asm__ volatile("cld; rep stosq"
+                  : "=&D" (d0), "=&c" (d1)
+                  : "0" (pointer), "a" (value), "1" (count)
+                  : "memory");
+}
 
 #endif
