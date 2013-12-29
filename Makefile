@@ -1,8 +1,6 @@
-TOOLPATH=tools/bin
-CC=${TOOLPATH}/x86_64-elf-gcc
-AS=${TOOLPATH}/x86_64-elf-as
-
-export PATH := ${TOOLPATH}:${PATH}
+CC=clang
+AS=as
+LD=ld
 
 all: all-kernel all-iso
 
@@ -15,15 +13,15 @@ build/.dir:
 # =Kernel=
 
 KERNEL_CCFLAGS=-std=c99 -pedantic -Wall -Wextra -Werror -ffreestanding -fno-exceptions -fomit-frame-pointer -mcmodel=large -O2 -mno-red-zone -mno-mmx -mno-sse -mno-sse2 -mno-sse3 -mno-3dnow
-KERNEL_LDFLAGS=-ffreestanding -O2 -nostdlib -Wl,-z,max-page-size=0x1000
-KERNEL_ASFLAGS=
+KERNEL_LDFLAGS=-O -nostdlib -z max-page-size=0x1000
+KERNEL_ASFLAGS=-march=generic64
 
 KERNEL_OBJECTS=$(addprefix build/kernel/, boot32.o boot64.o kernel.o terminal.o memory.o interrupt.o interrupt_isr_stub.o interrupt_8259pic.o test.o)
 
 all-kernel: build/kernel/kernel.bin
 
 build/kernel/kernel.bin: ${KERNEL_OBJECTS} kernel/scripts/link.ld build/kernel/.dir
-	${CC} ${LDFLAGS} ${KERNEL_LDFLAGS} -T kernel/scripts/link.ld -o build/kernel/kernel.bin ${KERNEL_OBJECTS}
+	${LD} ${LDFLAGS} ${KERNEL_LDFLAGS} -T kernel/scripts/link.ld -o build/kernel/kernel.bin ${KERNEL_OBJECTS}
 
 build/kernel/boot32.o: kernel/boot32.S build/kernel/.dir
 	${AS} ${ASFLAGS} ${KERNEL_ASFLAGS} kernel/boot32.S -o build/kernel/boot32.o
