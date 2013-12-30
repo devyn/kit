@@ -2,6 +2,8 @@ CC=clang
 AS=as
 LD=ld
 
+GRUB_LIB=/usr/lib/grub
+
 all: all-kernel all-iso
 
 clean: clean-kernel clean-iso
@@ -54,7 +56,13 @@ build/kit.iso: resources/grub.cfg build/kernel/kernel.bin build/.dir
 	mkdir -p build/isodir/boot/grub
 	cp resources/grub.cfg build/isodir/boot/grub/grub.cfg
 	cp build/kernel/kernel.bin build/isodir/boot/kernel.bin
-	grub-mkrescue -o build/kit.iso build/isodir
+	grub-mkimage --format=i386-pc --output=build/core.img \
+		--config=build/isodir/boot/grub/grub.cfg biosdisk iso9660 normal multiboot
+	cat ${GRUB_LIB}/i386-pc/cdboot.img build/core.img > build/isodir/grub.img
+	rm build/core.img
+	genisoimage -A "Kit" -input-charset "iso8859-1" -R -b grub.img \
+		-no-emul-boot -boot-load-size 4 -boot-info-table -o build/kit.iso \
+		build/isodir
 
 clean-iso:
 	rm -f build/kit.iso
