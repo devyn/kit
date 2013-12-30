@@ -12,7 +12,7 @@ build/.dir:
 
 # =Kernel=
 
-KERNEL_CCFLAGS=-std=c99 -pedantic -Wall -Wextra -Werror -ffreestanding -fno-exceptions -fomit-frame-pointer -mcmodel=large -O2 -mno-red-zone -mno-mmx -mno-sse -mno-sse2 -mno-sse3 -mno-3dnow
+KERNEL_CFLAGS=-target x86_64-pc-none-elf -std=c99 -pedantic -Wall -Wextra -Werror -ffreestanding -fno-exceptions -fomit-frame-pointer -mcmodel=large -O2 -mno-red-zone -mno-mmx -mno-sse -mno-sse2 -mno-sse3 -mno-3dnow
 KERNEL_LDFLAGS=-O -nostdlib -z max-page-size=0x1000
 KERNEL_ASFLAGS=-march=generic64
 
@@ -32,8 +32,11 @@ build/kernel/boot64.o: kernel/boot64.S build/kernel/.dir
 build/kernel/interrupt_isr_stub.o: kernel/interrupt_isr_stub.S build/kernel/.dir
 	${AS} ${ASFLAGS} ${KERNEL_ASFLAGS} kernel/interrupt_isr_stub.S -o build/kernel/interrupt_isr_stub.o
 
-build/kernel/%.o: kernel/%.c build/kernel/.dir
-	${CC} ${CCFLAGS} ${KERNEL_CCFLAGS} -I kernel/include -c $< -o $@
+build/kernel/%.o: build/kernel/%.s build/kernel/.dir
+	${AS} ${ASFLAGS} ${KERNEL_ASFLAGS} $< -o $@
+
+build/kernel/%.s: kernel/%.c build/kernel/.dir
+	${CC} ${CFLAGS} ${KERNEL_CFLAGS} -I kernel/include -S $< -o $@
 
 build/kernel/.dir: build/.dir
 	mkdir -p build/kernel
