@@ -92,7 +92,7 @@ void interrupt_initialize()
   // Initialize memory for IDT.
   interrupt_table = memory_alloc_aligned(INTERRUPT_TABLE_SIZE, 4096);
 
-  memory_clear(interrupt_table, INTERRUPT_TABLE_SIZE);
+  memory_set(interrupt_table, 0, INTERRUPT_TABLE_SIZE);
 
   // Initialize IDT by setting mapping the first 32 gates.
   // This should be changed if INTERRUPT_TABLE_ENTRIES changes.

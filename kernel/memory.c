@@ -11,9 +11,6 @@
  *
  ******************************************************************************/
 
-#include <stdint.h>
-#include "x86_64.h"
-
 #include "memory.h"
 
 /**
@@ -52,16 +49,4 @@ void *memory_alloc_aligned(size_t size, size_t alignment)
   }
 
   return memory_alloc(size);
-}
-
-void memory_clear(void *pointer, size_t size)
-{
-  size_t size_in_quads = size / 8;
-
-  rep_stosq(pointer, 0, size_in_quads);
-
-  uint8_t *remaining_pointer = (uint8_t *) pointer + (size / 8 * 8);
-  size_t   remaining_bytes   = size % 8;
-
-  rep_stosb(remaining_pointer, 0, remaining_bytes);
 }

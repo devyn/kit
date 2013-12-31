@@ -15,6 +15,7 @@
 #define MEMORY_H
 
 #include <stddef.h>
+#include <stdint.h>
 
 void *memory_alloc(size_t size);
 
@@ -22,6 +23,11 @@ void *memory_alloc(size_t size);
 
 void *memory_alloc_aligned(size_t size, size_t alignment);
 
-void memory_clear(void *pointer, size_t size);
+static inline void memory_set(void *pointer, uint8_t value, size_t size)
+{
+  for (size_t i = 0; i < size; i++) {
+    ((uint8_t *) pointer)[i] = value;
+  }
+}
 
 #endif

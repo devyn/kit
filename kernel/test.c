@@ -74,7 +74,7 @@ bool test_memory_c()
     terminal_writechar('\n');
   }
 
-  HEADING("memory_clear() clears memory\n");
+  HEADING("memory_set() sets memory\n");
 
   size_t i;
 
@@ -82,16 +82,16 @@ bool test_memory_c()
   
   for (i = 0; i < 512; i++) ptr[i] = i;
 
-  terminal_writestring("  - invoking memory_clear()\n");
-  memory_clear(ptr, 512);
+  terminal_writestring("  - invoking memory_set()\n");
+  memory_set(ptr, 0, 512);
 
-  terminal_writestring("  - verifying that the memory has been cleared\n");
+  terminal_writestring("  - verifying that the memory has been set\n");
 
   for (i = 0; i < 512; i++)
   {
     if (ptr[i] != 0)
     {
-      terminal_writestring("  E: memory not cleared at byte ");
+      terminal_writestring("  E: memory not set at byte ");
       terminal_writeuint64((uint64_t) i, 10);
 
       terminal_writestring("; value is 0x");
