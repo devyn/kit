@@ -18,7 +18,7 @@ KERNEL_CFLAGS=-target x86_64-pc-none-elf -std=c99 -pedantic -Wall -Wextra -Werro
 KERNEL_LDFLAGS=-O -nostdlib -z max-page-size=0x1000
 KERNEL_ASFLAGS=-march=generic64
 
-KERNEL_OBJECTS=$(addprefix build/kernel/, boot32.o boot64.o kernel.o terminal.o memory.o interrupt.o interrupt_isr_stub.o interrupt_8259pic.o test.o)
+KERNEL_OBJECTS=$(addprefix build/kernel/, boot32.o boot64.o kernel.o terminal.o memory.o interrupt.o interrupt_isr_stub.o interrupt_8259pic.o rbtree.o test.o)
 
 all-kernel: build/kernel/kernel.bin
 

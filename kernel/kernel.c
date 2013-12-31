@@ -99,5 +99,7 @@ void kernel_main()
   terminal_writestring("\nKeyboard interrupts are now enabled. Try typing!\n");
   terminal_setcolor(COLOR_LIGHT_GREY, COLOR_BLACK);
 
+  if (!test_run("rbtree.c",    &test_rbtree_c))    return;
+
   while(1) hlt();
 }
