@@ -42,6 +42,7 @@ SECTIONS
     build/kernel/boot32.o (.bootstrap_gdt64)
     build/kernel/boot32.o (.bootstrap_stack)
     build/kernel/boot32.o (.rodata)
+    build/kernel/boot64.o (.rodata)
     build/kernel/boot32.o (.data)
     . = ALIGN(4K);
   }
