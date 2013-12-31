@@ -18,6 +18,8 @@
 #include "memory.h"
 #include "interrupt.h"
 #include "rbtree.h"
+
+#include "debug.h"
 #include "x86_64.h"
 
 #include "test.h"
