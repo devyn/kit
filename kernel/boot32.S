@@ -209,12 +209,12 @@ _bootstrap:
 
   movl $0x4000,      %edi      # Our two tables are at 0x4000 and 0x7000 (= 0x4000 + 0x3000)
   movl $0x00000003,  %eax      # Initial value is address 0 with the Present and Read/Write bits set
-  movl $512,         %ecx      # 512 entries * 1024 bytes mapped per entry = 2 megabytes
+  movl $512,         %ecx      # 512 entries * 4096 bytes mapped per entry = 2 megabytes
 
 .LsetPageTableEntries:
   movl %eax,        (%edi)     # Set current table entry to value (normally quad)
   movl %eax,  0x3000(%edi)     # Set current table entry on 0x7000 to value
-  addl $0x1000,      %eax      # Advance value (each entry maps 1 KB)
+  addl $0x1000,      %eax      # Advance value (each entry maps 4 KB)
   addl $8,           %edi      # Advance entry destination (8 bytes per quad)
   loop .LsetPageTableEntries   # Loop until ECX runs out
 
