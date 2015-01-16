@@ -94,7 +94,7 @@ void interrupt_initialize()
 
   memory_set(interrupt_table, 0, INTERRUPT_TABLE_SIZE);
 
-  // Initialize IDT by setting mapping the first 32 gates.
+  // Initialize IDT by mapping the first 64 gates.
   // This should be changed if INTERRUPT_TABLE_ENTRIES changes.
   // We use a macro to do the heavy lifting.
 
