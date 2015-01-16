@@ -24,6 +24,7 @@
 #include "terminal.h"
 #include "interrupt.h"
 #include "test.h"
+#include "paging.h"
 
 /**
  * These aren't actually meant to be of type int; they're just here so that
@@ -87,7 +88,7 @@ void kernel_main()
   terminal_writestring("Kernel ends at:      0x");
   terminal_writeuint64((uint64_t) &_kernel_end, 16);
   terminal_writechar('\n');
-
+/*
   if (!test_run("memory.c",    &test_memory_c))    return;
   if (!test_run("interrupt.c", &test_interrupt_c)) return;
 
@@ -100,6 +101,52 @@ void kernel_main()
   terminal_setcolor(COLOR_LIGHT_GREY, COLOR_BLACK);
 
   if (!test_run("rbtree.c",    &test_rbtree_c))    return;
+*/
+  terminal_setcolor(COLOR_LIGHT_BROWN, COLOR_BLACK);
+  terminal_writestring("\n# Reading PML4 at 0xffff800000001000 #\n\n");
+
+  paging_pml4_entry_t *pml4 = (paging_pml4_entry_t *) 0xffff800000001000;
+
+  int line = 0;
+  for (unsigned int i = 0; i < PAGING_PML4_SIZE; i++) {
+    paging_pml4_entry_t *entry = &pml4[i];
+
+    if (entry->present) {
+      if (line) {
+        terminal_writechar(' ');
+        terminal_writeuint64(line, 10);
+        terminal_writechar('\n');
+      }
+      line = 0;
+
+      terminal_setcolor(COLOR_WHITE, COLOR_BLACK);
+
+      terminal_writestring("E ");
+      terminal_writeuint64(i, 10);
+      terminal_writechar(' ');
+
+      terminal_writechar(entry->present         ? 'P' : 'p');
+      terminal_writechar(entry->writable        ? 'W' : 'w');
+      terminal_writechar(entry->user            ? 'U' : 'u');
+      terminal_writechar(entry->write_through   ? 'T' : 't');
+      terminal_writechar(entry->cache_disable   ? 'C' : 'c');
+      terminal_writechar(entry->accessed        ? 'A' : 'a');
+      terminal_writechar(entry->execute_disable ? 'X' : 'x');
+
+      terminal_writestring(" #<0x");
+      terminal_writeuint64(entry->pdpt_physical << 12, 16);
+      terminal_writestring(">\n");
+    } else {
+      terminal_setcolor(COLOR_LIGHT_GREY, COLOR_BLACK);
+      terminal_writechar('.');
+      line++;
+    }
+  }
+  if (line) {
+    terminal_writechar(' ');
+    terminal_writeuint64(line, 10);
+    terminal_writechar('\n');
+  }
 
   while(1) hlt();
 }
