@@ -34,11 +34,8 @@ build/kernel/boot64.o: kernel/boot64.S build/kernel/.dir
 build/kernel/interrupt_isr_stub.o: kernel/interrupt_isr_stub.S build/kernel/.dir
 	${AS} ${ASFLAGS} ${KERNEL_ASFLAGS} kernel/interrupt_isr_stub.S -o build/kernel/interrupt_isr_stub.o
 
-build/kernel/%.o: build/kernel/%.s build/kernel/.dir
-	${AS} ${ASFLAGS} ${KERNEL_ASFLAGS} $< -o $@
-
-build/kernel/%.s: kernel/%.c build/kernel/.dir
-	${CC} ${CFLAGS} ${KERNEL_CFLAGS} -I kernel/include -S $< -o $@
+build/kernel/%.o: kernel/%.c build/kernel/.dir
+	${CC} ${CFLAGS} ${KERNEL_CFLAGS} -I kernel/include -c $< -o $@
 
 build/kernel/.dir: build/.dir
 	mkdir -p build/kernel
