@@ -14,6 +14,8 @@
 #ifndef DEBUG_H
 #define DEBUG_H
 
+#include <stdint.h>
+
 #include "terminal.h"
 
 #define DEBUG_MESSAGE(message) \
@@ -31,7 +33,7 @@ static inline void __debug_message(const char *message, const char *file,
 }
 
 #define DEBUG_MESSAGE_HEX(message, value) \
-  __debug_message_hex((message), (value), __FILE__, __LINE__)
+  __debug_message_hex((message), (uint64_t) (value), __FILE__, __LINE__)
 
 static inline void __debug_message_hex(const char *message, uint64_t value,
   const char *file, int line)
@@ -60,7 +62,13 @@ static inline void __debug_begin_values(const char *file, int line)
 #define DEBUG_HEX(value) \
   terminal_writestring(#value); \
   terminal_writestring("=0x"); \
-  terminal_writeuint64((value), 16); \
+  terminal_writeuint64((uint64_t) (value), 16); \
+  terminal_writechar(' ')
+
+#define DEBUG_DEC(value) \
+  terminal_writestring(#value); \
+  terminal_writestring("="); \
+  terminal_writeuint64((uint64_t) (value), 10); \
   terminal_writechar(' ')
 
 #define DEBUG_END_VALUES() \

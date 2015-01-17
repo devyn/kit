@@ -207,7 +207,7 @@ test_rbtree_node_t *test_rbtree_insert(test_rbtree_t *tree, int key, char value)
       parent->node.left  = (rbtree_node_t *) node;
     else
     {
-      //memory_free(node);
+      memory_free(node);
       parent->value = value;
       return parent;
     }

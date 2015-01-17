@@ -23,9 +23,9 @@
 #include "multiboot.h"
 #include "terminal.h"
 #include "interrupt.h"
-#include "test.h"
-#include "paging.h"
+#include "memory.h"
 #include "debug.h"
+#include "test.h"
 
 /**
  * These aren't actually meant to be of type int; they're just here so that
@@ -90,37 +90,19 @@ void kernel_main()
   terminal_writeuint64((uint64_t) &_kernel_end, 16);
   terminal_writechar('\n');
 
+  terminal_setcolor(COLOR_LIGHT_GREY, COLOR_BLACK);
+  terminal_writechar('\n');
+
   if (kernel_multiboot_info.flags & MULTIBOOT_INFO_MEM_MAP) {
     char *mmap = (char *) (0xffff800000000000 + kernel_multiboot_info.mmap_addr);
-    char *current_mmap = mmap;
 
-    unsigned int index = 0;
-    unsigned int size  = kernel_multiboot_info.mmap_length;
-
-    terminal_writestring("Memory map at 0x");
-    terminal_writeuint64((uint64_t) mmap, 16);
-    terminal_writestring(", ");
-    terminal_writeuint64(size, 10);
-    terminal_writestring(" bytes\n");
-
-    while (current_mmap < mmap + size) {
-      multiboot_memory_map_t *entry = (multiboot_memory_map_t *) current_mmap;
-
-      DEBUG_BEGIN_VALUES();
-        DEBUG_HEX(index);
-        DEBUG_HEX(entry->size);
-        DEBUG_HEX(entry->addr);
-        DEBUG_HEX(entry->len);
-        DEBUG_HEX(entry->type);
-      DEBUG_END_VALUES();
-
-      index++;
-      current_mmap += entry->size + 4;
-    }
+    memory_initialize(mmap, kernel_multiboot_info.mmap_length);
   }
   else {
     terminal_writestring(
       "E: Bootloader did not provide memory map!\n");
+
+    while (true) hlt();
   }
 /*
   if (!test_run("memory.c",    &test_memory_c))    return;
@@ -183,5 +165,5 @@ void kernel_main()
   }
 */
 
-  while(1) hlt();
+  while (true) hlt();
 }

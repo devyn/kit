@@ -17,9 +17,16 @@
 #include <stddef.h>
 #include <stdint.h>
 
+/**
+ * Loads the memory map information into the region tree in order to know where
+ * in physical memory it's safe to allocate fresh pages.
+ */
+void memory_initialize(const char *mmap_buffer, const uint32_t mmap_length);
+
 void *memory_alloc(size_t size);
 
-/* No memory_free yet, as allocation is stack based */
+// Currently no-op
+void memory_free(void *pointer);
 
 void *memory_alloc_aligned(size_t size, size_t alignment);
 
