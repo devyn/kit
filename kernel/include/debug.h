@@ -17,6 +17,7 @@
 #include <stdint.h>
 
 #include "terminal.h"
+#include "x86_64.h"
 
 #define DEBUG_MESSAGE(message) \
   __debug_message((message), __FILE__, __LINE__)
@@ -73,5 +74,13 @@ static inline void __debug_begin_values(const char *file, int line)
 
 #define DEBUG_END_VALUES() \
   terminal_writechar('\n')
+
+#define DEBUG_ASSERT(condition) \
+  if (!(condition)) \
+  { \
+    __debug_message("assertion failed: " #condition, __FILE__, __LINE__); \
+    cli(); \
+    hlt(); \
+  }
 
 #endif

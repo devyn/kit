@@ -81,13 +81,16 @@ static void memory_free_region_create(const uint64_t physical_base,
         break;
     }
 
+    // Now attach node -> parent
     node->node.parent = (rbtree_node_t *) parent;
 
+    // And parent -> node, based on which side it should go on
     if (parent->length <= node->length)
       parent->node.right = (rbtree_node_t *) node;
     else
       parent->node.left  = (rbtree_node_t *) node;
 
+    // And then balance it
     rbtree_balance_insert(&memory_free_region_tree.tree, &node->node);
   }
 

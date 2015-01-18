@@ -47,12 +47,11 @@ typedef struct rbtree
 void rbtree_balance_insert(rbtree_t *tree, rbtree_node_t *node);
 
 /**
- * Unlike rbtree_balance_insert(), as no comparison is required for deletion,
- * this function can be called without any special setup. It detaches the node
- * from the tree and balances automatically. Of course, any management of memory
- * and destruction is left up to the user.
+ * Unlike rbtree_balance_insert(), you don't need to do anything special before
+ * calling this. It doesn't free the node after deletion, though -- you must
+ * manage memory yourself.
  */
-//void rbtree_delete(rbtree_t *tree, rbtree_node_t *node);
+void rbtree_delete(rbtree_t *tree, rbtree_node_t *node);
 
 const rbtree_node_t *rbtree_first_node(const rbtree_t *tree);
 

@@ -104,10 +104,10 @@ void kernel_main()
 
     while (true) hlt();
   }
-/*
+
   if (!test_run("memory.c",    &test_memory_c))    return;
   if (!test_run("interrupt.c", &test_interrupt_c)) return;
-
+/*
   // Keyboard testing
 
   interrupt_enable();
@@ -115,9 +115,9 @@ void kernel_main()
   terminal_setcolor(COLOR_LIGHT_BROWN, COLOR_BLACK);
   terminal_writestring("\nKeyboard interrupts are now enabled. Try typing!\n");
   terminal_setcolor(COLOR_LIGHT_GREY, COLOR_BLACK);
-
+*/
   if (!test_run("rbtree.c",    &test_rbtree_c))    return;
-
+/*
   terminal_setcolor(COLOR_LIGHT_BROWN, COLOR_BLACK);
   terminal_writestring("\n# Reading PML4 at 0xffff800000001000 #\n\n");
 

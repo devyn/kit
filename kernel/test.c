@@ -106,7 +106,7 @@ bool test_memory_c()
     }
   }
 
-  HEADING("memory_alloc_aligned(1, 1024) returns the original pointer + 1024\n");
+  HEADING("memory_alloc_aligned(1, 1024) returns an aligned pointer\n");
 
   char *aligned_ptr = memory_alloc_aligned(1, 1024);
 
@@ -114,9 +114,9 @@ bool test_memory_c()
   terminal_writeuint64((uint64_t) aligned_ptr, 16);
   terminal_writechar('\n');
 
-  if (aligned_ptr != ptr + 1024)
+  if ((uint64_t) aligned_ptr % 1024 > 0)
   {
-    terminal_writestring("  E: not original pointer + 1024\n");
+    terminal_writestring("  E: aligned pointer does not divide by 1024\n");
     return false;
   }
 
@@ -153,10 +153,10 @@ typedef struct test_rbtree_node
   char          value;
 } test_rbtree_node_t;
 
-static const test_rbtree_node_t
+static test_rbtree_node_t
   *test_rbtree_search(const test_rbtree_t *tree, int key)
 {
-  const test_rbtree_node_t *node = (test_rbtree_node_t *) tree->tree.root;
+  test_rbtree_node_t *node = (test_rbtree_node_t *) tree->tree.root;
 
   while (node != NULL)
   {
@@ -218,6 +218,42 @@ test_rbtree_node_t *test_rbtree_insert(test_rbtree_t *tree, int key, char value)
   return node;
 }
 
+static void __test_rbtree_inspect_1(const test_rbtree_node_t *node, int indent,
+  const char *identifier)
+{
+  for (int i = 0; i <= indent; i++)
+  {
+    terminal_writechar(' ');
+    terminal_writechar(' ');
+  }
+
+  if (node->node.color == RBTREE_COLOR_RED)
+    terminal_writechar('R');
+  else
+    terminal_writechar('B');
+
+  terminal_writechar(node->value);
+  terminal_writechar(' ');
+  terminal_writestring(identifier);
+  terminal_writechar('\n');
+
+  if (node->node.left != NULL)
+    __test_rbtree_inspect_1((test_rbtree_node_t *) node->node.left,
+      indent + 1, "left");
+
+  if (node->node.right != NULL)
+    __test_rbtree_inspect_1((test_rbtree_node_t *) node->node.right,
+      indent + 1, "right");
+}
+
+static void test_rbtree_inspect(const test_rbtree_t *tree)
+{
+  const test_rbtree_node_t *node = (test_rbtree_node_t *) tree->tree.root;
+
+  if (node != NULL)
+    __test_rbtree_inspect_1(node, 0, "root");
+}
+
 static bool test_rbtree_is_valid(const test_rbtree_t *tree)
 {
   const rbtree_node_t *node = tree->tree.root;
@@ -262,20 +298,20 @@ static bool test_rbtree_is_valid(const test_rbtree_t *tree)
 
       const rbtree_node_t *test_node = node;
 
-      terminal_writestring("  - ");
+      //terminal_writestring("  - ");
       while (test_node != NULL)
       {
         if (test_node->color == RBTREE_COLOR_BLACK)
           black_nodes++;
 
-        terminal_writechar(((test_rbtree_node_t *) test_node)->value);
+        //terminal_writechar(((test_rbtree_node_t *) test_node)->value);
 
         test_node = test_node->parent;
       }
-      terminal_writestring(" = ");
-      terminal_writeuint64(black_nodes, 10);
-      terminal_writestring(" black nodes");
-      terminal_writechar('\n');
+      //terminal_writestring(" = ");
+      //terminal_writeuint64(black_nodes, 10);
+      //terminal_writestring(" black nodes");
+      //terminal_writechar('\n');
 
       if (max_black_nodes == 0)
       {
@@ -283,6 +319,8 @@ static bool test_rbtree_is_valid(const test_rbtree_t *tree)
       }
       else if (max_black_nodes != black_nodes)
       {
+        test_rbtree_inspect(tree);
+
         terminal_writestring("  E: property 5 violated\n"
                              "     max black nodes: ");
         terminal_writeuint64(max_black_nodes, 10);
@@ -301,42 +339,6 @@ static bool test_rbtree_is_valid(const test_rbtree_t *tree)
   return true;
 }
 
-static void __test_rbtree_inspect_1(test_rbtree_node_t *node, int indent,
-  const char *identifier)
-{
-  for (int i = 0; i <= indent; i++)
-  {
-    terminal_writechar(' ');
-    terminal_writechar(' ');
-  }
-
-  if (node->node.color == RBTREE_COLOR_RED)
-    terminal_writechar('R');
-  else
-    terminal_writechar('B');
-
-  terminal_writechar(node->value);
-  terminal_writechar(' ');
-  terminal_writestring(identifier);
-  terminal_writechar('\n');
-
-  if (node->node.left != NULL)
-    __test_rbtree_inspect_1((test_rbtree_node_t *) node->node.left,
-      indent + 1, "left");
-
-  if (node->node.right != NULL)
-    __test_rbtree_inspect_1((test_rbtree_node_t *) node->node.right,
-      indent + 1, "right");
-}
-
-static void test_rbtree_inspect(test_rbtree_t *tree)
-{
-  test_rbtree_node_t *node = (test_rbtree_node_t *) tree->tree.root;
-
-  if (node != NULL)
-    __test_rbtree_inspect_1(node, 0, "root");
-}
-
 bool test_rbtree_c()
 {
   HEADING("all keys are present and searchable after insertion\n");
@@ -349,19 +351,8 @@ bool test_rbtree_c()
 
   for (int i = 0; i < 10; i++)
   {
-    /*
-    terminal_writestring("-------------------------------\n");
-    */
     test_rbtree_insert(&tree, keys_to_insert[i], 'a' + i);
-    /*
-    test_rbtree_inspect(&tree);
-    if (!test_rbtree_is_valid(&tree))
-      terminal_writestring("(not valid)\n");
-    hlt();
-    */
   }
-
-  test_rbtree_inspect(&tree);
 
   for (int i = 0; i < 10; i++)
   {
@@ -373,6 +364,27 @@ bool test_rbtree_c()
 
   if (!test_rbtree_is_valid(&tree))
     return false;
+
+  HEADING("the tree is valid and contains remaining values "
+          "after deleting each value\n");
+
+  for (int i = 0; i < 10; i++)
+  {
+    test_rbtree_node_t *node = test_rbtree_search(&tree, keys_to_insert[i]);
+
+    rbtree_delete((rbtree_t *) &tree, (rbtree_node_t *) node);
+
+    if (!test_rbtree_is_valid(&tree))
+      return false;
+
+    for (int j = i + 1; j < 10; j++)
+    {
+      if (test_rbtree_search(&tree, keys_to_insert[j]) == NULL)
+      {
+        return false;
+      }
+    }
+  }
 
   return true;
 }
