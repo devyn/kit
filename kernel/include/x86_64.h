@@ -72,4 +72,9 @@ static inline void rep_stosq(void *pointer, uint64_t value, size_t count)
                   : "memory");
 }
 
+static inline void invlpg(void *pointer)
+{
+  __asm__ volatile("invlpg (%0)" : : "r" (pointer));
+}
+
 #endif

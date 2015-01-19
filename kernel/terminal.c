@@ -34,7 +34,7 @@ uint16_t* terminal_buffer;
 void terminal_initialize()
 {
   terminal_color = terminal_make_color(COLOR_LIGHT_GREY, COLOR_BLACK);
-  terminal_buffer = (uint16_t*) 0xB8000;
+  terminal_buffer = (uint16_t*) 0xffff8000000b8000;
 
   terminal_clear();
 }

@@ -24,6 +24,7 @@
 #include "terminal.h"
 #include "interrupt.h"
 #include "memory.h"
+#include "paging.h"
 #include "debug.h"
 #include "test.h"
 
@@ -104,6 +105,10 @@ void kernel_main()
 
     while (true) hlt();
   }
+
+  paging_initialize();
+  interrupt_initialize();
+  interrupt_enable();
 
   //if (!test_all()) return;
   if (!test_run("memory.c", &test_memory_c)) return;

@@ -23,6 +23,9 @@
 .set MAGIC,    0x1BADB002       # 'magic number' lets bootloader find the header
 .set CHECKSUM, -(MAGIC + FLAGS) # checksum of above, to prove we are multiboot
 
+# Virtual memory offset
+.set KERNEL_VMA, 0xffff800000000000
+
 # GDT-related constants
 .set GDT64_CODE_SEL, 0x08
 .set GDT64_DATA_SEL, 0x10
@@ -74,9 +77,10 @@ gdt64_data:
   .byte 0b00000000    # low nibble: Limit (high)
   .byte 0             # Base (high)
 
+.global gdt64_pointer
 gdt64_pointer:
-  .word . - gdt64 - 1 # Limit
-  .quad gdt64         # Base
+  .word . - gdt64 - 1      # Limit
+  .quad KERNEL_VMA + gdt64 # Base (will be read as 32-bit the first time)
 
 .section .data
 # This is where we will store the multiboot information structure.

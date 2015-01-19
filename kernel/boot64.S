@@ -23,6 +23,18 @@ _bootstrap64:
   # Make sure interrupts are cleared
   cli
 
+  # LGDT again to get the full 64 bits
+  lgdt gdt64_pointer
+
+  # Set CS and far return
+  # Workaround for x86_64, which doesn't have a far jump that sets CS
+  # So we set up a fake stack frame
+  pushq $0
+  pushq $GDT64_CODE_SEL
+  pushq $.LafterLGDT
+  lretq
+
+.LafterLGDT:
   # Load data selector into segment registers.
   movw $GDT64_DATA_SEL, %ax
   movw %ax, %ds
@@ -42,6 +54,11 @@ _bootstrap64:
 
   fninit
   fldcw (FPU_INIT_CONTROL)
+
+  # Add the new offset to the stack.
+  movabs $KERNEL_VMA, %rax
+  addq %rax, %rbp
+  addq %rax, %rsp
 
   # Call kernel_main
   movabs $kernel_main, %rbx
