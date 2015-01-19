@@ -53,6 +53,6 @@ void rbtree_balance_insert(rbtree_t *tree, rbtree_node_t *node);
  */
 void rbtree_delete(rbtree_t *tree, rbtree_node_t *node);
 
-const rbtree_node_t *rbtree_first_node(const rbtree_t *tree);
+rbtree_node_t *rbtree_first_node(rbtree_t *tree);
 
-const rbtree_node_t *rbtree_node_next(const rbtree_node_t *node);
+rbtree_node_t *rbtree_node_next(rbtree_node_t *node);

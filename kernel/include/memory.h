@@ -37,4 +37,30 @@ static inline void memory_set(void *pointer, uint8_t value, size_t size)
   }
 }
 
+/**
+ * Gets the number of free pages (4096 bytes) available in the system.
+ */
+uint64_t memory_get_total_free();
+
+/**
+ * Acquires free memory from the physical address space.
+ *
+ * Given a number of pages to acquire and a pointer within which to store
+ * the physical address of the acquired memory, memory_free_region_acquire()
+ * attempts to acquire a contiguous region of physical memory.
+ *
+ * The return value indicates how many contiguous pages were actually allocated.
+ * If the return value is zero, the system has no free memory available, and
+ * *physical_base is undefined.
+ */
+uint64_t memory_free_region_acquire(const uint64_t pages,
+                                    uint64_t *physical_base);
+
+/**
+ * Releases a contiguous region of previously acquired physical memory to the
+ * free memory tree.
+ */
+void memory_free_region_release(const uint64_t physical_base,
+                                const uint64_t pages);
+
 #endif

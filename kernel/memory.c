@@ -40,66 +40,14 @@ typedef struct memory_free_region_node {
   rbtree_node_t node;
 
   uint64_t physical_base;
-  uint64_t length;
+  uint64_t pages;
 } memory_free_region_node_t;
 
-memory_free_region_tree_t memory_free_region_tree = {{NULL}, 0};
-
-static void memory_free_region_create(const uint64_t physical_base,
-                                      const uint64_t length)
-{
-  // Find the center node of the tree
-  memory_free_region_node_t *parent =
-    (memory_free_region_node_t *) memory_free_region_tree.tree.root;
-
-  // Create a new node
-  memory_free_region_node_t *node =
-    memory_alloc(sizeof(memory_free_region_node_t));
-
-  memory_set(node, 0, sizeof(memory_free_region_node_t));
-
-  // Set attributes
-  node->physical_base = physical_base;
-  node->length        = length;
-
-  // If there is no parent, this might as well just be the root
-  if (parent == NULL)
-  {
-    memory_free_region_tree.tree.root = (rbtree_node_t *) node;
-    node->node.parent = NULL;
-  }
-  else
-  {
-    // Otherwise we need to look for where to insert this, by length
-    while (true)
-    {
-      if (parent->length <= node->length && parent->node.right != NULL)
-        parent = (memory_free_region_node_t *) parent->node.right;
-      else if (parent->length > node->length && parent->node.left != NULL)
-        parent = (memory_free_region_node_t *) parent->node.left;
-      else
-        break;
-    }
-
-    // Now attach node -> parent
-    node->node.parent = (rbtree_node_t *) parent;
-
-    // And parent -> node, based on which side it should go on
-    if (parent->length <= node->length)
-      parent->node.right = (rbtree_node_t *) node;
-    else
-      parent->node.left  = (rbtree_node_t *) node;
-
-    // And then balance it
-    rbtree_balance_insert(&memory_free_region_tree.tree, &node->node);
-  }
-
-  // Finally, we can add this amount to the total free size of the tree
-  memory_free_region_tree.total_free += length;
-}
+static memory_free_region_tree_t memory_free_region_tree = {{NULL}, 0};
 
 void memory_initialize(const char *mmap_buffer, const uint32_t mmap_length)
 {
+  static const uint64_t PAGE_SIZE    = 0x1000   /* 4 kB */;
   static const uint64_t PREALLOCATED = 0x200000 /* 2 MB */;
 
   const char *current_mmap = mmap_buffer;
@@ -107,39 +55,54 @@ void memory_initialize(const char *mmap_buffer, const uint32_t mmap_length)
   while (current_mmap < mmap_buffer + mmap_length) {
     multiboot_memory_map_t *entry = (multiboot_memory_map_t *) current_mmap;
 
-    // If the region contains memory beyond our preallocated 2 MB, and the
-    // memory is available for use, then insert it into the free region tree.
-    if (entry->addr + entry->len > PREALLOCATED &&
-        entry->type == MULTIBOOT_MEMORY_AVAILABLE)
-    {
-      if (entry->addr < PREALLOCATED)
-      {
-        // If the block starts before our preallocated region, then we have to
-        // crop it so that it doesn't intersect that.
-        uint64_t diff = PREALLOCATED - entry->addr;
-
-        memory_free_region_create(PREALLOCATED, entry->len - diff);
-      }
-      else
-      {
-        // Otherwise we can just go ahead and create it.
-        memory_free_region_create(entry->addr, entry->len);
-      }
-    }
-
     current_mmap += entry->size + 4;
+
+    // Ensure the entry is marked as available.
+    //
+    // Also ensure that the length is going to be large enough after we shear
+    // it to align to 4 kB page boundaries.
+    if (entry->type == MULTIBOOT_MEMORY_AVAILABLE &&
+        entry->len >= PAGE_SIZE + (entry->addr % PAGE_SIZE))
+    {
+      // Align to 4 kB page boundaries.
+      uint64_t physical_base = entry->addr % PAGE_SIZE != 0 ?
+                               ((entry->addr / PAGE_SIZE) + 1) * PAGE_SIZE :
+                               entry->addr;
+
+      uint64_t pages = (entry->len - (entry->addr % PAGE_SIZE)) / PAGE_SIZE;
+
+      // If the base starts before our preallocated region, remove the pages
+      // before that (and make sure we still have pages left).
+      if (physical_base < PREALLOCATED)
+      {
+        uint64_t diff = (PREALLOCATED - physical_base) / PAGE_SIZE;
+
+        if (diff < pages)
+        {
+          physical_base += diff * PAGE_SIZE;
+          pages         -= diff;
+        }
+        else
+        {
+          continue; // skip this entry
+        }
+      }
+
+      // Create the region.
+      memory_free_region_release(physical_base, pages);
+    }
   }
 
   // Now print our tree.
   rbtree_t *tree = &memory_free_region_tree.tree;
 
-  const rbtree_node_t *node = rbtree_first_node(tree);
+  rbtree_node_t *node = rbtree_first_node(tree);
   while (node != NULL) {
     memory_free_region_node_t *region = (memory_free_region_node_t *) node;
 
     DEBUG_BEGIN_VALUES();
       DEBUG_HEX(region->physical_base);
-      DEBUG_DEC(region->length);
+      DEBUG_DEC(region->pages);
     DEBUG_END_VALUES();
 
     node = rbtree_node_next(node);
@@ -182,4 +145,140 @@ void *memory_alloc_aligned(size_t size, size_t alignment)
   }
 
   return memory_alloc(size);
+}
+
+uint64_t memory_get_total_free()
+{
+  return memory_free_region_tree.total_free;
+}
+
+static void memory_free_region_insert(memory_free_region_node_t *node)
+{
+  // Physical base must be aligned to boundary
+  DEBUG_ASSERT(node->physical_base % 4096 == 0);
+
+  // Node must have more than zero pages
+  DEBUG_ASSERT(node->pages > 0);
+
+  // Find the center node of the tree
+  memory_free_region_node_t *parent =
+    (memory_free_region_node_t *) memory_free_region_tree.tree.root;
+
+  // If there is no parent, this might as well just be the root
+  if (parent == NULL)
+  {
+    memory_free_region_tree.tree.root = (rbtree_node_t *) node;
+    node->node.parent = NULL;
+  }
+  else
+  {
+    // Otherwise we need to look for where to insert this, by length
+    while (true)
+    {
+      if (parent->pages <= node->pages && parent->node.right != NULL)
+        parent = (memory_free_region_node_t *) parent->node.right;
+      else if (parent->pages > node->pages && parent->node.left != NULL)
+        parent = (memory_free_region_node_t *) parent->node.left;
+      else
+        break;
+    }
+
+    // Now attach node -> parent
+    node->node.parent = (rbtree_node_t *) parent;
+
+    // And parent -> node, based on which side it should go on
+    if (parent->pages <= node->pages)
+      parent->node.right = (rbtree_node_t *) node;
+    else
+      parent->node.left  = (rbtree_node_t *) node;
+
+    // And then balance it
+    rbtree_balance_insert(&memory_free_region_tree.tree, &node->node);
+  }
+
+  // Finally, we can add this amount to the total free size of the tree
+  memory_free_region_tree.total_free += node->pages;
+}
+
+uint64_t memory_free_region_acquire(const uint64_t pages,
+                                    uint64_t *physical_base)
+{
+  // Find the center node of the tree.
+  memory_free_region_node_t *node =
+    (memory_free_region_node_t *) memory_free_region_tree.tree.root;
+
+  // Ensure that the tree is not empty (out of memory).
+  if (node == NULL) return 0;
+
+  // Search for the nearest fitting node, ideally the same size or larger than
+  // 'bytes'.
+  //
+  // First, go left until we find a node with pages equal to or fewer than what
+  // we need.
+  while (node->pages > pages && node->node.left != NULL)
+  {
+    node = (memory_free_region_node_t *) node->node.left;
+  }
+
+  // Then, iterate through the tree until we find a node of larger or equal
+  // pages than we need.
+  rbtree_node_t *next;
+
+  while (node->pages < pages &&
+         (next = rbtree_node_next(&node->node)) != NULL)
+  {
+    node = (memory_free_region_node_t *) next;
+  }
+
+  // Then, delete that node from the tree and update the tree's total_free
+  // attribute.
+  rbtree_delete(&memory_free_region_tree.tree, &node->node);
+
+  memory_free_region_tree.total_free -= node->pages;
+
+  // If the node has more pages than what we requested, just take a bunch
+  // off the end and re-insert. Otherwise, return the entire node's space and
+  // discard it.
+  if (node->pages > pages)
+  {
+    // Reset rbtree attributes.
+    memory_set(&node->node, 0, sizeof(rbtree_node_t));
+
+    // Subtract from pages and re-insert,
+    node->pages -= pages;
+    memory_free_region_insert(node);
+
+    // and then calculate the resulting physical base of the new region,
+    *physical_base = node->physical_base + (node->pages << 12);
+
+    // which is exactly the size requested.
+    return pages;
+  }
+  else
+  {
+    // Just return the node's attributes and free it.
+    uint64_t actual_pages = node->pages;
+    *physical_base        = node->physical_base;
+
+    memory_free(node);
+
+    return actual_pages;
+  }
+}
+
+void memory_free_region_release(const uint64_t physical_base,
+                                const uint64_t pages)
+{
+  // Create a new node
+  memory_free_region_node_t *node =
+    memory_alloc(sizeof(memory_free_region_node_t));
+
+  memory_set(node, 0, sizeof(memory_free_region_node_t));
+
+  // Set attributes
+  node->physical_base = physical_base;
+  node->pages         = pages;
+
+  // Insert
+  memory_free_region_insert(node);
 }

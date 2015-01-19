@@ -495,9 +495,9 @@ finish:
   rbtree_replace_node(tree, NULL, node);
 }
 
-const rbtree_node_t *rbtree_first_node(const rbtree_t *tree)
+rbtree_node_t *rbtree_first_node(rbtree_t *tree)
 {
-  const rbtree_node_t *node = tree->root;
+  rbtree_node_t *node = tree->root;
 
   if (!node)
     return NULL;
@@ -508,7 +508,7 @@ const rbtree_node_t *rbtree_first_node(const rbtree_t *tree)
   return node;
 }
 
-const rbtree_node_t *rbtree_node_next(const rbtree_node_t *node)
+rbtree_node_t *rbtree_node_next(rbtree_node_t *node)
 {
   if (node->right != NULL)
   {

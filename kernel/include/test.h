@@ -24,4 +24,7 @@ bool test_memory_c();
 bool test_interrupt_c();
 bool test_rbtree_c();
 
+/* Run everything */
+bool test_all();
+
 #endif

@@ -120,6 +120,118 @@ bool test_memory_c()
     return false;
   }
 
+  HEADING("memory_free_region_acquire(pages=16) returns 16 fresh pages\n");
+
+  uint64_t physical_base;
+  uint64_t pages;
+
+  uint64_t total_free_1 = memory_get_total_free();
+
+  pages = memory_free_region_acquire(16, &physical_base);
+
+  uint64_t total_free_2 = memory_get_total_free();
+
+  if (pages == 16)
+  {
+    terminal_writestring("  - pages = 16\n");
+  }
+  else
+  {
+    terminal_writestring("  E: pages = ");
+    terminal_writeuint64(pages, 10);
+    terminal_writechar('\n');
+    return false;
+  }
+
+  terminal_writestring("  - physical_base = 0x");
+  terminal_writeuint64(physical_base, 16);
+  terminal_writechar('\n');
+
+  if (physical_base >= 0x200000)
+  {
+    terminal_writestring("  - fresh (>= 0x200000)\n");
+  }
+  else
+  {
+    terminal_writestring("  E: not fresh (< 0x200000)\n");
+    return false;
+  }
+
+  if (physical_base % 4096 == 0)
+  {
+    terminal_writestring("  - aligned to 4 kB\n");
+  }
+  else
+  {
+    terminal_writestring("  E: not aligned to 4 kB\n");
+    return false;
+  }
+
+  if (total_free_1 - 16 == total_free_2)
+  {
+    terminal_writestring("  - 16 pages have been subtracted from total_free\n");
+  }
+  else
+  {
+    terminal_writestring("  E: total_free difference = ");
+    if (total_free_1 >= total_free_2)
+    {
+      terminal_writeuint64(total_free_1 - total_free_2, 10);
+    }
+    else
+    {
+      terminal_writechar('-');
+      terminal_writeuint64(total_free_2 - total_free_1, 10);
+    }
+    terminal_writestring(", should be 16\n");
+    return false;
+  }
+
+  HEADING("memory_free_region_release() reclaims 16 pages\n");
+
+  memory_free_region_release(physical_base, pages);
+
+  uint64_t total_free_3 = memory_get_total_free();
+
+  if (total_free_1 == total_free_3)
+  {
+    terminal_writestring("  - total_free_1 == total_free_3\n");
+  }
+  else
+  {
+    terminal_writestring("  E: total_free_1 != total_free_3\n");
+    terminal_writestring("     total_free_1 = ");
+    terminal_writeuint64(total_free_1, 10);
+    terminal_writestring("\n     total_free_3 = ");
+    terminal_writeuint64(total_free_3, 10);
+    terminal_writechar('\n');
+    return false;
+  }
+
+  HEADING("memory_free_region_acquire(pages=16) selects the same 16 pages\n");
+
+  uint64_t new_physical_base;
+  uint64_t new_pages;
+
+  new_pages = memory_free_region_acquire(16, &new_physical_base);
+
+  if (new_pages != 16)
+  {
+    terminal_writestring("  E: pages == 16\n");
+    return false;
+  }
+
+  if (physical_base == new_physical_base)
+  {
+    terminal_writestring("  - physical_base == new_physical_base\n");
+  }
+  else
+  {
+    terminal_writestring("  E: new_physical_base = 0x");
+    terminal_writeuint64(new_physical_base, 16);
+    terminal_writechar('\n');
+  }
+
   return true;
 }
 
@@ -254,9 +366,9 @@ static void test_rbtree_inspect(const test_rbtree_t *tree)
     __test_rbtree_inspect_1(node, 0, "root");
 }
 
-static bool test_rbtree_is_valid(const test_rbtree_t *tree)
+static bool test_rbtree_is_valid(test_rbtree_t *tree)
 {
-  const rbtree_node_t *node = tree->tree.root;
+  rbtree_node_t *node = tree->tree.root;
 
   // Property 2, 3: the root is black and all leaves are black.
   if (node == NULL)
@@ -385,6 +497,14 @@ bool test_rbtree_c()
       }
     }
   }
+
+  return true;
+}
+
+bool test_all() {
+  if (!test_run("memory.c",    &test_memory_c))    return false;
+  if (!test_run("interrupt.c", &test_interrupt_c)) return false;
+  if (!test_run("rbtree.c",    &test_rbtree_c))    return false;
 
   return true;
 }
