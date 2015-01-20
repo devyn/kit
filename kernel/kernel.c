@@ -108,9 +108,9 @@ void kernel_main()
 
   paging_initialize();
 
-  if (!test_all()) return;
+  //if (!test_all()) return;
 
-  interrupt_enable();
+  //interrupt_enable();
 
 /*
   // Keyboard testing
