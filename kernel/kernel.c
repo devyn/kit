@@ -107,11 +107,10 @@ void kernel_main()
   }
 
   paging_initialize();
-  interrupt_initialize();
-  interrupt_enable();
 
-  //if (!test_all()) return;
-  if (!test_run("memory.c", &test_memory_c)) return;
+  if (!test_all()) return;
+
+  interrupt_enable();
 
 /*
   // Keyboard testing

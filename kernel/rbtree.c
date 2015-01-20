@@ -117,7 +117,8 @@ static inline void rbtree_rotate_left(rbtree_t *tree, rbtree_node_t *node)
   node->parent = node->right;
   node->right  = saved_right_left;
 
-  saved_right_left->parent = node;
+  if (saved_right_left != NULL)
+    saved_right_left->parent = node;
 }
 
 static inline void rbtree_rotate_right(rbtree_t *tree, rbtree_node_t *node)
@@ -137,7 +138,8 @@ static inline void rbtree_rotate_right(rbtree_t *tree, rbtree_node_t *node)
   node->parent = node->left;
   node->left   = saved_left_right;
 
-  saved_left_right->parent = node;
+  if (saved_left_right != NULL)
+    saved_left_right->parent = node;
 }
 
 void rbtree_balance_insert(rbtree_t *tree, rbtree_node_t *node)
