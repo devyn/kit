@@ -77,6 +77,21 @@ void paging_initialize()
       DEBUG_HEX(paging_initialize_phy);
     }
   DEBUG_END_VALUES();
+
+  paging_pageset_t test_pageset;
+
+  if (paging_create_pageset(&test_pageset))
+  {
+    DEBUG_BEGIN_VALUES();
+      DEBUG_HEX(test_pageset.pml4);
+    DEBUG_END_VALUES();
+
+    paging_destroy_pageset(&test_pageset);
+  }
+  else
+  {
+    DEBUG_MESSAGE("test pageset creation failed");
+  }
 }
 
 static void __paging_initialize_scan_pdpt(paging_pdpt_entry_t *pdpt)
@@ -223,6 +238,29 @@ void paging_phy_lin_map_delete(paging_phy_lin_map_t *map,
   }
 }
 
+static void __paging_phy_lin_map_free_node_recursive(
+    paging_phy_lin_map_node_t *node)
+{
+  if (node->node.left != NULL)
+    __paging_phy_lin_map_free_node_recursive(
+        (paging_phy_lin_map_node_t *) node->node.left);
+
+  if (node->node.right != NULL)
+    __paging_phy_lin_map_free_node_recursive(
+        (paging_phy_lin_map_node_t *) node->node.right);
+
+  memory_free(node);
+}
+
+void paging_phy_lin_map_clear(paging_phy_lin_map_t *map)
+{
+  if (map->tree.root != NULL)
+    __paging_phy_lin_map_free_node_recursive(
+        (paging_phy_lin_map_node_t *) map->tree.root);
+
+  map->tree.root = NULL;
+}
+
 bool paging_get_entry_pointers(paging_pageset_t *pageset,
     paging_linear64_t linear, paging_entries_t *entries)
 {
@@ -322,4 +360,110 @@ bool paging_resolve_linear_address(paging_pageset_t *pageset,
   }
 
   return true;
+}
+
+bool paging_create_pageset(paging_pageset_t *pageset)
+{
+  // Clear memory.
+  memory_set(pageset, 0, sizeof(paging_pageset_t));
+
+  // Allocate space for a PML4 table.
+  pageset->pml4 =
+    memory_alloc_aligned(sizeof(paging_pml4_entry_t) * PAGING_PML4_SIZE, 4096);
+
+  if (pageset->pml4 != NULL)
+  {
+    // Find the physical address of the PML4 we just allocated.
+    DEBUG_ASSERT(paging_resolve_linear_address(&paging_kernel_pageset,
+          pageset->pml4, &pageset->pml4_physical));
+
+    // Zero the lower half of the PML4.
+    const int half = PAGING_PML4_HALF;
+    memory_set(pageset->pml4, 0, sizeof(paging_pml4_entry_t) * half);
+
+    // Copy the kernel's PML4 higher half to this PML4.
+    memory_copy(paging_kernel_pageset.pml4 + half, pageset->pml4 + half,
+        sizeof(paging_pml4_entry_t) * half);
+
+    return true;
+  }
+  else
+  {
+    return false;
+  }
+}
+
+static void __paging_destroy_pageset_pml4(paging_pml4_entry_t *pml4);
+static void __paging_destroy_pageset_pdpt(paging_pdpt_entry_t *pdpt);
+static void __paging_destroy_pageset_pd(paging_pd_entry_t *pd);
+static void __paging_destroy_pageset_pt(paging_pt_entry_t *pt);
+
+bool paging_destroy_pageset(paging_pageset_t *pageset)
+{
+  // Free the tables.
+  __paging_destroy_pageset_pml4(pageset->pml4);
+
+  // Clear out the table map.
+  paging_phy_lin_map_clear(&paging_kernel_pageset.table_map);
+
+  return true;
+}
+
+static void __paging_destroy_pageset_pml4(paging_pml4_entry_t *pml4)
+{
+  for (int i = 0; i < PAGING_PML4_HALF; i++)
+  {
+    if (pml4[i].present)
+    {
+      paging_pdpt_entry_t *pdpt;
+
+      DEBUG_ASSERT(paging_phy_lin_map_get(&paging_kernel_pageset.table_map,
+            pml4[i].pdpt_physical << 12, (void *) &pdpt));
+
+      __paging_destroy_pageset_pdpt(pdpt);
+    }
+  }
+
+  memory_free(pml4);
+}
+
+static void __paging_destroy_pageset_pdpt(paging_pdpt_entry_t *pdpt)
+{
+  for (int i = 0; i < PAGING_PDPT_SIZE; i++)
+  {
+    if (pdpt[i].info.present && pdpt[i].info.page_size == 0)
+    {
+      paging_pd_entry_t *pd;
+
+      DEBUG_ASSERT(paging_phy_lin_map_get(&paging_kernel_pageset.table_map,
+            pdpt[i].as_pointer.pd_physical << 12, (void *) &pd));
+
+      __paging_destroy_pageset_pd(pd);
+    }
+  }
+
+  memory_free(pdpt);
+}
+
+static void __paging_destroy_pageset_pd(paging_pd_entry_t *pd)
+{
+  for (int i = 0; i < PAGING_PD_SIZE; i++)
+  {
+    if (pd[i].info.present && pd[i].info.page_size == 0)
+    {
+      paging_pt_entry_t *pt;
+
+      DEBUG_ASSERT(paging_phy_lin_map_get(&paging_kernel_pageset.table_map,
+            pd[i].as_pointer.pt_physical << 12, (void *) &pt));
+
+      __paging_destroy_pageset_pt(pt);
+    }
+  }
+
+  memory_free(pd);
+}
+
+static void __paging_destroy_pageset_pt(paging_pt_entry_t *pt)
+{
+  memory_free(pt);
 }

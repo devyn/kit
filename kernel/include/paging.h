@@ -24,6 +24,7 @@ void paging_initialize();
 /* x86_64 PML4 */
 
 #define PAGING_PML4_SIZE 512
+#define PAGING_PML4_HALF 256
 
 typedef struct PACKED paging_pml4_entry {
   /* 8 bytes */
@@ -229,13 +230,15 @@ void paging_phy_lin_map_set(paging_phy_lin_map_t *map,
 void paging_phy_lin_map_delete(paging_phy_lin_map_t *map,
     uint64_t physical_address);
 
+void paging_phy_lin_map_clear(paging_phy_lin_map_t *map);
+
 /* Pageset (management helper) */
 
 typedef struct paging_pageset {
-  uint64_t              pml4_physical; // build CR3 with this
-  paging_pml4_entry_t  *pml4;
+  uint64_t               pml4_physical; // build CR3 with this
+  paging_pml4_entry_t   *pml4;
 
-  paging_phy_lin_map_t  table_map;
+  paging_phy_lin_map_t   table_map;
 } paging_pageset_t;
 
 /**
@@ -243,9 +246,9 @@ typedef struct paging_pageset {
  */
 paging_pageset_t paging_kernel_pageset;
 
-//int paging_create_pageset(paging_pageset_t *pageset);
+bool paging_create_pageset(paging_pageset_t *pageset);
 
-//void paging_destroy_pageset(paging_pageset_t *pageset);
+bool paging_destroy_pageset(paging_pageset_t *pageset);
 
 /**
  * Low-level access
