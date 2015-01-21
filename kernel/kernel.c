@@ -20,6 +20,7 @@
 
 #include "x86_64.h"
 
+#include "config.h"
 #include "multiboot.h"
 #include "terminal.h"
 #include "interrupt.h"
@@ -95,7 +96,7 @@ void kernel_main()
   terminal_writechar('\n');
 
   if (kernel_multiboot_info.flags & MULTIBOOT_INFO_MEM_MAP) {
-    char *mmap = (char *) (0xffff800000000000 + kernel_multiboot_info.mmap_addr);
+    char *mmap = (char *) (KERNEL_OFFSET + kernel_multiboot_info.mmap_addr);
 
     memory_initialize(mmap, kernel_multiboot_info.mmap_length);
   }
@@ -108,64 +109,10 @@ void kernel_main()
 
   paging_initialize();
 
-  //if (!test_all()) return;
-
-  //interrupt_enable();
-
 /*
-  // Keyboard testing
+  if (!test_all()) return;
 
   interrupt_enable();
-
-  terminal_setcolor(COLOR_LIGHT_BROWN, COLOR_BLACK);
-  terminal_writestring("\nKeyboard interrupts are now enabled. Try typing!\n");
-  terminal_setcolor(COLOR_LIGHT_GREY, COLOR_BLACK);
-  terminal_setcolor(COLOR_LIGHT_BROWN, COLOR_BLACK);
-
-  terminal_writestring("\n# Reading PML4 at 0xffff800000001000 #\n\n");
-
-  paging_pml4_entry_t *pml4 = (paging_pml4_entry_t *) 0xffff800000001000;
-
-  int line = 0;
-  for (unsigned int i = 0; i < PAGING_PML4_SIZE; i++) {
-    paging_pml4_entry_t *entry = &pml4[i];
-
-    if (entry->present) {
-      if (line) {
-        terminal_writechar(' ');
-        terminal_writeuint64(line, 10);
-        terminal_writechar('\n');
-      }
-      line = 0;
-
-      terminal_setcolor(COLOR_WHITE, COLOR_BLACK);
-
-      terminal_writestring("E ");
-      terminal_writeuint64(i, 10);
-      terminal_writechar(' ');
-
-      terminal_writechar(entry->present         ? 'P' : 'p');
-      terminal_writechar(entry->writable        ? 'W' : 'w');
-      terminal_writechar(entry->user            ? 'U' : 'u');
-      terminal_writechar(entry->write_through   ? 'T' : 't');
-      terminal_writechar(entry->cache_disable   ? 'C' : 'c');
-      terminal_writechar(entry->accessed        ? 'A' : 'a');
-      terminal_writechar(entry->execute_disable ? 'X' : 'x');
-
-      terminal_writestring(" #<0x");
-      terminal_writeuint64(entry->pdpt_physical << 12, 16);
-      terminal_writestring(">\n");
-    } else {
-      terminal_setcolor(COLOR_LIGHT_GREY, COLOR_BLACK);
-      terminal_writechar('.');
-      line++;
-    }
-  }
-  if (line) {
-    terminal_writechar(' ');
-    terminal_writeuint64(line, 10);
-    terminal_writechar('\n');
-  }
 */
 
   while (true) hlt();

@@ -14,6 +14,8 @@
 #ifndef CONFIG_H
 #define CONFIG_H
 
+#define KERNEL_OFFSET 0xffff800000000000
+
 #if defined(__GNUC__) | defined(__clang__)
 #define PACKED __attribute__((__packed__))
 #endif

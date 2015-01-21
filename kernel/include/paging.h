@@ -162,6 +162,51 @@ typedef struct PACKED paging_pt_entry {
   unsigned long execute_disable : 1;
 } paging_pt_entry_t;
 
+/* All x86_64 paging entry pointers in one structure */
+
+typedef struct paging_entries {
+  paging_pml4_entry_t *pml4_entry;
+  paging_pdpt_entry_t *pdpt_entry;
+  paging_pd_entry_t   *pd_entry;
+  paging_pt_entry_t   *pt_entry;
+} paging_entries_t;
+
+/* x86_64 Linear Address structure, 48-bit on 64-bit */
+
+typedef struct PACKED paging_linear64 {
+  unsigned long offset     : 12;
+  unsigned long pt_index   : 9;
+  unsigned long pd_index   : 9;
+  unsigned long pdpt_index : 9;
+  unsigned long pml4_index : 9;
+
+  // pml4_index & (1 << 9) ? 0xFFFF : 0x0000
+  // otherwise an exception will be generated
+  unsigned long prefix     : 16;
+} paging_linear64_t;
+
+static inline paging_linear64_t paging_pointer_to_linear64(void *pointer)
+{
+  union {
+    paging_linear64_t  linear;
+    void              *pointer;
+  } intermediate;
+
+  intermediate.pointer = pointer;
+  return intermediate.linear;
+}
+
+static inline void *paging_linear64_to_pointer(paging_linear64_t linear)
+{
+  union {
+    paging_linear64_t  linear;
+    void              *pointer;
+  } intermediate;
+
+  intermediate.linear = linear;
+  return intermediate.pointer;
+}
+
 /* Physical -> Linear map */
 
 typedef struct paging_phy_lin_map {
@@ -193,17 +238,27 @@ typedef struct paging_pageset {
   paging_phy_lin_map_t  table_map;
 } paging_pageset_t;
 
-/*
-int paging_create_pageset(paging_pageset_t *pageset);
+/**
+ * The kernel's pageset
+ */
+paging_pageset_t paging_kernel_pageset;
 
-void paging_destroy_pageset(paging_pageset_t *pageset);
+//int paging_create_pageset(paging_pageset_t *pageset);
+
+//void paging_destroy_pageset(paging_pageset_t *pageset);
+
+/**
+ * Low-level access
+ * Returns true if complete
+ */
+bool paging_get_entry_pointers(paging_pageset_t *pageset,
+    paging_linear64_t linear, paging_entries_t *entries);
 
 bool paging_resolve_linear_address(paging_pageset_t *pageset,
     void *linear_address, uint64_t *physical_address);
 
 // Need map/unmap
 
-paging_pageset_t *paging_get_current_pageset();
+//paging_pageset_t *paging_get_current_pageset();
 
-void paging_set_current_pageset(paging_pageset_t *pageset);
-*/
+//void paging_set_current_pageset(paging_pageset_t *pageset);

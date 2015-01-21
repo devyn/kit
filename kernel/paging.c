@@ -16,10 +16,6 @@
 #include "x86_64.h"
 #include "debug.h"
 
-static paging_pageset_t paging_kernel_pageset;
-
-static const uint64_t KERNEL_OFFSET = 0xffff800000000000;
-
 static void __paging_initialize_scan_pdpt(paging_pdpt_entry_t *pdpt);
 static void __paging_initialize_scan_pd(paging_pd_entry_t *pd);
 
@@ -39,14 +35,6 @@ void paging_initialize()
   // Offset to get the linear address in the new kernel space.
   paging_kernel_pageset.pml4 = (paging_pml4_entry_t *)
     (paging_kernel_pageset.pml4_physical + KERNEL_OFFSET);
-
-  // Debug
-  DEBUG_BEGIN_VALUES();
-    DEBUG_HEX(paging_kernel_pageset.pml4_physical);
-  DEBUG_END_VALUES();
-  DEBUG_BEGIN_VALUES();
-    DEBUG_HEX(paging_kernel_pageset.pml4);
-  DEBUG_END_VALUES();
 
   // Remove our identity map at 0 - 2 MB. We don't need it anymore.
   memory_set(&paging_kernel_pageset.pml4[0], 0, sizeof(paging_pml4_entry_t));
@@ -79,31 +67,16 @@ void paging_initialize()
     }
   }
 
-  // Debug: print results
-  void *address;
+  uint64_t paging_initialize_phy;
 
-  if (paging_phy_lin_map_get(&paging_kernel_pageset.table_map,
-        0x5000, &address))
-  {
-    DEBUG_MESSAGE_HEX("found 0x5000", (uint64_t) address);
-  }
-  else
-  {
-    DEBUG_MESSAGE("not found");
-  }
-
-  paging_phy_lin_map_node_t *node = (paging_phy_lin_map_node_t *)
-    rbtree_first_node(&paging_kernel_pageset.table_map.tree);
-
-  while (node != NULL)
-  {
-    DEBUG_BEGIN_VALUES();
-      DEBUG_HEX(node->page_frame);
-      DEBUG_HEX(node->page_number);
-    DEBUG_END_VALUES();
-
-    node = (paging_phy_lin_map_node_t *) rbtree_node_next(&node->node);
-  }
+  DEBUG_BEGIN_VALUES();
+    DEBUG_HEX(&paging_initialize);
+    if (paging_resolve_linear_address(&paging_kernel_pageset, 
+          (void *) &paging_initialize, &paging_initialize_phy))
+    {
+      DEBUG_HEX(paging_initialize_phy);
+    }
+  DEBUG_END_VALUES();
 }
 
 static void __paging_initialize_scan_pdpt(paging_pdpt_entry_t *pdpt)
@@ -248,4 +221,105 @@ void paging_phy_lin_map_delete(paging_phy_lin_map_t *map,
     rbtree_delete(&map->tree, &node->node);
     memory_free(node);
   }
+}
+
+bool paging_get_entry_pointers(paging_pageset_t *pageset,
+    paging_linear64_t linear, paging_entries_t *entries)
+{
+  // Initialize
+  memory_set(entries, 0, sizeof(paging_entries_t));
+
+  // PML4 -> PDPT...
+  paging_pml4_entry_t *pml4_entry = &pageset->pml4[linear.pml4_index];
+
+  if (pml4_entry->present)
+  {
+    entries->pml4_entry = pml4_entry;
+
+    paging_pdpt_entry_t *pdpt;
+
+    DEBUG_ASSERT(paging_phy_lin_map_get(&pageset->table_map,
+          pml4_entry->pdpt_physical << 12, (void *) &pdpt));
+
+    // PDPT -> PD or page...
+    paging_pdpt_entry_t *pdpt_entry = &pdpt[linear.pdpt_index];
+
+    if (pdpt_entry->info.present)
+    {
+      entries->pdpt_entry = pdpt_entry;
+
+      // If this is a 1 GB page, return immediately; otherwise continue
+      if (pdpt_entry->info.page_size == 1)
+        return true;
+
+      paging_pd_entry_t *pd;
+
+      DEBUG_ASSERT(paging_phy_lin_map_get(&pageset->table_map,
+            pdpt_entry->as_pointer.pd_physical << 12, (void *) &pd));
+
+      // PD -> PT or page...
+      paging_pd_entry_t *pd_entry = &pd[linear.pd_index];
+
+      if (pd_entry->info.present)
+      {
+        entries->pd_entry = pd_entry;
+
+        // If this is a 2 MB page, return result immediately; otherwise continue
+        if (pd_entry->info.page_size == 1)
+          return true;
+
+        paging_pt_entry_t *pt;
+
+        DEBUG_ASSERT(paging_phy_lin_map_get(&pageset->table_map,
+              pd_entry->as_pointer.pt_physical << 12, (void *) &pt));
+
+        // PT -> page...
+        paging_pt_entry_t *pt_entry = &pt[linear.pt_index];
+
+        if (pt_entry->present)
+        {
+          entries->pt_entry = pt_entry;
+          return true;
+        }
+      }
+    }
+  }
+
+  return false;
+}
+
+bool paging_resolve_linear_address(paging_pageset_t *pageset,
+    void *linear_address, uint64_t *physical_address)
+{
+  paging_linear64_t linear = paging_pointer_to_linear64(linear_address);
+
+  paging_entries_t entries;
+
+  if (!paging_get_entry_pointers(pageset, linear, &entries))
+  {
+    return false;
+  }
+
+  if (entries.pt_entry != NULL)
+  {
+    // Normal 4 kB page
+    // Split at 12 bits
+    *physical_address = (entries.pt_entry->page_physical << 12) | linear.offset;
+  }
+  else if (entries.pd_entry != NULL)
+  {
+    // Large 2 MB page
+    // Split at 21 bits (= 9 + 12)
+    *physical_address = (entries.pd_entry->as_page.page_physical << 21) |
+      (((uint64_t) linear_address) & ~(-1 << 21));
+  }
+  else
+  {
+    // Huge 1 GB page
+    // Split at 30 bits (= 9 + 9 + 12)
+    *physical_address = (entries.pdpt_entry->as_page.page_physical << 30) |
+      (((uint64_t) linear_address) & ~(-1 << 30));
+  }
+
+  return true;
 }
