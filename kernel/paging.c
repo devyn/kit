@@ -331,6 +331,15 @@ bool paging_resolve_linear_address(paging_pageset_t *pageset,
 {
   paging_linear64_t linear = paging_pointer_to_linear64(linear_address);
 
+  // If the address is in the higher half, this must be kernel memory,
+  // so we'll silently use the kernel pageset instead. Otherwise we'd cause an
+  // assertion to fail once we get to the PML4 and try to look up the virtual
+  // address of the PDPT.
+  if (linear.prefix == 0xffff && pageset != &paging_kernel_pageset)
+  {
+    pageset = &paging_kernel_pageset;
+  }
+
   paging_entries_t entries;
 
   if (!paging_get_entry_pointers(pageset, linear, &entries))
@@ -400,17 +409,26 @@ static void __paging_destroy_pageset_pt(paging_pt_entry_t *pt);
 
 bool paging_destroy_pageset(paging_pageset_t *pageset)
 {
-  // Free the tables.
-  __paging_destroy_pageset_pml4(pageset->pml4);
+  if (pageset != &paging_kernel_pageset)
+  {
+    // Free the tables.
+    __paging_destroy_pageset_pml4(pageset->pml4);
 
-  // Clear out the table map.
-  paging_phy_lin_map_clear(&paging_kernel_pageset.table_map);
+    // Clear out the table map.
+    paging_phy_lin_map_clear(&paging_kernel_pageset.table_map);
 
-  return true;
+    return true;
+  }
+  else
+  {
+    // Refuse to destroy the kernel pageset.
+    return false;
+  }
 }
 
 static void __paging_destroy_pageset_pml4(paging_pml4_entry_t *pml4)
 {
+  // Only go up to the higher half, since everything above that is kernel space.
   for (int i = 0; i < PAGING_PML4_HALF; i++)
   {
     if (pml4[i].present)
