@@ -260,8 +260,22 @@ bool paging_get_entry_pointers(paging_pageset_t *pageset,
 bool paging_resolve_linear_address(paging_pageset_t *pageset,
     void *linear_address, uint64_t *physical_address);
 
-// Need map/unmap
+typedef enum paging_flags {
+  PAGING_READONLY = 0x1
+} paging_flags_t;
 
-//paging_pageset_t *paging_get_current_pageset();
+bool paging_map(paging_pageset_t *pageset, void *linear_address,
+    uint64_t physical_address, paging_flags_t flags);
 
-//void paging_set_current_pageset(paging_pageset_t *pageset);
+bool paging_unmap(paging_pageset_t *pageset, void *linear_address,
+    paging_flags_t flags);
+
+bool paging_get_flags(paging_pageset_t *pageset, void *linear_address,
+    paging_flags_t *flags);
+
+bool paging_set_flags(paging_pageset_t *pageset, void *linear_address,
+    paging_flags_t flags);
+
+paging_pageset_t *paging_get_current_pageset();
+
+void paging_set_current_pageset(paging_pageset_t *pageset);
