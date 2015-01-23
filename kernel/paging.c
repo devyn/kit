@@ -16,11 +16,16 @@
 #include "x86_64.h"
 #include "debug.h"
 
+static paging_pageset_t *paging_current_pageset;
+
 static void __paging_initialize_scan_pdpt(paging_pdpt_entry_t *pdpt);
 static void __paging_initialize_scan_pd(paging_pd_entry_t *pd);
 
 void paging_initialize()
 {
+  // Set current pageset to kernel pageset.
+  paging_current_pageset = &paging_kernel_pageset;
+
   // Initialize the pageset.
   memory_set(&paging_kernel_pageset, 0, sizeof(paging_pageset_t));
 
@@ -85,6 +90,44 @@ void paging_initialize()
     DEBUG_BEGIN_VALUES();
       DEBUG_HEX(test_pageset.pml4);
     DEBUG_END_VALUES();
+
+    DEBUG_MESSAGE("map page");
+
+    DEBUG_ASSERT(paging_map(&test_pageset, (void *) 0xdeadb000,
+          0x400000, 1, 0) == 1);
+
+    DEBUG_MESSAGE("set pageset");
+
+    paging_set_current_pageset(&test_pageset);
+
+    DEBUG_MESSAGE("attempt access");
+
+    char *ptr = (char *) 0xdeadbeef;
+
+    ptr[0] = 'h';
+    ptr[1] = 'i';
+    ptr[2] = '\n';
+    ptr[3] = '\0';
+
+    terminal_writestring(ptr);
+
+    DEBUG_MESSAGE("map another 5 pages");
+
+    DEBUG_ASSERT(paging_map(&test_pageset, (void *) 0xccccc000,
+          0x401000, 5, 0) == 5);
+
+    ptr = (char *) 0xccccc000;
+
+    for (; ptr < (char *) 0xcccd1000; ptr++)
+      *ptr = 'g';
+
+    DEBUG_ASSERT(ptr[-1] == 'g');
+
+    DEBUG_MESSAGE("reset pageset");
+
+    paging_set_current_pageset(&paging_kernel_pageset);
+
+    DEBUG_MESSAGE("destroy");
 
     paging_destroy_pageset(&test_pageset);
   }
@@ -371,21 +414,36 @@ bool paging_resolve_linear_address(paging_pageset_t *pageset,
   return true;
 }
 
+/**
+ * Allocate a page in the kernel heap and get the physical address in addition
+ * to the linear address.
+ */
+static inline void *__paging_alloc_page_phy_lin(uint64_t *physical_address)
+{
+  void *page = memory_alloc_aligned(4096, 4096);
+  DEBUG_BEGIN_VALUES();
+    DEBUG_HEX(page);
+  DEBUG_END_VALUES();
+
+  if (page != NULL)
+  {
+    DEBUG_ASSERT(paging_resolve_linear_address(&paging_kernel_pageset,
+          page, physical_address));
+  }
+
+  return page;
+}
+
 bool paging_create_pageset(paging_pageset_t *pageset)
 {
   // Clear memory.
   memory_set(pageset, 0, sizeof(paging_pageset_t));
 
-  // Allocate space for a PML4 table.
-  pageset->pml4 =
-    memory_alloc_aligned(sizeof(paging_pml4_entry_t) * PAGING_PML4_SIZE, 4096);
+  // Allocate space for a PML4 table and get its physical address.
+  pageset->pml4 = __paging_alloc_page_phy_lin(&pageset->pml4_physical);
 
   if (pageset->pml4 != NULL)
   {
-    // Find the physical address of the PML4 we just allocated.
-    DEBUG_ASSERT(paging_resolve_linear_address(&paging_kernel_pageset,
-          pageset->pml4, &pageset->pml4_physical));
-
     // Zero the lower half of the PML4.
     const int half = PAGING_PML4_HALF;
     memory_set(pageset->pml4, 0, sizeof(paging_pml4_entry_t) * half);
@@ -402,9 +460,14 @@ bool paging_create_pageset(paging_pageset_t *pageset)
   }
 }
 
-static void __paging_destroy_pageset_pml4(paging_pml4_entry_t *pml4);
-static void __paging_destroy_pageset_pdpt(paging_pdpt_entry_t *pdpt);
-static void __paging_destroy_pageset_pd(paging_pd_entry_t *pd);
+static void __paging_destroy_pageset_pml4(paging_pageset_t *pageset);
+
+static void __paging_destroy_pageset_pdpt(paging_pageset_t *pageset,
+    paging_pdpt_entry_t *pdpt);
+
+static void __paging_destroy_pageset_pd(paging_pageset_t *pageset,
+    paging_pd_entry_t *pd);
+
 static void __paging_destroy_pageset_pt(paging_pt_entry_t *pt);
 
 bool paging_destroy_pageset(paging_pageset_t *pageset)
@@ -412,7 +475,7 @@ bool paging_destroy_pageset(paging_pageset_t *pageset)
   if (pageset != &paging_kernel_pageset)
   {
     // Free the tables.
-    __paging_destroy_pageset_pml4(pageset->pml4);
+    __paging_destroy_pageset_pml4(pageset);
 
     // Clear out the table map.
     paging_phy_lin_map_clear(&paging_kernel_pageset.table_map);
@@ -426,26 +489,27 @@ bool paging_destroy_pageset(paging_pageset_t *pageset)
   }
 }
 
-static void __paging_destroy_pageset_pml4(paging_pml4_entry_t *pml4)
+static void __paging_destroy_pageset_pml4(paging_pageset_t *pageset)
 {
   // Only go up to the higher half, since everything above that is kernel space.
   for (int i = 0; i < PAGING_PML4_HALF; i++)
   {
-    if (pml4[i].present)
+    if (pageset->pml4[i].present)
     {
       paging_pdpt_entry_t *pdpt;
 
-      DEBUG_ASSERT(paging_phy_lin_map_get(&paging_kernel_pageset.table_map,
-            pml4[i].pdpt_physical << 12, (void *) &pdpt));
+      DEBUG_ASSERT(paging_phy_lin_map_get(&pageset->table_map,
+            pageset->pml4[i].pdpt_physical << 12, (void *) &pdpt));
 
-      __paging_destroy_pageset_pdpt(pdpt);
+      __paging_destroy_pageset_pdpt(pageset, pdpt);
     }
   }
 
-  memory_free(pml4);
+  memory_free(pageset->pml4);
 }
 
-static void __paging_destroy_pageset_pdpt(paging_pdpt_entry_t *pdpt)
+static void __paging_destroy_pageset_pdpt(paging_pageset_t *pageset,
+    paging_pdpt_entry_t *pdpt)
 {
   for (int i = 0; i < PAGING_PDPT_SIZE; i++)
   {
@@ -453,17 +517,18 @@ static void __paging_destroy_pageset_pdpt(paging_pdpt_entry_t *pdpt)
     {
       paging_pd_entry_t *pd;
 
-      DEBUG_ASSERT(paging_phy_lin_map_get(&paging_kernel_pageset.table_map,
+      DEBUG_ASSERT(paging_phy_lin_map_get(&pageset->table_map,
             pdpt[i].as_pointer.pd_physical << 12, (void *) &pd));
 
-      __paging_destroy_pageset_pd(pd);
+      __paging_destroy_pageset_pd(pageset, pd);
     }
   }
 
   memory_free(pdpt);
 }
 
-static void __paging_destroy_pageset_pd(paging_pd_entry_t *pd)
+static void __paging_destroy_pageset_pd(paging_pageset_t *pageset,
+    paging_pd_entry_t *pd)
 {
   for (int i = 0; i < PAGING_PD_SIZE; i++)
   {
@@ -471,7 +536,7 @@ static void __paging_destroy_pageset_pd(paging_pd_entry_t *pd)
     {
       paging_pt_entry_t *pt;
 
-      DEBUG_ASSERT(paging_phy_lin_map_get(&paging_kernel_pageset.table_map,
+      DEBUG_ASSERT(paging_phy_lin_map_get(&pageset->table_map,
             pd[i].as_pointer.pt_physical << 12, (void *) &pt));
 
       __paging_destroy_pageset_pt(pt);
@@ -484,4 +549,362 @@ static void __paging_destroy_pageset_pd(paging_pd_entry_t *pd)
 static void __paging_destroy_pageset_pt(paging_pt_entry_t *pt)
 {
   memory_free(pt);
+}
+
+typedef struct paging_map_state {
+  paging_pageset_t  *pageset;
+
+  union {
+    paging_linear64_t  indices;
+    uint8_t           *pointer;
+  } linear;
+
+  uint64_t           physical;
+  uint64_t           mapped;
+  uint64_t           requested;
+  paging_flags_t     flags;
+  bool               error;
+} paging_map_state_t;
+
+static void __paging_map_pml4(paging_map_state_t *state);
+
+static void __paging_map_pdpt(paging_map_state_t *state,
+    paging_pdpt_entry_t *pdpt);
+
+static void __paging_map_pd(paging_map_state_t *state, paging_pd_entry_t *pd);
+
+static void __paging_map_pt(paging_map_state_t *state, paging_pt_entry_t *pt);
+
+uint64_t paging_map(paging_pageset_t *pageset, void *linear_address,
+    uint64_t physical_address, uint64_t pages, paging_flags_t flags)
+{
+  paging_map_state_t state;
+
+  state.pageset        = pageset;
+  state.linear.pointer = (uint8_t *) linear_address;
+  state.physical       = physical_address;
+  state.mapped         = 0;
+  state.requested      = pages;
+  state.flags          = flags;
+  state.error          = false;
+
+  __paging_map_pml4(&state);
+
+  return state.mapped;
+
+  // If there's no PML4 entry, create a PDPT and point to it
+  // If there's no PDPT entry, create a PD and point to it
+  // If there's no PD entry, create a PT and point to it
+  // If there's no PT entry, map the page
+  // If there is a PT entry, return false
+  // Should probably set this up for multiple pages at once, in which case we'll
+  // have to loop once we exhaust each table (and change the sig)
+  return 0;
+}
+
+static void __paging_map_pml4(paging_map_state_t *state)
+{
+  // Establish the max index: refuse to go past the higher half if this isn't
+  // the kernel pageset.
+  int max_index;
+  if (state->pageset == &paging_kernel_pageset)
+    max_index = PAGING_PML4_SIZE - 1;
+  else
+    max_index = PAGING_PML4_HALF - 1;
+
+  // Establish the current index here in order to detect overflows.
+  int index = state->linear.indices.pml4_index;
+
+  // Start mapping PDPTs.
+  while (!state->error &&
+      index <= max_index &&
+      state->mapped < state->requested)
+  {
+    paging_pml4_entry_t *pml4_entry =
+      state->pageset->pml4 + state->linear.indices.pml4_index;
+
+    paging_pdpt_entry_t *pdpt;
+
+    // If not present, we need to allocate it.
+    if (!pml4_entry->present)
+    {
+      uint64_t pdpt_physical;
+
+      pdpt = __paging_alloc_page_phy_lin(&pdpt_physical);
+
+      if (pdpt == NULL)
+      {
+        // Allocator error. Probably out of memory.
+        state->error = true;
+        break;
+      }
+
+      // Clear the PML4 entry.
+      memory_set(pml4_entry, 0, sizeof(paging_pml4_entry_t));
+
+      // Clear the PDPT.
+      memory_set(pdpt, 0, sizeof(paging_pdpt_entry_t) * PAGING_PDPT_SIZE);
+
+      // Map PML4 entry to PDPT.
+      pml4_entry->pdpt_physical = pdpt_physical >> 12;
+
+      // Set flags and mark as present.
+      // Only page mapping entries should be affected by state->flags;
+      // everything should be permitted at higher levels.
+      pml4_entry->writable = 1;
+      pml4_entry->present  = 1;
+
+      DEBUG_BEGIN_VALUES();
+        DEBUG_HEX(state->linear.pointer);
+        DEBUG_HEX(state->linear.indices.pml4_index);
+        DEBUG_HEX(pml4_entry->pdpt_physical);
+      DEBUG_END_VALUES();
+
+      // Insert into table map.
+      paging_phy_lin_map_set(&state->pageset->table_map, pdpt_physical, pdpt);
+    }
+    else
+    {
+      DEBUG_BEGIN_VALUES();
+        DEBUG_HEX(state->linear.pointer);
+        DEBUG_HEX(state->linear.indices.pml4_index);
+        DEBUG_HEX(pml4_entry->pdpt_physical);
+      DEBUG_END_VALUES();
+
+      // Otherwise, we just need to look it up.
+      DEBUG_ASSERT(paging_phy_lin_map_get(&state->pageset->table_map,
+            pml4_entry->pdpt_physical << 12, (void **) &pdpt));
+    }
+
+    // Now we can map the PDPT.
+    __paging_map_pdpt(state, pdpt);
+    index++;
+  }
+
+  // Log if we attempted to exceed the max index.
+  if (index > max_index && state->mapped < state->requested)
+  {
+    DEBUG_MESSAGE("attempted to exceed max index");
+  }
+}
+
+static void __paging_map_pdpt(paging_map_state_t *state,
+    paging_pdpt_entry_t *pdpt)
+{
+  // Establish the current index here in order to detect overflows.
+  int index = state->linear.indices.pdpt_index;
+
+  // Start mapping PDs.
+  while (!state->error &&
+      index < PAGING_PDPT_SIZE &&
+      state->mapped < state->requested)
+  {
+    paging_pdpt_entry_t *pdpt_entry = pdpt + state->linear.indices.pdpt_index;
+
+    paging_pd_entry_t *pd;
+
+    // If not present, we need to allocate it.
+    if (!pdpt_entry->info.present)
+    {
+      uint64_t pd_physical;
+
+      pd = __paging_alloc_page_phy_lin(&pd_physical);
+
+      if (pd == NULL)
+      {
+        // Allocator error. Probably out of memory.
+        state->error = true;
+        break;
+      }
+
+      // Clear the PDPT entry.
+      memory_set(pdpt_entry, 0, sizeof(paging_pdpt_entry_t));
+
+      // Clear the PD.
+      memory_set(pd, 0, sizeof(paging_pd_entry_t) * PAGING_PD_SIZE);
+
+      // Map PDPT entry to PD.
+      pdpt_entry->as_pointer.pd_physical = pd_physical >> 12;
+
+      // Set flags and mark as present.
+      // Only page mapping entries should be affected by state->flags;
+      // everything should be permitted at higher levels.
+      pdpt_entry->as_pointer.writable = 1;
+      pdpt_entry->as_pointer.present  = 1;
+
+      // Insert into table map.
+      paging_phy_lin_map_set(&state->pageset->table_map, pd_physical, pd);
+    }
+    else if (pdpt_entry->info.page_size == 1)
+    {
+      // Can't map into a 1 GB page PDPT entry.
+      DEBUG_MESSAGE_HEX("tried to map into a 1 GB page PDPT entry",
+          (uint64_t) pdpt_entry);
+
+      state->error = true;
+      break;
+    }
+    else
+    {
+      // Otherwise, we just need to look it up.
+      DEBUG_ASSERT(paging_phy_lin_map_get(&state->pageset->table_map,
+            pdpt_entry->as_pointer.pd_physical << 12, (void **) &pd));
+    }
+
+    // Now we can map the PD.
+    __paging_map_pd(state, pd);
+    index++;
+  }
+}
+
+static void __paging_map_pd(paging_map_state_t *state, paging_pd_entry_t *pd)
+{
+  // Establish the current index here in order to detect overflows.
+  int index = state->linear.indices.pd_index;
+
+  // Start mapping PTs.
+  while (!state->error &&
+      index < PAGING_PD_SIZE &&
+      state->mapped < state->requested)
+  {
+    paging_pd_entry_t *pd_entry = pd + state->linear.indices.pd_index;
+
+    paging_pt_entry_t *pt;
+
+    // If not present, we need to allocate it.
+    if (!pd_entry->info.present)
+    {
+      uint64_t pt_physical;
+
+      pt = __paging_alloc_page_phy_lin(&pt_physical);
+
+      if (pt == NULL)
+      {
+        // Allocator error. Probably out of memory.
+        state->error = true;
+        break;
+      }
+
+      // Clear the PD entry.
+      memory_set(pd_entry, 0, sizeof(paging_pd_entry_t));
+
+      // Clear the PT.
+      memory_set(pt, 0, sizeof(paging_pt_entry_t) * PAGING_PT_SIZE);
+
+      // Map PD entry to PT.
+      pd_entry->as_pointer.pt_physical = pt_physical >> 12;
+
+      // Set flags and mark as present.
+      // Only page mapping entries should be affected by state->flags;
+      // everything should be permitted at higher levels.
+      pd_entry->as_pointer.writable = 1;
+      pd_entry->as_pointer.present  = 1;
+
+      // Insert into table map.
+      paging_phy_lin_map_set(&state->pageset->table_map, pt_physical, pt);
+    }
+    else if (pd_entry->info.page_size == 1)
+    {
+      // Can't map into a 2 MB page PD entry.
+      DEBUG_MESSAGE_HEX("tried to map into a 2 MB page PD entry",
+          (uint64_t) pd_entry);
+
+      state->error = true;
+      break;
+    }
+    else
+    {
+      // Otherwise, we just need to look it up.
+      DEBUG_ASSERT(paging_phy_lin_map_get(&state->pageset->table_map,
+            pd_entry->as_pointer.pt_physical << 12, (void **) &pt));
+    }
+
+    // Now we can map the PT.
+    __paging_map_pt(state, pt);
+    index++;
+  }
+}
+
+static void __paging_map_pt(paging_map_state_t *state, paging_pt_entry_t *pt)
+{
+  // Establish the current index here in order to detect overflows.
+  int index = state->linear.indices.pt_index;
+
+  // Start mapping pages.
+  while (!state->error &&
+      index < PAGING_PT_SIZE &&
+      state->mapped < state->requested)
+  {
+    paging_pt_entry_t *pt_entry = pt + state->linear.indices.pt_index;
+
+    // If present, abort. We must refuse to map pages that are already mapped.
+    if (pt_entry->present)
+    {
+      DEBUG_MESSAGE_HEX("tried to map into a present PT entry",
+          (uint64_t) pt_entry);
+
+      state->error = true;
+      break;
+    }
+    else
+    {
+      // Clear the PT entry.
+      memory_set(pt_entry, 0, sizeof(paging_pt_entry_t));
+
+      // Map PT entry to page.
+      pt_entry->page_physical = state->physical >> 12;
+
+      DEBUG_BEGIN_VALUES();
+        DEBUG_HEX(pt_entry->page_physical);
+      DEBUG_END_VALUES();
+
+      // Set flags and mark as present.
+      if (!(state->flags & PAGING_READONLY))
+        pt_entry->writable = 1;
+
+      pt_entry->present = 1;
+
+      // Increment mapped by 1, and advance linear and physical by 1 page.
+      state->mapped         += 1;
+      state->linear.pointer += 0x1000;
+      state->physical       += 0x1000;
+
+      index++;
+    }
+  }
+}
+
+/*
+uint64_t paging_unmap(paging_pageset_t *pageset, void *linear_address,
+    uint64_t pages, paging_flags_t flags)
+{
+  return 0;
+}
+
+bool paging_get_flags(paging_pageset_t *pageset, void *linear_address,
+    paging_flags_t *flags)
+{
+  *flags = 0;
+  return false;
+}
+
+uint64_t paging_set_flags(paging_pageset_t *pageset, void *linear_address,
+    uint64_t pages, paging_flags_t flags)
+{
+  return 0;
+}
+*/
+
+paging_pageset_t *paging_get_current_pageset()
+{
+  return paging_current_pageset;
+}
+
+void paging_set_current_pageset(paging_pageset_t *pageset)
+{
+  // Write its PML4 to CR3.
+  __asm__ volatile("mov %0, %%cr3" : : "r" (pageset->pml4_physical));
+
+  // Set the current pageset.
+  paging_current_pageset = pageset;
 }

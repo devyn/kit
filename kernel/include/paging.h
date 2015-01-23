@@ -264,17 +264,17 @@ typedef enum paging_flags {
   PAGING_READONLY = 0x1
 } paging_flags_t;
 
-bool paging_map(paging_pageset_t *pageset, void *linear_address,
-    uint64_t physical_address, paging_flags_t flags);
+uint64_t paging_map(paging_pageset_t *pageset, void *linear_address,
+    uint64_t physical_address, uint64_t pages, paging_flags_t flags);
 
-bool paging_unmap(paging_pageset_t *pageset, void *linear_address,
-    paging_flags_t flags);
+uint64_t paging_unmap(paging_pageset_t *pageset, void *linear_address,
+    uint64_t pages, paging_flags_t flags);
 
 bool paging_get_flags(paging_pageset_t *pageset, void *linear_address,
     paging_flags_t *flags);
 
-bool paging_set_flags(paging_pageset_t *pageset, void *linear_address,
-    paging_flags_t flags);
+uint64_t paging_set_flags(paging_pageset_t *pageset, void *linear_address,
+    uint64_t pages, paging_flags_t flags);
 
 paging_pageset_t *paging_get_current_pageset();
 
