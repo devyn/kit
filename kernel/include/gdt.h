@@ -11,8 +11,8 @@
  *
  ******************************************************************************/
 
-#ifndef COMMON_H
-#define COMMON_H
+#ifndef GDT_H
+#define GDT_H
 
 typedef enum gdt_selector
 {

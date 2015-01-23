@@ -237,6 +237,9 @@ void interrupt_handler(interrupt_stack_t stack) {
 
   switch (stack.index)
   {
+    case 0xe:
+      DEBUG_MESSAGE_HEX("page fault", stack.rip);
+      while (true) hlt();
     case INTERRUPT_INDEX_IRQ + 1:
       key = inb(0x60);
 

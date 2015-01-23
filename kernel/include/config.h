@@ -17,7 +17,12 @@
 #define KERNEL_OFFSET 0xffff800000000000
 
 #if defined(__GNUC__) | defined(__clang__)
+
 #define PACKED __attribute__((__packed__))
+
+#define FORMAT_PRINTF(string_index, first_to_check) \
+  __attribute__((__format__ (__printf__, string_index, first_to_check)))
+
 #endif
 
 #endif

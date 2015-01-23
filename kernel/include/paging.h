@@ -11,6 +11,9 @@
  *
  ******************************************************************************/
 
+#ifndef PAGING_H
+#define PAGING_H
+
 #include <stdbool.h>
 #include <stdint.h>
 
@@ -279,3 +282,5 @@ uint64_t paging_set_flags(paging_pageset_t *pageset, void *linear_address,
 paging_pageset_t *paging_get_current_pageset();
 
 void paging_set_current_pageset(paging_pageset_t *pageset);
+
+#endif

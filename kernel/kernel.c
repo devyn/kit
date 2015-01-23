@@ -109,11 +109,10 @@ void kernel_main()
 
   paging_initialize();
 
-/*
-  if (!test_all()) return;
+  if (!test_all()) goto hang;
 
-  interrupt_enable();
-*/
+  //interrupt_enable();
 
+hang:
   while (true) hlt();
 }

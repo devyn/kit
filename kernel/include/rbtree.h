@@ -22,6 +22,9 @@
  *
  ******************************************************************************/
 
+#ifndef RBTREE_H
+#define RBTREE_H
+
 typedef struct rbtree_node
 {
   enum {
@@ -56,3 +59,5 @@ void rbtree_delete(rbtree_t *tree, rbtree_node_t *node);
 rbtree_node_t *rbtree_first_node(rbtree_t *tree);
 
 rbtree_node_t *rbtree_node_next(rbtree_node_t *node);
+
+#endif

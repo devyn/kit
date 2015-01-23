@@ -71,70 +71,6 @@ void paging_initialize()
           (paging_pdpt_entry_t *) (addr + KERNEL_OFFSET));
     }
   }
-
-  uint64_t paging_initialize_phy;
-
-  DEBUG_BEGIN_VALUES();
-    DEBUG_HEX(&paging_initialize);
-    if (paging_resolve_linear_address(&paging_kernel_pageset, 
-          (void *) &paging_initialize, &paging_initialize_phy))
-    {
-      DEBUG_HEX(paging_initialize_phy);
-    }
-  DEBUG_END_VALUES();
-
-  paging_pageset_t test_pageset;
-
-  if (paging_create_pageset(&test_pageset))
-  {
-    DEBUG_BEGIN_VALUES();
-      DEBUG_HEX(test_pageset.pml4);
-    DEBUG_END_VALUES();
-
-    DEBUG_MESSAGE("map page");
-
-    DEBUG_ASSERT(paging_map(&test_pageset, (void *) 0xdeadb000,
-          0x400000, 1, 0) == 1);
-
-    DEBUG_MESSAGE("set pageset");
-
-    paging_set_current_pageset(&test_pageset);
-
-    DEBUG_MESSAGE("attempt access");
-
-    char *ptr = (char *) 0xdeadbeef;
-
-    ptr[0] = 'h';
-    ptr[1] = 'i';
-    ptr[2] = '\n';
-    ptr[3] = '\0';
-
-    terminal_writestring(ptr);
-
-    DEBUG_MESSAGE("map another 5 pages");
-
-    DEBUG_ASSERT(paging_map(&test_pageset, (void *) 0xccccc000,
-          0x401000, 5, 0) == 5);
-
-    ptr = (char *) 0xccccc000;
-
-    for (; ptr < (char *) 0xcccd1000; ptr++)
-      *ptr = 'g';
-
-    DEBUG_ASSERT(ptr[-1] == 'g');
-
-    DEBUG_MESSAGE("reset pageset");
-
-    paging_set_current_pageset(&paging_kernel_pageset);
-
-    DEBUG_MESSAGE("destroy");
-
-    paging_destroy_pageset(&test_pageset);
-  }
-  else
-  {
-    DEBUG_MESSAGE("test pageset creation failed");
-  }
 }
 
 static void __paging_initialize_scan_pdpt(paging_pdpt_entry_t *pdpt)
@@ -421,9 +357,6 @@ bool paging_resolve_linear_address(paging_pageset_t *pageset,
 static inline void *__paging_alloc_page_phy_lin(uint64_t *physical_address)
 {
   void *page = memory_alloc_aligned(4096, 4096);
-  DEBUG_BEGIN_VALUES();
-    DEBUG_HEX(page);
-  DEBUG_END_VALUES();
 
   if (page != NULL)
   {
@@ -654,23 +587,11 @@ static void __paging_map_pml4(paging_map_state_t *state)
       pml4_entry->writable = 1;
       pml4_entry->present  = 1;
 
-      DEBUG_BEGIN_VALUES();
-        DEBUG_HEX(state->linear.pointer);
-        DEBUG_HEX(state->linear.indices.pml4_index);
-        DEBUG_HEX(pml4_entry->pdpt_physical);
-      DEBUG_END_VALUES();
-
       // Insert into table map.
       paging_phy_lin_map_set(&state->pageset->table_map, pdpt_physical, pdpt);
     }
     else
     {
-      DEBUG_BEGIN_VALUES();
-        DEBUG_HEX(state->linear.pointer);
-        DEBUG_HEX(state->linear.indices.pml4_index);
-        DEBUG_HEX(pml4_entry->pdpt_physical);
-      DEBUG_END_VALUES();
-
       // Otherwise, we just need to look it up.
       DEBUG_ASSERT(paging_phy_lin_map_get(&state->pageset->table_map,
             pml4_entry->pdpt_physical << 12, (void **) &pdpt));
@@ -853,10 +774,6 @@ static void __paging_map_pt(paging_map_state_t *state, paging_pt_entry_t *pt)
 
       // Map PT entry to page.
       pt_entry->page_physical = state->physical >> 12;
-
-      DEBUG_BEGIN_VALUES();
-        DEBUG_HEX(pt_entry->page_physical);
-      DEBUG_END_VALUES();
 
       // Set flags and mark as present.
       if (!(state->flags & PAGING_READONLY))

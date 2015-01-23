@@ -18,6 +18,7 @@
 #include "memory.h"
 #include "interrupt.h"
 #include "rbtree.h"
+#include "paging.h"
 
 #include "debug.h"
 #include "x86_64.h"
@@ -501,10 +502,159 @@ bool test_rbtree_c()
   return true;
 }
 
+bool test_paging_c()
+{
+  HEADING("resolve linear address of this function in the kernel pageset\n");
+
+  void     *f_linear_address   = (void *) &test_paging_c;
+  uint64_t  f_physical_address = 0;
+
+  terminal_writestring("  - linear address: 0x");
+  terminal_writeuint64((uint64_t) f_linear_address, 16);
+  terminal_writechar('\n');
+
+  if (paging_resolve_linear_address(&paging_kernel_pageset, f_linear_address,
+        &f_physical_address))
+  {
+    terminal_writestring("  - physical address: 0x");
+    terminal_writeuint64(f_physical_address, 16);
+    terminal_writechar('\n');
+
+    if ((((uint64_t) f_linear_address) & 0xffffff) != f_physical_address)
+    {
+      terminal_writestring("  E: lin & 0xffffff != phy\n");
+      return false;
+    }
+  }
+  else
+  {
+    terminal_writestring("  E: failed to resolve address\n");
+  }
+
+  HEADING("create pageset\n");
+
+  paging_pageset_t pageset;
+
+  if (paging_create_pageset(&pageset))
+  {
+    terminal_writestring("  - ok\n");
+  }
+  else
+  {
+    terminal_writestring("  E: creation failed (out of memory?)\n");
+    return false;
+  }
+
+  HEADING("map a single page\n");
+
+  uint64_t physical_base;
+
+  DEBUG_ASSERT(memory_free_region_acquire(1, &physical_base) == 1);
+
+  terminal_writestring("  - physical base: 0x");
+  terminal_writeuint64(physical_base, 16);
+  terminal_writechar('\n');
+
+  char *pointer_1 = (void *) 0xdeadb000;
+
+  terminal_writestring("  - linear base: 0x");
+  terminal_writeuint64((uint64_t) pointer_1, 16);
+  terminal_writechar('\n');
+
+  uint64_t mapped_1 = paging_map(&pageset, pointer_1, physical_base, 1, 0);
+
+  if (mapped_1 == 1)
+  {
+    terminal_writestring("  - ok, got one page\n");
+  }
+  else
+  {
+    terminal_writestring("  E: requested 1 page, but mapped ");
+    terminal_writeuint64(mapped_1, 10);
+    terminal_writestring(" pages.\n");
+    return false;
+  }
+
+  HEADING("resolve linear address we just mapped\n");
+
+  uint64_t physical_1;
+
+  if (paging_resolve_linear_address(&pageset, pointer_1, &physical_1))
+  {
+    terminal_writestring("  - physical address: 0x");
+    terminal_writeuint64(physical_1, 16);
+    terminal_writechar('\n');
+
+    if (physical_1 != physical_base)
+    {
+      terminal_writestring("  E: wrong physical address\n");
+      return false;
+    }
+  }
+  else
+  {
+    terminal_writestring("  E: failed to resolve address\n");
+    return false;
+  }
+
+  HEADING("switch to the created pageset\n");
+
+  paging_set_current_pageset(&pageset);
+
+  if (paging_get_current_pageset() == &pageset)
+  {
+    terminal_writestring("  - ok\n");
+  }
+  else if (paging_get_current_pageset() == &paging_kernel_pageset)
+  {
+    terminal_writestring("  E: current pageset is still kernel pageset\n");
+    return false;
+  }
+  else
+  {
+    terminal_writestring("  E: current pageset is unknown: 0x");
+    terminal_writeuint64((uint64_t) paging_get_current_pageset(), 16);
+    terminal_writechar('\n');
+    return false;
+  }
+
+  HEADING("make sure we can access the mapped memory\n");
+
+  char buf[9] = "in a pan";
+
+  memory_copy(buf, pointer_1 + 0xeef, 9);
+
+  terminal_writestring("  - 0xdeadbeef = ");
+  terminal_writestring((char *) 0xdeadbeef);
+  terminal_writechar('\n');
+
+  HEADING("switch back to the kernel pageset and then destroy this one\n");
+
+  paging_set_current_pageset(&paging_kernel_pageset);
+
+  DEBUG_ASSERT(paging_get_current_pageset() == &paging_kernel_pageset);
+
+  if (paging_destroy_pageset(&pageset))
+  {
+    terminal_writestring("  - ok\n");
+  }
+  else
+  {
+    terminal_writestring("  E: destruction failed\n");
+    return false;
+  }
+
+  // Don't forget this!
+  memory_free_region_release(physical_base, 1);
+
+  return true;
+}
+
 bool test_all() {
   if (!test_run("memory.c",    &test_memory_c))    return false;
   if (!test_run("interrupt.c", &test_interrupt_c)) return false;
   if (!test_run("rbtree.c",    &test_rbtree_c))    return false;
+  if (!test_run("paging.c",    &test_paging_c))    return false;
 
   return true;
 }

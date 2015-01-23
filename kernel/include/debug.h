@@ -20,29 +20,34 @@
 #include "x86_64.h"
 
 #define DEBUG_MESSAGE(message) \
-  __debug_message((message), __FILE__, __LINE__)
+  __debug_message((message), __FILE__, __LINE__, __func__)
 
 static inline void __debug_message(const char *message, const char *file,
-  int line)
+  int line, const char *function)
 {
   terminal_writestring(file);
   terminal_writechar(':');
   terminal_writeuint64(line, 10);
-  terminal_writestring(": ");
+  terminal_writechar('(');
+  terminal_writestring(function);
+  terminal_writestring("): ");
   terminal_writestring(message);
   terminal_writechar('\n');
 }
 
 #define DEBUG_MESSAGE_HEX(message, value) \
-  __debug_message_hex((message), (uint64_t) (value), __FILE__, __LINE__)
+  __debug_message_hex((message), (uint64_t) (value), __FILE__, __LINE__, \
+      __func__)
 
 static inline void __debug_message_hex(const char *message, uint64_t value,
-  const char *file, int line)
+  const char *file, int line, const char *function)
 {
   terminal_writestring(file);
   terminal_writechar(':');
   terminal_writeuint64(line, 10);
-  terminal_writestring(": ");
+  terminal_writechar('(');
+  terminal_writestring(function);
+  terminal_writestring("): ");
   terminal_writestring(message);
   terminal_writestring(" (0x");
   terminal_writeuint64(value, 16);
@@ -50,14 +55,17 @@ static inline void __debug_message_hex(const char *message, uint64_t value,
 }
 
 #define DEBUG_BEGIN_VALUES() \
-  __debug_begin_values(__FILE__, __LINE__)
+  __debug_begin_values(__FILE__, __LINE__, __func__)
 
-static inline void __debug_begin_values(const char *file, int line)
+static inline void __debug_begin_values(const char *file, int line,
+    const char *function)
 {
   terminal_writestring(file);
   terminal_writechar(':');
   terminal_writeuint64(line, 10);
-  terminal_writestring(": ");
+  terminal_writechar('(');
+  terminal_writestring(function);
+  terminal_writestring("): ");
 }
 
 #define DEBUG_HEX(value) \
@@ -78,7 +86,8 @@ static inline void __debug_begin_values(const char *file, int line)
 #define DEBUG_ASSERT(condition) \
   if (!(condition)) \
   { \
-    __debug_message("assertion failed: " #condition, __FILE__, __LINE__); \
+    __debug_message("assertion failed: " #condition, __FILE__, __LINE__, \
+        __func__); \
     cli(); \
     hlt(); \
   }
