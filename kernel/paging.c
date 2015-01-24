@@ -524,15 +524,6 @@ uint64_t paging_map(paging_pageset_t *pageset, void *linear_address,
   __paging_map_pml4(&state);
 
   return state.mapped;
-
-  // If there's no PML4 entry, create a PDPT and point to it
-  // If there's no PDPT entry, create a PD and point to it
-  // If there's no PD entry, create a PT and point to it
-  // If there's no PT entry, map the page
-  // If there is a PT entry, return false
-  // Should probably set this up for multiple pages at once, in which case we'll
-  // have to loop once we exhaust each table (and change the sig)
-  return 0;
 }
 
 static void __paging_map_pml4(paging_map_state_t *state)
@@ -791,13 +782,241 @@ static void __paging_map_pt(paging_map_state_t *state, paging_pt_entry_t *pt)
   }
 }
 
-/*
+typedef struct paging_unmap_state {
+  paging_pageset_t  *pageset;
+
+  union {
+    paging_linear64_t  indices;
+    uint8_t           *pointer;
+  } linear;
+
+  uint64_t           unmapped;
+  uint64_t           requested;
+  bool               error;
+} paging_unmap_state_t;
+
+static void __paging_unmap_pml4(paging_unmap_state_t *state);
+
+static void __paging_unmap_pdpt(paging_unmap_state_t *state,
+    paging_pdpt_entry_t *pdpt);
+
+static void __paging_unmap_pd(paging_unmap_state_t *state,
+    paging_pd_entry_t *pd);
+
+static void __paging_unmap_pt(paging_unmap_state_t *state,
+    paging_pt_entry_t *pt);
+
 uint64_t paging_unmap(paging_pageset_t *pageset, void *linear_address,
-    uint64_t pages, paging_flags_t flags)
+    uint64_t pages)
 {
-  return 0;
+  paging_unmap_state_t state;
+
+  state.pageset        = pageset;
+  state.linear.pointer = (uint8_t *) linear_address;
+  state.unmapped       = 0;
+  state.requested      = pages;
+  state.error          = false;
+
+  __paging_unmap_pml4(&state);
+
+  return state.unmapped;
 }
 
+static void __paging_unmap_pml4(paging_unmap_state_t *state)
+{
+  // Establish the max index: refuse to go past the higher half if this isn't
+  // the kernel pageset.
+  int max_index;
+  if (state->pageset == &paging_kernel_pageset)
+    max_index = PAGING_PML4_SIZE - 1;
+  else
+    max_index = PAGING_PML4_HALF - 1;
+
+  // Establish the current index here in order to detect overflows.
+  int index = state->linear.indices.pml4_index;
+
+  // Start unmapping PDPTs.
+  while (!state->error &&
+      index <= max_index &&
+      state->unmapped < state->requested)
+  {
+    paging_pml4_entry_t *pml4_entry =
+      state->pageset->pml4 + state->linear.indices.pml4_index;
+
+    paging_pdpt_entry_t *pdpt;
+
+    // If not present, we need to skip it.
+    if (!pml4_entry->present)
+    {
+      state->linear.pointer += PAGING_PDPT_4KPAGES * 0x1000;
+
+      if (state->unmapped + PAGING_PDPT_4KPAGES > state->requested)
+        state->unmapped = state->requested;
+      else
+        state->unmapped += PAGING_PDPT_4KPAGES;
+    }
+    else
+    {
+      // Otherwise, we just need to look it up and unmap it.
+      DEBUG_ASSERT(paging_phy_lin_map_get(&state->pageset->table_map,
+            pml4_entry->pdpt_physical << 12, (void **) &pdpt));
+
+      __paging_unmap_pdpt(state, pdpt);
+    }
+
+    index++;
+  }
+
+  // Log if we attempted to exceed the max index.
+  if (index > max_index && state->unmapped < state->requested)
+  {
+    DEBUG_MESSAGE("attempted to exceed max index");
+  }
+}
+
+static void __paging_unmap_pdpt(paging_unmap_state_t *state,
+    paging_pdpt_entry_t *pdpt)
+{
+  // Establish the current index here in order to detect overflows.
+  int index = state->linear.indices.pdpt_index;
+
+  // Start unmapping PDs or pages.
+  while (!state->error &&
+      index < PAGING_PDPT_SIZE &&
+      state->unmapped < state->requested)
+  {
+    paging_pdpt_entry_t *pdpt_entry = pdpt + state->linear.indices.pdpt_index;
+
+    paging_pd_entry_t *pd;
+
+    // If not present, we need to skip it.
+    if (!pdpt_entry->info.present)
+    {
+      state->linear.pointer += PAGING_PD_4KPAGES * 0x1000;
+
+      if (state->unmapped + PAGING_PD_4KPAGES > state->requested)
+        state->unmapped = state->requested;
+      else
+        state->unmapped += PAGING_PD_4KPAGES;
+    }
+    else if (pdpt_entry->info.page_size == 1)
+    {
+      // If this is a 1 GB page, then we need to figure out if the number of 4
+      // kB pages to unmap is equal to or greater than the number of 4 kB pages
+      // that would be unmapped by unmapping this page.
+      if ((state->requested - state->unmapped) >= PAGING_PD_4KPAGES)
+      {
+        pdpt_entry->as_page.present = 0;
+
+        invlpg(state->linear.pointer);
+
+        state->linear.pointer += PAGING_PD_4KPAGES * 0x1000;
+        state->unmapped       += PAGING_PD_4KPAGES;
+      }
+      else
+      {
+        DEBUG_MESSAGE("tried to unmap into a 1 GB page");
+        state->error = true;
+        break;
+      }
+    }
+    else
+    {
+      // Otherwise, we just need to look it up and unmap it.
+      DEBUG_ASSERT(paging_phy_lin_map_get(&state->pageset->table_map,
+            pdpt_entry->as_pointer.pd_physical << 12, (void **) &pd));
+
+      __paging_unmap_pd(state, pd);
+    }
+
+    index++;
+  }
+}
+
+static void __paging_unmap_pd(paging_unmap_state_t *state,
+    paging_pd_entry_t *pd)
+{
+  // Establish the current index here in order to detect overflows.
+  int index = state->linear.indices.pd_index;
+
+  // Start unmapping PTs or pages.
+  while (!state->error &&
+      index < PAGING_PD_SIZE &&
+      state->unmapped < state->requested)
+  {
+    paging_pd_entry_t *pd_entry = pd + state->linear.indices.pd_index;
+
+    paging_pt_entry_t *pt;
+
+    // If not present, we need to skip it.
+    if (!pd_entry->info.present)
+    {
+      state->linear.pointer += PAGING_PT_4KPAGES * 0x1000;
+
+      if (state->unmapped + PAGING_PT_4KPAGES > state->requested)
+        state->unmapped = state->requested;
+      else
+        state->unmapped += PAGING_PT_4KPAGES;
+    }
+    else if (pd_entry->info.page_size == 1)
+    {
+      // If this is a 2 MB page, then we need to figure out if the number of 4
+      // kB pages to unmap is equal to or greater than the number of 4 kB pages
+      // that would be unmapped by unmapping this page.
+      if ((state->requested - state->unmapped) >= PAGING_PT_4KPAGES)
+      {
+        pd_entry->as_page.present = 0;
+
+        invlpg(state->linear.pointer);
+
+        state->linear.pointer += PAGING_PT_4KPAGES * 0x1000;
+        state->unmapped       += PAGING_PT_4KPAGES;
+      }
+      else
+      {
+        DEBUG_MESSAGE("tried to unmap into a 2 MB page");
+        state->error = true;
+        break;
+      }
+    }
+    else
+    {
+      // Otherwise, we just need to look it up and unmap it.
+      DEBUG_ASSERT(paging_phy_lin_map_get(&state->pageset->table_map,
+            pd_entry->as_pointer.pt_physical << 12, (void **) &pt));
+
+      __paging_unmap_pt(state, pt);
+    }
+
+    index++;
+  }
+}
+
+static void __paging_unmap_pt(paging_unmap_state_t *state, paging_pt_entry_t *pt)
+{
+  // Establish the current index here in order to detect overflows.
+  int index = state->linear.indices.pt_index;
+
+  // Start unmapping pages.
+  while (!state->error &&
+      index < PAGING_PT_SIZE &&
+      state->unmapped < state->requested)
+  {
+    paging_pt_entry_t *pt_entry = pt + state->linear.indices.pt_index;
+
+    pt_entry->present = 0;
+
+    invlpg(state->linear.pointer);
+
+    DEBUG_MESSAGE_HEX("invlpg", state->linear.pointer);
+
+    state->linear.pointer += 0x1000;
+    state->unmapped++;
+    index++;
+  }
+}
+
+/*
 bool paging_get_flags(paging_pageset_t *pageset, void *linear_address,
     paging_flags_t *flags)
 {

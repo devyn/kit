@@ -628,6 +628,22 @@ bool test_paging_c()
   terminal_writestring((char *) 0xdeadbeef);
   terminal_writechar('\n');
 
+  HEADING("unmap the page\n");
+
+  uint64_t unmapped_1 = paging_unmap(&pageset, pointer_1, 1);
+
+  if (unmapped_1 == 1)
+  {
+    terminal_writestring("  - ok, unmapped one page\n");
+  }
+  else
+  {
+    terminal_writestring("  E: requested 1 page, but unmapped ");
+    terminal_writeuint64(unmapped_1, 10);
+    terminal_writestring(" pages.\n");
+    return false;
+  }
+
   HEADING("switch back to the kernel pageset and then destroy this one\n");
 
   paging_set_current_pageset(&paging_kernel_pageset);

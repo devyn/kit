@@ -26,8 +26,9 @@ void paging_initialize();
 
 /* x86_64 PML4 */
 
-#define PAGING_PML4_SIZE 512
-#define PAGING_PML4_HALF 256
+#define PAGING_PML4_SIZE    512
+#define PAGING_PML4_HALF    256
+#define PAGING_PML4_4KPAGES (512 * 512 * 512 * 512)
 
 typedef struct PACKED paging_pml4_entry {
   /* 8 bytes */
@@ -45,7 +46,8 @@ typedef struct PACKED paging_pml4_entry {
 
 /* x86_64 Page Directory Pointer Table */
 
-#define PAGING_PDPT_SIZE 512
+#define PAGING_PDPT_SIZE    512
+#define PAGING_PDPT_4KPAGES (512 * 512 * 512)
 
 typedef struct PACKED paging_pdpt_pointer_entry {
   /* 8 bytes */
@@ -95,7 +97,8 @@ typedef union paging_pdpt_entry {
 
 /* x86_64 Page Directory */
 
-#define PAGING_PD_SIZE 512
+#define PAGING_PD_SIZE    512
+#define PAGING_PD_4KPAGES (512 * 512)
 
 typedef struct PACKED paging_pd_pointer_entry {
   /* 8 bytes */
@@ -146,7 +149,8 @@ typedef union paging_pd_entry {
 
 /* x86_64 Page Table */
 
-#define PAGING_PT_SIZE 512
+#define PAGING_PT_SIZE    512
+#define PAGING_PT_4KPAGES 512
 
 /* For 4 KB pages */
 typedef struct PACKED paging_pt_entry {
@@ -271,7 +275,7 @@ uint64_t paging_map(paging_pageset_t *pageset, void *linear_address,
     uint64_t physical_address, uint64_t pages, paging_flags_t flags);
 
 uint64_t paging_unmap(paging_pageset_t *pageset, void *linear_address,
-    uint64_t pages, paging_flags_t flags);
+    uint64_t pages);
 
 bool paging_get_flags(paging_pageset_t *pageset, void *linear_address,
     paging_flags_t *flags);
