@@ -237,9 +237,17 @@ void interrupt_handler(interrupt_stack_t stack) {
 
   switch (stack.index)
   {
-    case 0xe:
-      DEBUG_MESSAGE_HEX("page fault", stack.rip);
+    case 0xd:
+      DEBUG_FORMAT("general protection fault, rip=%#lx", stack.rip);
       while (true) hlt();
+    case 0xe:
+      {
+        uint64_t cr2;
+        __asm__ volatile("mov %%cr2, %0" : "=r" (cr2));
+
+        DEBUG_FORMAT("page fault, rip=%#lx, cr2=%#lx", stack.rip, cr2);
+        while (true) hlt();
+      }
     case INTERRUPT_INDEX_IRQ + 1:
       key = inb(0x60);
 
