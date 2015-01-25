@@ -19,66 +19,26 @@
 #include "terminal.h"
 #include "x86_64.h"
 
-#define DEBUG_MESSAGE(message) \
-  __debug_message((message), __FILE__, __LINE__, __func__)
+#define DEBUG_FORMAT(format, ...) \
+  terminal_printf("%s:%d(%s): ", __FILE__, __LINE__, __func__); \
+  terminal_printf(format, __VA_ARGS__); \
+  terminal_writechar('\n')
 
-static inline void __debug_message(const char *message, const char *file,
-  int line, const char *function)
-{
-  terminal_writestring(file);
-  terminal_writechar(':');
-  terminal_writeuint64(line, 10);
-  terminal_writechar('(');
-  terminal_writestring(function);
-  terminal_writestring("): ");
-  terminal_writestring(message);
-  terminal_writechar('\n');
-}
+#define DEBUG_MESSAGE(message) \
+  terminal_printf("%s:%d(%s): %s\n", __FILE__, __LINE__, __func__, message)
 
 #define DEBUG_MESSAGE_HEX(message, value) \
-  __debug_message_hex((message), (uint64_t) (value), __FILE__, __LINE__, \
-      __func__)
-
-static inline void __debug_message_hex(const char *message, uint64_t value,
-  const char *file, int line, const char *function)
-{
-  terminal_writestring(file);
-  terminal_writechar(':');
-  terminal_writeuint64(line, 10);
-  terminal_writechar('(');
-  terminal_writestring(function);
-  terminal_writestring("): ");
-  terminal_writestring(message);
-  terminal_writestring(" (0x");
-  terminal_writeuint64(value, 16);
-  terminal_writestring(")\n");
-}
+  terminal_printf("%s:%d(%s): %s (%#lx)\n", __FILE__, __LINE__, __func__, \
+      (message), (uint64_t) (value))
 
 #define DEBUG_BEGIN_VALUES() \
-  __debug_begin_values(__FILE__, __LINE__, __func__)
-
-static inline void __debug_begin_values(const char *file, int line,
-    const char *function)
-{
-  terminal_writestring(file);
-  terminal_writechar(':');
-  terminal_writeuint64(line, 10);
-  terminal_writechar('(');
-  terminal_writestring(function);
-  terminal_writestring("): ");
-}
+  terminal_printf("%s:%d(%s): ", __FILE__, __LINE__, __func__)
 
 #define DEBUG_HEX(value) \
-  terminal_writestring(#value); \
-  terminal_writestring("=0x"); \
-  terminal_writeuint64((uint64_t) (value), 16); \
-  terminal_writechar(' ')
+  terminal_printf("%s=%#lx ", #value, (uint64_t) (value))
 
 #define DEBUG_DEC(value) \
-  terminal_writestring(#value); \
-  terminal_writestring("="); \
-  terminal_writeuint64((uint64_t) (value), 10); \
-  terminal_writechar(' ')
+  terminal_printf("%s=%lu ", #value, (uint64_t) (value))
 
 #define DEBUG_END_VALUES() \
   terminal_writechar('\n')
@@ -86,8 +46,8 @@ static inline void __debug_begin_values(const char *file, int line,
 #define DEBUG_ASSERT(condition) \
   if (!(condition)) \
   { \
-    __debug_message("assertion failed: " #condition, __FILE__, __LINE__, \
-        __func__); \
+    terminal_printf("%s:%d(%s): assertion failed: %s\n", \
+        __FILE__, __LINE__, __func__, #condition); \
     cli(); \
     hlt(); \
   }

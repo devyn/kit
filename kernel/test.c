@@ -74,14 +74,12 @@ bool test_memory_c()
   }
   else
   {
-    terminal_writestring("  - returned pointer: 0x");
-    terminal_writeuint64((uint64_t) ptr, 16);
-    terminal_writechar('\n');
+    terminal_printf("  - returned pointer: %p\n", ptr);
   }
 
   HEADING("memory_set() sets memory\n");
 
-  size_t i;
+  int64_t i;
 
   terminal_writestring("  - writing varied data to allocated memory\n");
   
@@ -96,13 +94,8 @@ bool test_memory_c()
   {
     if (ptr[i] != 0)
     {
-      terminal_writestring("  E: memory not set at byte ");
-      terminal_writeuint64((uint64_t) i, 10);
-
-      terminal_writestring("; value is 0x");
-      terminal_writeuint64((uint64_t) ptr[i], 16);
-
-      terminal_writechar('\n');
+      terminal_printf("  E: memory not set at byte %ld; value is %#hhx\n",
+          i, ptr[i]);
       return false;
     }
   }
@@ -111,9 +104,7 @@ bool test_memory_c()
 
   char *aligned_ptr = memory_alloc_aligned(1, 1024);
 
-  terminal_writestring("  - returned pointer: 0x");
-  terminal_writeuint64((uint64_t) aligned_ptr, 16);
-  terminal_writechar('\n');
+  terminal_printf("  - returned pointer: %p\n", aligned_ptr);
 
   if ((uint64_t) aligned_ptr % 1024 > 0)
   {
@@ -138,15 +129,11 @@ bool test_memory_c()
   }
   else
   {
-    terminal_writestring("  E: pages = ");
-    terminal_writeuint64(pages, 10);
-    terminal_writechar('\n');
+    terminal_printf("  E: pages = %lu\n", pages);
     return false;
   }
 
-  terminal_writestring("  - physical_base = 0x");
-  terminal_writeuint64(physical_base, 16);
-  terminal_writechar('\n');
+  terminal_printf("  - physical_base = %#lx\n", physical_base);
 
   if (physical_base >= 0x200000)
   {
@@ -174,17 +161,8 @@ bool test_memory_c()
   }
   else
   {
-    terminal_writestring("  E: total_free difference = ");
-    if (total_free_1 >= total_free_2)
-    {
-      terminal_writeuint64(total_free_1 - total_free_2, 10);
-    }
-    else
-    {
-      terminal_writechar('-');
-      terminal_writeuint64(total_free_2 - total_free_1, 10);
-    }
-    terminal_writestring(", should be 16\n");
+    terminal_printf("  E: total_free difference = %li, should be 16\n",
+        total_free_1 - total_free_2);
     return false;
   }
 
@@ -200,12 +178,11 @@ bool test_memory_c()
   }
   else
   {
-    terminal_writestring("  E: total_free_1 != total_free_3\n");
-    terminal_writestring("     total_free_1 = ");
-    terminal_writeuint64(total_free_1, 10);
-    terminal_writestring("\n     total_free_3 = ");
-    terminal_writeuint64(total_free_3, 10);
-    terminal_writechar('\n');
+    terminal_printf(
+        "  E: total_free_1 != total_free_3\n"
+        "     total_free_1 = %lu\n"
+        "     total_free_3 = %lu\n",
+        total_free_1, total_free_3);
     return false;
   }
 
@@ -228,9 +205,7 @@ bool test_memory_c()
   }
   else
   {
-    terminal_writestring("  E: new_physical_base = 0x");
-    terminal_writeuint64(new_physical_base, 16);
-    terminal_writechar('\n');
+    terminal_printf("  E: new_physical_base = %#lx\n", new_physical_base);
   }
 
   return true;
@@ -434,14 +409,13 @@ static bool test_rbtree_is_valid(test_rbtree_t *tree)
       {
         test_rbtree_inspect(tree);
 
-        terminal_writestring("  E: property 5 violated\n"
-                             "     max black nodes: ");
-        terminal_writeuint64(max_black_nodes, 10);
-        terminal_writestring("\n     black nodes:     ");
-        terminal_writeuint64(black_nodes, 10);
-        terminal_writestring("\n     in:              ");
-        terminal_writechar(((test_rbtree_node_t *) node)->value);
-        terminal_writechar('\n');
+        terminal_printf(
+            "  E: property 5 violated\n"
+            "     max black nodes: %i\n"
+            "     black nodes:     %i\n"
+            "     in:              %c\n",
+            max_black_nodes, black_nodes,
+            ((test_rbtree_node_t *) node)->value);
         return false;
       }
     }
@@ -509,16 +483,12 @@ bool test_paging_c()
   void     *f_linear_address   = (void *) &test_paging_c;
   uint64_t  f_physical_address = 0;
 
-  terminal_writestring("  - linear address: 0x");
-  terminal_writeuint64((uint64_t) f_linear_address, 16);
-  terminal_writechar('\n');
+  terminal_printf("  - linear address: %p\n", f_linear_address);
 
   if (paging_resolve_linear_address(&paging_kernel_pageset, f_linear_address,
         &f_physical_address))
   {
-    terminal_writestring("  - physical address: 0x");
-    terminal_writeuint64(f_physical_address, 16);
-    terminal_writechar('\n');
+    terminal_printf("  - physical address: %#lx\n", f_physical_address);
 
     if ((((uint64_t) f_linear_address) & 0xffffff) != f_physical_address)
     {
@@ -551,15 +521,11 @@ bool test_paging_c()
 
   DEBUG_ASSERT(memory_free_region_acquire(1, &physical_base) == 1);
 
-  terminal_writestring("  - physical base: 0x");
-  terminal_writeuint64(physical_base, 16);
-  terminal_writechar('\n');
+  terminal_printf("  - physical base: %#lx\n", physical_base);
 
   char *pointer_1 = (void *) 0xdeadb000;
 
-  terminal_writestring("  - linear base: 0x");
-  terminal_writeuint64((uint64_t) pointer_1, 16);
-  terminal_writechar('\n');
+  terminal_printf("  - linear base: %p\n", pointer_1);
 
   uint64_t mapped_1 = paging_map(&pageset, pointer_1, physical_base, 1, 0);
 
@@ -569,9 +535,7 @@ bool test_paging_c()
   }
   else
   {
-    terminal_writestring("  E: requested 1 page, but mapped ");
-    terminal_writeuint64(mapped_1, 10);
-    terminal_writestring(" pages.\n");
+    terminal_printf("  E: requested 1 page, but mapped %lu pages.\n", mapped_1);
     return false;
   }
 
@@ -581,9 +545,7 @@ bool test_paging_c()
 
   if (paging_resolve_linear_address(&pageset, pointer_1, &physical_1))
   {
-    terminal_writestring("  - physical address: 0x");
-    terminal_writeuint64(physical_1, 16);
-    terminal_writechar('\n');
+    terminal_printf("  - physical address: %#lx\n", physical_1);
 
     if (physical_1 != physical_base)
     {
@@ -612,9 +574,8 @@ bool test_paging_c()
   }
   else
   {
-    terminal_writestring("  E: current pageset is unknown: 0x");
-    terminal_writeuint64((uint64_t) paging_get_current_pageset(), 16);
-    terminal_writechar('\n');
+    terminal_printf("  E: current pageset is unknown: %p\n",
+        paging_get_current_pageset());
     return false;
   }
 
@@ -624,9 +585,7 @@ bool test_paging_c()
 
   memory_copy(buf, pointer_1 + 0xeef, 9);
 
-  terminal_writestring("  - 0xdeadbeef = ");
-  terminal_writestring((char *) 0xdeadbeef);
-  terminal_writechar('\n');
+  terminal_printf("  - 0xdeadbeef = %s\n", (char *) 0xdeadbeef);
 
   HEADING("unmap the page\n");
 
@@ -638,9 +597,8 @@ bool test_paging_c()
   }
   else
   {
-    terminal_writestring("  E: requested 1 page, but unmapped ");
-    terminal_writeuint64(unmapped_1, 10);
-    terminal_writestring(" pages.\n");
+    terminal_printf("  E: requested 1 page, but unmapped %lu pages.\n",
+        unmapped_1);
     return false;
   }
 

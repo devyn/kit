@@ -131,7 +131,7 @@ void *memory_alloc(const size_t size)
 
 void memory_free(void *pointer) {
   // Do nothing.
-  DEBUG_MESSAGE_HEX("stub: memory_free", pointer);
+  DEBUG_FORMAT("stub, pointer=%p", pointer);
   pointer = NULL;
 }
 

@@ -17,8 +17,11 @@
 #if !defined(__cplusplus)
 #include <stdbool.h> /* C doesn't have booleans by default. */
 #endif
+#include <stdarg.h>
 #include <stddef.h>
 #include <stdint.h>
+
+#include "config.h"
 
 /* Hardware text mode color constants. */
 enum vga_color
@@ -62,5 +65,8 @@ void terminal_writechar(char c);
 
 void terminal_writestring(const char *data);
 int  terminal_writeuint64(uint64_t integer, uint8_t base);
+int  terminal_writeint64(int64_t integer, uint8_t base);
+
+FORMAT_PRINTF(1, 2) void terminal_printf(const char *format, ...);
 
 #endif
