@@ -111,7 +111,7 @@ void kernel_main()
 
   if (!test_all()) goto hang;
 
-  //interrupt_enable();
+  goto hang;
 
 hang:
   while (true) hlt();

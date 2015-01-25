@@ -14,7 +14,7 @@ build/.dir:
 
 # =Kernel=
 
-KERNEL_CFLAGS=-target x86_64-pc-none-elf -std=c99 -pedantic -Wall -Wextra -Werror -ffreestanding -fno-exceptions -fomit-frame-pointer -mcmodel=large -O3 -mno-red-zone -mno-mmx -mno-sse3 -mno-3dnow
+KERNEL_CFLAGS=-O3 -target x86_64-pc-none-elf -std=c99 -pedantic -Wall -Wextra -Werror -ffreestanding -fno-exceptions -fomit-frame-pointer -mcmodel=large -mno-red-zone -mno-mmx -mno-sse3 -mno-3dnow
 KERNEL_LDFLAGS=-O -nostdlib -z max-page-size=0x1000
 KERNEL_ASFLAGS=-march=generic64
 
