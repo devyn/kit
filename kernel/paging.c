@@ -253,7 +253,7 @@ bool paging_get_entry_pointers(paging_pageset_t *pageset,
   {
     entries->pml4_entry = pml4_entry;
 
-    paging_pdpt_entry_t *pdpt;
+    paging_pdpt_entry_t *pdpt = NULL;
 
     DEBUG_ASSERT(paging_phy_lin_map_get(&pageset->table_map,
           pml4_entry->pdpt_physical << 12, (void *) &pdpt));
@@ -269,7 +269,7 @@ bool paging_get_entry_pointers(paging_pageset_t *pageset,
       if (pdpt_entry->info.page_size == 1)
         return true;
 
-      paging_pd_entry_t *pd;
+      paging_pd_entry_t *pd = NULL;
 
       DEBUG_ASSERT(paging_phy_lin_map_get(&pageset->table_map,
             pdpt_entry->as_pointer.pd_physical << 12, (void *) &pd));
@@ -285,7 +285,7 @@ bool paging_get_entry_pointers(paging_pageset_t *pageset,
         if (pd_entry->info.page_size == 1)
           return true;
 
-        paging_pt_entry_t *pt;
+        paging_pt_entry_t *pt = NULL;
 
         DEBUG_ASSERT(paging_phy_lin_map_get(&pageset->table_map,
               pd_entry->as_pointer.pt_physical << 12, (void *) &pt));
@@ -429,7 +429,7 @@ static void __paging_destroy_pageset_pml4(paging_pageset_t *pageset)
   {
     if (pageset->pml4[i].present)
     {
-      paging_pdpt_entry_t *pdpt;
+      paging_pdpt_entry_t *pdpt = NULL;
 
       DEBUG_ASSERT(paging_phy_lin_map_get(&pageset->table_map,
             pageset->pml4[i].pdpt_physical << 12, (void *) &pdpt));
@@ -448,7 +448,7 @@ static void __paging_destroy_pageset_pdpt(paging_pageset_t *pageset,
   {
     if (pdpt[i].info.present && pdpt[i].info.page_size == 0)
     {
-      paging_pd_entry_t *pd;
+      paging_pd_entry_t *pd = NULL;
 
       DEBUG_ASSERT(paging_phy_lin_map_get(&pageset->table_map,
             pdpt[i].as_pointer.pd_physical << 12, (void *) &pd));
@@ -467,7 +467,7 @@ static void __paging_destroy_pageset_pd(paging_pageset_t *pageset,
   {
     if (pd[i].info.present && pd[i].info.page_size == 0)
     {
-      paging_pt_entry_t *pt;
+      paging_pt_entry_t *pt = NULL;
 
       DEBUG_ASSERT(paging_phy_lin_map_get(&pageset->table_map,
             pd[i].as_pointer.pt_physical << 12, (void *) &pt));
@@ -547,12 +547,12 @@ static void __paging_map_pml4(paging_map_state_t *state)
     paging_pml4_entry_t *pml4_entry =
       state->pageset->pml4 + state->linear.indices.pml4_index;
 
-    paging_pdpt_entry_t *pdpt;
+    paging_pdpt_entry_t *pdpt = NULL;
 
     // If not present, we need to allocate it.
     if (!pml4_entry->present)
     {
-      uint64_t pdpt_physical;
+      uint64_t pdpt_physical = 0;
 
       pdpt = __paging_alloc_page_phy_lin(&pdpt_physical);
 
@@ -613,12 +613,12 @@ static void __paging_map_pdpt(paging_map_state_t *state,
   {
     paging_pdpt_entry_t *pdpt_entry = pdpt + state->linear.indices.pdpt_index;
 
-    paging_pd_entry_t *pd;
+    paging_pd_entry_t *pd = NULL;
 
     // If not present, we need to allocate it.
     if (!pdpt_entry->info.present)
     {
-      uint64_t pd_physical;
+      uint64_t pd_physical = 0;
 
       pd = __paging_alloc_page_phy_lin(&pd_physical);
 
@@ -681,12 +681,12 @@ static void __paging_map_pd(paging_map_state_t *state, paging_pd_entry_t *pd)
   {
     paging_pd_entry_t *pd_entry = pd + state->linear.indices.pd_index;
 
-    paging_pt_entry_t *pt;
+    paging_pt_entry_t *pt = NULL;
 
     // If not present, we need to allocate it.
     if (!pd_entry->info.present)
     {
-      uint64_t pt_physical;
+      uint64_t pt_physical = 0;
 
       pt = __paging_alloc_page_phy_lin(&pt_physical);
 
@@ -843,12 +843,12 @@ static void __paging_unmap_pml4(paging_unmap_state_t *state)
     paging_pml4_entry_t *pml4_entry =
       state->pageset->pml4 + state->linear.indices.pml4_index;
 
-    paging_pdpt_entry_t *pdpt;
+    paging_pdpt_entry_t *pdpt = NULL;
 
     // If not present, we need to skip it.
     if (!pml4_entry->present)
     {
-      state->linear.pointer += PAGING_PDPT_4KPAGES * 0x1000;
+      state->linear.pointer += (uint64_t) PAGING_PDPT_4KPAGES * 0x1000;
 
       if (state->unmapped + PAGING_PDPT_4KPAGES > state->requested)
         state->unmapped = state->requested;
@@ -887,7 +887,7 @@ static void __paging_unmap_pdpt(paging_unmap_state_t *state,
   {
     paging_pdpt_entry_t *pdpt_entry = pdpt + state->linear.indices.pdpt_index;
 
-    paging_pd_entry_t *pd;
+    paging_pd_entry_t *pd = NULL;
 
     // If not present, we need to skip it.
     if (!pdpt_entry->info.present)
@@ -946,7 +946,7 @@ static void __paging_unmap_pd(paging_unmap_state_t *state,
   {
     paging_pd_entry_t *pd_entry = pd + state->linear.indices.pd_index;
 
-    paging_pt_entry_t *pt;
+    paging_pt_entry_t *pt = NULL;
 
     // If not present, we need to skip it.
     if (!pd_entry->info.present)

@@ -478,9 +478,9 @@ bool test_rbtree_c()
 
 bool test_paging_c()
 {
-  HEADING("resolve linear address of this function in the kernel pageset\n");
+  HEADING("resolve linear address of the kernel pageset in the kernel pageset\n");
 
-  void     *f_linear_address   = (void *) &test_paging_c;
+  void     *f_linear_address   = (void *) &paging_kernel_pageset;
   uint64_t  f_physical_address = 0;
 
   terminal_printf("  - linear address: %p\n", f_linear_address);
@@ -575,7 +575,7 @@ bool test_paging_c()
   else
   {
     terminal_printf("  E: current pageset is unknown: %p\n",
-        paging_get_current_pageset());
+        (void *) paging_get_current_pageset());
     return false;
   }
 

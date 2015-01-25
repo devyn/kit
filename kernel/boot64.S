@@ -62,6 +62,9 @@ _bootstrap64:
 
   ldmxcsr (SSE_INIT)
 
+  # Align the stack to 16 bytes (calling convention).
+  andq $-16, %rsp
+
   # Add the new offset to the stack.
   movabs $KERNEL_VMA, %rax
   addq %rax, %rbp

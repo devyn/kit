@@ -46,6 +46,7 @@
 # room for a small temporary stack by creating a symbol at the bottom of it,
 # then allocating 16384 bytes for it, and finally creating a symbol at the top.
 .section .bootstrap_stack
+.align 16
 stack_bottom:
 .skip 16384 # 16 KiB
 stack_top:
@@ -108,6 +109,7 @@ _bootstrap:
   # To set up a stack, we simply set the esp register to point to the top of
   # our stack (as it grows downwards).
   movl $stack_top, %esp
+  movl $stack_top, %ebp
 
 .preserveMultiboot:
   # At the moment, a pointer to the multiboot information structure is stored

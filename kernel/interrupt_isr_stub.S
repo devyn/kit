@@ -170,6 +170,10 @@ interrupt_isr_stub_common:
   mov %ax, %fs
   mov %ax, %gs
 
+  # Align the stack
+  and  $-16, %rsp
+
+  # Execute interrupt handler
   call interrupt_handler
 
   # Reload data selector

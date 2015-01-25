@@ -14,9 +14,13 @@ build/.dir:
 
 # =Kernel=
 
-KERNEL_CFLAGS=-O3 -target x86_64-pc-none-elf -std=c99 -pedantic -Wall -Wextra -Werror -ffreestanding -fno-exceptions -fomit-frame-pointer -mcmodel=large -mno-red-zone -mno-mmx -mno-sse3 -mno-3dnow
+KERNEL_CFLAGS=-O3 -g -std=c99 -pedantic -Wall -Wextra -Werror -ffreestanding -fno-exceptions -fomit-frame-pointer -mcmodel=large -mno-red-zone -mtune=core2 -mno-mmx -mno-sse3 -mno-ssse3 -mno-3dnow
 KERNEL_LDFLAGS=-O -nostdlib -z max-page-size=0x1000
 KERNEL_ASFLAGS=-march=generic64
+
+ifeq ($(CC),clang)
+	KERNEL_CFLAGS+=-target x86_64-pc-none-elf
+endif
 
 KERNEL_OBJECTS=$(addprefix build/kernel/, boot32.o boot64.o kernel.o terminal.o memory.o paging.o interrupt.o interrupt_isr_stub.o interrupt_8259pic.o rbtree.o test.o)
 
