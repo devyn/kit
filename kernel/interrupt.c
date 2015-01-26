@@ -13,6 +13,7 @@
 
 #include "interrupt.h"
 #include "interrupt_8259pic.h"
+#include "ps2_8042.h"
 #include "memory.h"
 #include "debug.h"
 
@@ -233,8 +234,6 @@ void interrupt_handler(interrupt_stack_t stack) {
   DEBUG_END_VALUES();
 */
 
-  uint8_t key;
-
   switch (stack.index)
   {
     case 0x6:
@@ -252,9 +251,8 @@ void interrupt_handler(interrupt_stack_t stack) {
         while (true) hlt();
       }
     case INTERRUPT_INDEX_IRQ + 1:
-      key = inb(0x60);
-
-      DEBUG_MESSAGE_HEX("keyboard handler invoked", key);
+      // PS/2 device 1 IRQ
+      ps2_8042_handle_irq1();
 
       interrupt_irq_done(1);
       break;

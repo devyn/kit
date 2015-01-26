@@ -24,6 +24,7 @@
 #include "multiboot.h"
 #include "terminal.h"
 #include "interrupt.h"
+#include "ps2_8042.h"
 #include "memory.h"
 #include "paging.h"
 #include "debug.h"
@@ -110,6 +111,10 @@ void kernel_main()
   paging_initialize();
 
   if (!test_all()) goto hang;
+
+  DEBUG_ASSERT(ps2_8042_initialize());
+
+  interrupt_enable();
 
   goto hang;
 
