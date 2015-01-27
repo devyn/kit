@@ -25,6 +25,8 @@
 #include "terminal.h"
 #include "interrupt.h"
 #include "ps2_8042.h"
+#include "ps2key.h"
+#include "keyboard.h"
 #include "memory.h"
 #include "paging.h"
 #include "debug.h"
@@ -114,7 +116,22 @@ void kernel_main()
 
   DEBUG_ASSERT(ps2_8042_initialize());
 
+  ps2key_initialize();
+  keyboard_initialize();
+
   interrupt_enable();
+
+  while (true)
+  {
+    keyboard_event_t event;
+
+    keyboard_wait_dequeue(&event);
+
+    if (event.pressed && event.keychar != '\0')
+    {
+      terminal_writechar(event.keychar);
+    }
+  }
 
   goto hang;
 

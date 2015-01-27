@@ -37,7 +37,7 @@ static inline void memory_set(void *pointer, uint8_t value, size_t size)
   }
 }
 
-static inline void memory_copy(void *src, void *dest, size_t size)
+static inline void memory_copy(const void *src, void *dest, size_t size)
 {
   for (size_t i = 0; i < size; i++) {
     ((uint8_t *) dest)[i] = ((uint8_t *) src)[i];

@@ -22,13 +22,13 @@
 #define PS2_8042_DATA_PORT    0x60
 #define PS2_8042_COMMAND_PORT 0x64
 
-uint8_t ps2_8042_channels;
-
 bool ps2_8042_initialize();
 
 uint8_t ps2_8042_read_data();
 
 void ps2_8042_write_data(uint8_t data);
+
+void ps2_8042_write_to_keyboard(uint8_t data);
 
 typedef struct PACKED ps2_8042_status
 {

@@ -12,6 +12,7 @@
  ******************************************************************************/
 
 #include "ps2_8042.h"
+#include "ps2key.h"
 #include "x86_64.h"
 #include "debug.h"
 
@@ -153,6 +154,12 @@ void ps2_8042_write_data(uint8_t data)
   outb(data, PS2_8042_DATA_PORT);
 }
 
+void ps2_8042_write_to_keyboard(uint8_t data)
+{
+  // FIXME: should decide *which* device is the keyboard first
+  ps2_8042_write_data(data);
+}
+
 ps2_8042_status_t ps2_8042_read_status()
 {
   union
@@ -244,7 +251,5 @@ void ps2_8042_handle_irq1()
 {
   uint8_t data = ps2_8042_read_data();
 
-  DEBUG_BEGIN_VALUES();
-    DEBUG_HEX(data);
-  DEBUG_END_VALUES();
+  ps2key_handle_irq(data);
 }
