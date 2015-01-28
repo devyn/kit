@@ -91,6 +91,34 @@ static int shell_command_echo(int argc, char **argv)
   return 0;
 }
 
+static int shell_command_ver()
+{
+  terminal_writechar('\n');
+
+  terminal_setcolor(COLOR_RED, COLOR_WHITE);
+
+  for (int i = 0; i < 80; i++) terminal_writechar('+');
+
+  terminal_setcolor(COLOR_WHITE, COLOR_RED);
+
+  terminal_writestring(
+      "                                                         \n"
+      "              K   K    IIII   TTTTTTTT                   \n"
+      "              K  K      II       TT                      \n"
+      "              K K       II       TT                      \n"
+      "              K  K      II       TT          ~devyn      \n"
+      "              K   K    IIII      TT          version 0.1 \n"
+      "                                                         \n");
+
+  terminal_setcolor(COLOR_RED, COLOR_WHITE);
+
+  for (int i = 0; i < 80; i++) terminal_writechar('+');
+
+  terminal_setcolor(COLOR_LIGHT_GREY, COLOR_BLACK);
+
+  return 0;
+}
+
 static int shell_command_reboot(UNUSED int argc, UNUSED char **argv)
 {
   ps2_8042_cpu_reset(); // this should not return
@@ -202,6 +230,7 @@ typedef struct shell_command
 const shell_command_t shell_commands[] = {
   {"clear",  &shell_command_clear},
   {"echo",   &shell_command_echo},
+  {"ver",    &shell_command_ver},
   {"reboot", &shell_command_reboot},
   {"mem",    &shell_command_mem},
   {"test",   &shell_command_test},
