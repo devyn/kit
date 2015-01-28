@@ -50,10 +50,22 @@ static void shell_read_line(char *buffer, size_t size)
 
     if (event.pressed && event.keychar != 0)
     {
-      terminal_writechar(event.keychar);
-      buffer[index++] = event.keychar;
+      if (event.keychar == '\b')
+      {
+        // Handle backspace only if there are characters to erase.
+        if (index > 0)
+        {
+          terminal_writechar('\b');
+          index--;
+        }
+      }
+      else
+      {
+        terminal_writechar(event.keychar);
+        buffer[index++] = event.keychar;
 
-      if (event.keychar == '\n') break;
+        if (event.keychar == '\n') break;
+      }
     }
   }
 
@@ -114,18 +126,18 @@ static int shell_command_test(int argc, char **argv)
   if (argc < 2)
   {
     terminal_writestring(
-        "Usage: test <unit-name>\n"
-        "       test all\n"
+        " Usage: test <unit-name>\n"
+        "        test all\n"
         "\n"
-        "Units available for testing:\n"
-        "\n  ");
+        " Units available for testing:\n"
+        "\n   ");
 
     for (size_t i = 0; i < TEST_UNITS_SIZE; i++)
     {
       if (i != 0)
       {
         if (i % 5 == 0)
-          terminal_writestring("\n  ");
+          terminal_writestring("\n   ");
         else
           terminal_writestring(", ");
       }
