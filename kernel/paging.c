@@ -411,7 +411,7 @@ bool paging_destroy_pageset(paging_pageset_t *pageset)
     __paging_destroy_pageset_pml4(pageset);
 
     // Clear out the table map.
-    paging_phy_lin_map_clear(&paging_kernel_pageset.table_map);
+    paging_phy_lin_map_clear(&pageset->table_map);
 
     return true;
   }
