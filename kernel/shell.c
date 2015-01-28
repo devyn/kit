@@ -20,6 +20,7 @@
 #include "terminal.h"
 #include "keyboard.h"
 #include "memory.h"
+#include "paging.h"
 #include "interrupt.h"
 #include "ps2_8042.h"
 #include "debug.h"
@@ -73,17 +74,39 @@ static int shell_command_echo(int argc, char **argv)
     terminal_writestring(argv[i]);
   }
 
+  terminal_writechar('\n');
+
   return 0;
 }
 
 static int shell_command_reboot(UNUSED int argc, UNUSED char **argv)
 {
-  ps2_8042_cpu_reset();
+  ps2_8042_cpu_reset(); // this should not return
 
   terminal_setcolor(COLOR_RED, COLOR_BLACK);
   terminal_writestring("E: ps2_8042_cpu_reset() failed\n");
 
   return 1;
+}
+
+static int shell_command_mem(UNUSED int argc, UNUSED char **argv)
+{
+  uint64_t pages = memory_get_total_free();
+
+  paging_pageset_t *pageset = paging_get_current_pageset();
+
+  terminal_printf(
+      " free:      %lu pages (%lu MiB)\n"
+      " pageset:   %p\n"
+      " PML4:      %p (phy %#lx)\n"
+      " table_map: %lu entries (root %p)\n",
+
+      pages, pages / 256,
+      pageset,
+      pageset->pml4, pageset->pml4_physical,
+      pageset->table_map.entries, pageset->table_map.tree.root);
+
+  return 0;
 }
 
 static int shell_command_test(int argc, char **argv)
@@ -168,6 +191,7 @@ const shell_command_t shell_commands[] = {
   {"clear",  &shell_command_clear},
   {"echo",   &shell_command_echo},
   {"reboot", &shell_command_reboot},
+  {"mem",    &shell_command_mem},
   {"test",   &shell_command_test},
 };
 

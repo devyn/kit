@@ -219,6 +219,7 @@ static inline void *paging_linear64_to_pointer(paging_linear64_t linear)
 
 typedef struct paging_phy_lin_map {
   rbtree_t tree;
+  uint64_t entries;
 } paging_phy_lin_map_t;
 
 typedef struct paging_phy_lin_map_node {

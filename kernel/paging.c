@@ -183,6 +183,8 @@ void paging_phy_lin_map_set(paging_phy_lin_map_t *map,
 
       rbtree_balance_insert(&map->tree, &node->node);
     }
+
+    map->entries++;
   }
   else
   {
@@ -214,6 +216,8 @@ void paging_phy_lin_map_delete(paging_phy_lin_map_t *map,
   {
     rbtree_delete(&map->tree, &node->node);
     memory_free(node);
+
+    map->entries--;
   }
 }
 
@@ -238,6 +242,7 @@ void paging_phy_lin_map_clear(paging_phy_lin_map_t *map)
         (paging_phy_lin_map_node_t *) map->tree.root);
 
   map->tree.root = NULL;
+  map->entries = 0;
 }
 
 bool paging_get_entry_pointers(paging_pageset_t *pageset,
