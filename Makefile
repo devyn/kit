@@ -28,7 +28,7 @@ endif
 KERNEL_OBJECTS=$(addprefix build/kernel/, \
   boot32.o boot64.o kernel.o terminal.o ps2key.o ps2_8042.o keyboard.o \
   memory.o paging.o interrupt.o interrupt_isr_stub.o interrupt_8259pic.o \
-  rbtree.o test.o)
+  rbtree.o test.o shell.o)
 
 all-kernel: build/kernel/kernel.bin
 

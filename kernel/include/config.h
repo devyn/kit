@@ -18,6 +18,10 @@
 
 #if defined(__GNUC__) | defined(__clang__)
 
+#define NORETURN __attribute__((__noreturn__))
+
+#define UNUSED __attribute__((__unused__))
+
 #define PACKED __attribute__((__packed__))
 
 #define FORMAT_PRINTF(string_index, first_to_check) \

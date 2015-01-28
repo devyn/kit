@@ -30,7 +30,7 @@
 #include "memory.h"
 #include "paging.h"
 #include "debug.h"
-#include "test.h"
+#include "shell.h"
 
 /**
  * These aren't actually meant to be of type int; they're just here so that
@@ -49,51 +49,44 @@ bool kernel_test_memory_c();
 #if defined(__cplusplus)
 extern "C" /* Use C linkage for kernel_main. */
 #endif
+NORETURN
 void kernel_main()
 {
   terminal_initialize();
 
   terminal_setcolor(COLOR_RED, COLOR_WHITE);
-  terminal_writestring("Kit Version 0.1\n");
+  terminal_writestring("+ Hello. I'm Kit.\n");
 
   terminal_setcolor(COLOR_WHITE, COLOR_RED);
-  terminal_writestring("\n*** Now running in x86_64 long mode! ***\n\n");
+  terminal_writechar('\n');
 
   if (kernel_multiboot_info.flags & MULTIBOOT_INFO_MEMORY)
   {
-    terminal_writestring("Lower memory:        ");
-    terminal_writeuint64(kernel_multiboot_info.mem_lower, 10);
-    terminal_writestring(" KB\n");
-
-    terminal_writestring("Upper memory:        ");
-    terminal_writeuint64(kernel_multiboot_info.mem_upper, 10);
-    terminal_writestring(" KB\n");
+    terminal_printf("Lower memory:        %u kB\n"
+                    "Upper memory:        %u kB\n",
+                    kernel_multiboot_info.mem_lower,
+                    kernel_multiboot_info.mem_upper);
   }
   else
   {
     terminal_writestring(
-      "\nE: Bootloader did not provide valid memory information!\n");
+      "W: Bootloader did not provide valid memory information!\n");
   }
 
   if (kernel_multiboot_info.flags & MULTIBOOT_INFO_CMDLINE)
   {
-    terminal_writestring("Kernel command line: ");
-    terminal_writestring((char *) ((uint64_t) kernel_multiboot_info.cmdline));
-    terminal_writechar('\n');
+    terminal_printf("Kernel command line: %s\n",
+        (char *) (KERNEL_OFFSET + kernel_multiboot_info.cmdline));
   }
   else
   {
     terminal_writestring(
-      "E: Bootloader did not provide kernel command line!\n");
+      "W: Bootloader did not provide kernel command line!\n");
   }
 
-  terminal_writestring("Kernel starts at:    0x");
-  terminal_writeuint64((uint64_t) &_kernel_begin, 16);
-  terminal_writechar('\n');
-
-  terminal_writestring("Kernel ends at:      0x");
-  terminal_writeuint64((uint64_t) &_kernel_end, 16);
-  terminal_writechar('\n');
+  terminal_printf("Kernel starts at:    %p\n"
+                  "Kernel ends at:      %p\n",
+                  &_kernel_begin, &_kernel_end);
 
   terminal_setcolor(COLOR_LIGHT_GREY, COLOR_BLACK);
   terminal_writechar('\n');
@@ -105,33 +98,22 @@ void kernel_main()
   }
   else {
     terminal_writestring(
-      "E: Bootloader did not provide memory map!\n");
+      "E: Bootloader did not provide memory map! Halting.\n");
 
-    while (true) hlt();
+    goto hang;
   }
 
+  interrupt_initialize();
   paging_initialize();
 
-  if (!test_all()) goto hang;
-
-  DEBUG_ASSERT(ps2_8042_initialize());
-
-  ps2key_initialize();
   keyboard_initialize();
+  ps2key_initialize();
+
+  if (!ps2_8042_initialize()) goto hang;
 
   interrupt_enable();
 
-  while (true)
-  {
-    keyboard_event_t event;
-
-    keyboard_wait_dequeue(&event);
-
-    if (event.pressed && event.keychar != '\0')
-    {
-      terminal_writechar(event.keychar);
-    }
-  }
+  shell();
 
   goto hang;
 

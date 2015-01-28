@@ -12,7 +12,6 @@
  ******************************************************************************/
 
 #include "ps2key.h"
-#include "ps2_8042.h"
 #include "keyboard.h"
 #include "debug.h"
 

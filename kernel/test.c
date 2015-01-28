@@ -11,8 +11,9 @@
  *
  ******************************************************************************/
 
+#define TEST_C
+
 #include <stdint.h>
-#include <stddef.h>
 
 #include "terminal.h"
 #include "memory.h"
@@ -25,17 +26,17 @@
 
 #include "test.h"
 
-bool test_run(const char *name, bool (*testcase)())
+bool test_run(const test_unit_t *unit)
 {
   terminal_setcolor(COLOR_LIGHT_CYAN, COLOR_BLACK);
 
   terminal_writestring("\n[TEST] ");
-  terminal_writestring(name);
+  terminal_writestring(unit->name);
 
   terminal_setcolor(COLOR_LIGHT_GREY, COLOR_BLACK);
   terminal_writechar('\n');
 
-  bool result = (*testcase)();
+  bool result = unit->run();
 
   if (result)
   {
@@ -48,7 +49,7 @@ bool test_run(const char *name, bool (*testcase)())
     terminal_writestring("[FAIL] ");
   }
 
-  terminal_writestring(name);
+  terminal_writestring(unit->name);
 
   terminal_setcolor(COLOR_LIGHT_GREY, COLOR_BLACK);
   terminal_writechar('\n');
@@ -213,12 +214,7 @@ bool test_memory_c()
 
 bool test_interrupt_c()
 {
-  HEADING("interrupt_initialize() doesn't crash the system\n");
-
-  terminal_writestring("Initializing interrupts.\n");
-  interrupt_initialize();
-
-  HEADING("handles two interrupts and comes back without crashing the system\n");
+  HEADING("handles two software interrupts and comes back\n");
 
   terminal_writestring("  - sending interrupt 0x1f\n");
   __asm__ __volatile__("int $0x1f");
@@ -625,10 +621,10 @@ bool test_paging_c()
 }
 
 bool test_all() {
-  if (!test_run("memory.c",    &test_memory_c))    return false;
-  if (!test_run("interrupt.c", &test_interrupt_c)) return false;
-  if (!test_run("rbtree.c",    &test_rbtree_c))    return false;
-  if (!test_run("paging.c",    &test_paging_c))    return false;
+  for (size_t i = 0; i < TEST_UNITS_SIZE; i++)
+  {
+    if (!test_run(&test_units[i])) return false;
+  }
 
   return true;
 }

@@ -1,7 +1,7 @@
 /*******************************************************************************
  *
- * kit/kernel/include/ps2key.h
- * - PS/2 keyboard driver
+ * kit/kernel/include/shell.h
+ * - kernel hacking command interface
  *
  * vim:ts=2:sw=2:et:tw=80:ft=c
  *
@@ -11,16 +11,9 @@
  *
  ******************************************************************************/
 
-#ifndef PS2KEY_H
-#define PS2KEY_H
+#ifndef SHELL_H
+#define SHELL_H
 
-#include <stdint.h>
-
-/**
- * Initializes the PS/2 keyboard state machine.
- */
-void ps2key_initialize();
-
-void ps2key_handle_irq(uint8_t data);
+void shell();
 
 #endif
