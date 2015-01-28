@@ -21,6 +21,7 @@
 #include "keyboard.h"
 #include "memory.h"
 #include "interrupt.h"
+#include "ps2_8042.h"
 #include "debug.h"
 #include "test.h"
 #include "config.h"
@@ -73,6 +74,16 @@ static int shell_command_echo(int argc, char **argv)
   }
 
   return 0;
+}
+
+static int shell_command_reboot(UNUSED int argc, UNUSED char **argv)
+{
+  ps2_8042_cpu_reset();
+
+  terminal_setcolor(COLOR_RED, COLOR_BLACK);
+  terminal_writestring("E: ps2_8042_cpu_reset() failed\n");
+
+  return 1;
 }
 
 static int shell_command_test(int argc, char **argv)
@@ -154,9 +165,10 @@ typedef struct shell_command
 } shell_command_t;
 
 const shell_command_t shell_commands[] = {
-  {"clear", &shell_command_clear},
-  {"echo",  &shell_command_echo},
-  {"test",  &shell_command_test},
+  {"clear",  &shell_command_clear},
+  {"echo",   &shell_command_echo},
+  {"reboot", &shell_command_reboot},
+  {"test",   &shell_command_test},
 };
 
 static void shell_execute(const char *command)
