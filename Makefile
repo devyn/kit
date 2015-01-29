@@ -31,13 +31,16 @@ KERNEL_OBJECTS+=$(addprefix build/, $(patsubst %.S,%.o,$(wildcard kernel/*.S)))
 all-kernel: build/kernel/kernel.bin
 
 build/kernel/kernel.bin: ${KERNEL_OBJECTS} kernel/scripts/link.ld build/kernel/.dir
-	${LD} ${LDFLAGS} ${KERNEL_LDFLAGS} -T kernel/scripts/link.ld -o build/kernel/kernel.bin ${KERNEL_OBJECTS}
+	@echo -e "\e[36m LD \e[0m" build/kernel/kernel.bin
+	@${LD} ${LDFLAGS} ${KERNEL_LDFLAGS} -T kernel/scripts/link.ld -o build/kernel/kernel.bin ${KERNEL_OBJECTS}
 
 build/kernel/%.o: kernel/%.S build/kernel/.dir
-	${AS} ${ASFLAGS} ${KERNEL_ASFLAGS} $< -o $@
+	@echo -e "\e[36m AS \e[0m" $@
+	@${AS} ${ASFLAGS} ${KERNEL_ASFLAGS} $< -o $@
 
 build/kernel/%.o: kernel/%.c build/kernel/.dir
-	${CC} ${CFLAGS} ${KERNEL_CFLAGS} -I kernel/include -c $< -o $@
+	@echo -e "\e[36m CC \e[0m" $@
+	@${CC} ${CFLAGS} ${KERNEL_CFLAGS} -I kernel/include -c $< -o $@
 
 build/kernel/.dir: build/.dir
 	mkdir -p build/kernel
