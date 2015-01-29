@@ -4,9 +4,9 @@ LD=ld
 
 GRUB_LIB=/usr/lib/grub
 
-all: all-kernel all-iso
+all: all-kernel all-system all-iso
 
-clean: clean-kernel clean-iso
+clean: clean-kernel clean-system clean-iso
 
 build/.dir:
 	mkdir -p build
@@ -55,14 +55,33 @@ clean-kernel:
 	rm -f ${KERNEL_OBJECTS}
 	rm -f build/kernel/kernel.bin
 
+# =System=
+
+all-system: build/system.kit
+
+build/system/hello.txt: system/hello.txt build/system/.dir
+	cp $< $@
+
+build/system.kit: build/system/hello.txt
+	ruby resources/build-util/kit-archive.rb build/system > $@
+
+build/system/.dir: build/.dir
+	mkdir -p build/system
+	touch build/system/.dir
+
+clean-system:
+	rm -f build/system.kit
+	rm -rf build/system
+
 # =ISO Image=
 
 all-iso: build/kit.iso
 
-build/kit.iso: resources/grub.cfg build/kernel/kernel.bin build/.dir
+build/kit.iso: resources/grub.cfg build/kernel/kernel.bin build/system.kit
 	mkdir -p build/isodir/boot/grub
 	cp resources/grub.cfg build/isodir/boot/grub/grub.cfg
 	cp build/kernel/kernel.bin build/isodir/boot/kernel.bin
+	cp build/system.kit build/isodir/boot/system.kit
 	grub-mkimage --format=i386-pc --output=build/core.img \
 		--config=build/isodir/boot/grub/grub.cfg biosdisk iso9660 normal multiboot
 	cat ${GRUB_LIB}/i386-pc/cdboot.img build/core.img > build/isodir/grub.img
@@ -80,4 +99,6 @@ clean-iso:
 run-qemu: build/kit.iso
 	qemu-system-x86_64 -cdrom build/kit.iso -boot d ${QEMUFLAGS}
 
-.PHONY: all all-kernel all-iso clean clean-kernel clean-iso run-qemu
+.PHONY: all all-kernel all-system all-iso \
+        clean clean-kernel clean-system clean-iso \
+        run-qemu
