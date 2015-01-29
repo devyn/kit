@@ -47,8 +47,7 @@ build/kernel/.dir: build/.dir
 	touch build/kernel/.dir
 
 clean-kernel:
-	rm -f ${KERNEL_OBJECTS}
-	rm -f build/kernel/kernel.bin
+	rm -rf build/kernel
 
 # =System=
 
