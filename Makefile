@@ -25,24 +25,16 @@ ifeq ($(CC),clang)
 	KERNEL_CFLAGS+=-target x86_64-pc-none-elf
 endif
 
-KERNEL_OBJECTS=$(addprefix build/kernel/, \
-  boot32.o boot64.o kernel.o terminal.o ps2key.o ps2_8042.o keyboard.o \
-  memory.o paging.o interrupt.o interrupt_isr_stub.o interrupt_8259pic.o \
-  rbtree.o test.o shell.o)
+KERNEL_OBJECTS:=$(addprefix build/, $(patsubst %.c,%.o,$(wildcard kernel/*.c)))
+KERNEL_OBJECTS+=$(addprefix build/, $(patsubst %.S,%.o,$(wildcard kernel/*.S)))
 
 all-kernel: build/kernel/kernel.bin
 
 build/kernel/kernel.bin: ${KERNEL_OBJECTS} kernel/scripts/link.ld build/kernel/.dir
 	${LD} ${LDFLAGS} ${KERNEL_LDFLAGS} -T kernel/scripts/link.ld -o build/kernel/kernel.bin ${KERNEL_OBJECTS}
 
-build/kernel/boot32.o: kernel/boot32.S build/kernel/.dir
-	${AS} ${ASFLAGS} ${KERNEL_ASFLAGS} kernel/boot32.S -o build/kernel/boot32.o
-
-build/kernel/boot64.o: kernel/boot64.S build/kernel/.dir
-	${AS} ${ASFLAGS} ${KERNEL_ASFLAGS} kernel/boot64.S -o build/kernel/boot64.o
-
-build/kernel/interrupt_isr_stub.o: kernel/interrupt_isr_stub.S build/kernel/.dir
-	${AS} ${ASFLAGS} ${KERNEL_ASFLAGS} kernel/interrupt_isr_stub.S -o build/kernel/interrupt_isr_stub.o
+build/kernel/%.o: kernel/%.S build/kernel/.dir
+	${AS} ${ASFLAGS} ${KERNEL_ASFLAGS} $< -o $@
 
 build/kernel/%.o: kernel/%.c build/kernel/.dir
 	${CC} ${CFLAGS} ${KERNEL_CFLAGS} -I kernel/include -c $< -o $@
