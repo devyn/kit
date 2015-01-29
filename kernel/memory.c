@@ -18,15 +18,12 @@
 #include "rbtree.h"
 #include "debug.h"
 
-/**
- * Not actually a uint8_t; just a location, and uint8_t is convenient
- * because it matches.
- */
-extern uint8_t _kernel_end;
+/* reserve space for an initial heap (512 KiB) */
+static uint8_t memory_initial_heap[512 * 1024];
 
 /* uint8_t in order to operate byte-by-byte. */
-uint8_t *memory_stack_base    = &_kernel_end;
-uint8_t *memory_stack_pointer = &_kernel_end;
+uint8_t *memory_stack_base    = memory_initial_heap;
+uint8_t *memory_stack_pointer = memory_initial_heap;
 
 /* free region tree */
 
