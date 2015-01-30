@@ -29,6 +29,7 @@
 #include "keyboard.h"
 #include "memory.h"
 #include "paging.h"
+#include "archive.h"
 #include "debug.h"
 #include "shell.h"
 
@@ -60,12 +61,15 @@ void kernel_main()
   terminal_setcolor(COLOR_WHITE, COLOR_RED);
   terminal_writechar('\n');
 
-  if (kernel_multiboot_info.flags & MULTIBOOT_INFO_MEMORY)
+  struct multiboot_info *mb_info = (struct multiboot_info *)
+    (KERNEL_OFFSET + (uint64_t) &kernel_multiboot_info);
+
+  if (mb_info->flags & MULTIBOOT_INFO_MEMORY)
   {
     terminal_printf("Lower memory:        %u kB\n"
                     "Upper memory:        %u kB\n",
-                    kernel_multiboot_info.mem_lower,
-                    kernel_multiboot_info.mem_upper);
+                    mb_info->mem_lower,
+                    mb_info->mem_upper);
   }
   else
   {
@@ -73,10 +77,10 @@ void kernel_main()
       "W: Bootloader did not provide valid memory information!\n");
   }
 
-  if (kernel_multiboot_info.flags & MULTIBOOT_INFO_CMDLINE)
+  if (mb_info->flags & MULTIBOOT_INFO_CMDLINE)
   {
     terminal_printf("Kernel command line: %s\n",
-        (char *) (KERNEL_OFFSET + kernel_multiboot_info.cmdline));
+        (char *) (KERNEL_OFFSET + mb_info->cmdline));
   }
   else
   {
@@ -91,10 +95,10 @@ void kernel_main()
   terminal_setcolor(COLOR_LIGHT_GREY, COLOR_BLACK);
   terminal_writechar('\n');
 
-  if (kernel_multiboot_info.flags & MULTIBOOT_INFO_MEM_MAP) {
-    char *mmap = (char *) (KERNEL_OFFSET + kernel_multiboot_info.mmap_addr);
+  if (mb_info->flags & MULTIBOOT_INFO_MEM_MAP) {
+    char *mmap = (char *) (KERNEL_OFFSET + mb_info->mmap_addr);
 
-    memory_initialize(mmap, kernel_multiboot_info.mmap_length);
+    memory_initialize(mmap, mb_info->mmap_length);
   }
   else {
     terminal_writestring(
@@ -110,6 +114,14 @@ void kernel_main()
   ps2key_initialize();
 
   if (!ps2_8042_initialize()) goto hang;
+
+  multiboot_module_t *modules = (multiboot_module_t *)
+    (KERNEL_OFFSET + mb_info->mods_addr);
+
+  if (!archive_initialize(mb_info->mods_count, modules))
+  {
+    goto hang;
+  }
 
   interrupt_enable();
 

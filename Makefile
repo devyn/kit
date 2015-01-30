@@ -56,7 +56,14 @@ all-system: build/system.kit
 build/system/hello.txt: system/hello.txt build/system/.dir
 	cp $< $@
 
-build/system.kit: build/system/hello.txt
+build/system/usertest.bin: system/usertest/usertest.S build/system/.dir
+	@echo -e "\e[36m AS \e[0m" build/system/usertest.o
+	@${AS} ${ASFLAGS} $< -o build/system/usertest.o
+	@echo -e "\e[36m LD \e[0m" $@
+	@${LD} ${LDFLAGS} build/system/usertest.o -o $@
+	rm build/system/usertest.o
+
+build/system.kit: build/system/hello.txt build/system/usertest.bin
 	ruby resources/build-util/kit-archive.rb build/system > $@
 
 build/system/.dir: build/.dir

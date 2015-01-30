@@ -23,6 +23,7 @@
 #include "paging.h"
 #include "interrupt.h"
 #include "ps2_8042.h"
+#include "archive.h"
 #include "debug.h"
 #include "test.h"
 #include "config.h"
@@ -221,6 +222,51 @@ static int shell_command_test(int argc, char **argv)
   }
 }
 
+static int shell_command_ls(UNUSED int argc, UNUSED char **argv)
+{
+  archive_iterator_t iterator = archive_iterate(archive_system);
+
+  archive_entry_t *entry;
+
+  while ((entry = archive_next(&iterator)) != NULL)
+  {
+    terminal_writechar(' ');
+
+    for (uint64_t i = 0; i < entry->name_length; i++)
+    {
+      terminal_writechar((&entry->name)[i]);
+    }
+    terminal_writechar('\n');
+  }
+
+  return 0;
+}
+
+static int shell_command_cat(int argc, char **argv)
+{
+  for (int i = 1; i < argc; i++)
+  {
+    char     *buffer;
+    uint64_t  length;
+
+    if (archive_get(archive_system, argv[i], &buffer, &length))
+    {
+      for (uint64_t i = 0; i < length; i++)
+      {
+        terminal_writechar(buffer[i]);
+      }
+    }
+    else
+    {
+      terminal_setcolor(COLOR_RED, COLOR_BLACK);
+      terminal_printf("E: file not found: %s\n", argv[i]);
+      return 1;
+    }
+  }
+
+  return 0;
+}
+
 typedef struct shell_command
 {
   const char *name;
@@ -234,6 +280,8 @@ const shell_command_t shell_commands[] = {
   {"reboot", &shell_command_reboot},
   {"mem",    &shell_command_mem},
   {"test",   &shell_command_test},
+  {"ls",     &shell_command_ls},
+  {"cat",    &shell_command_cat}
 };
 
 static void shell_execute(const char *command)

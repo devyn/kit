@@ -45,6 +45,24 @@ static inline void memory_copy(const void *src, void *dest, size_t size)
 }
 
 /**
+ * Identical to C memcmp().
+ */
+static inline int memory_compare(const void *s1, const void *s2, size_t size)
+{
+  const char *c_s1 = s1, *c_s2 = s2;
+
+  for (size_t i = 0; i < size; i++)
+  {
+    if (c_s1[i] < c_s2[i])
+      return -1;
+    if (c_s1[i] > c_s2[i])
+      return 1;
+  }
+
+  return 0;
+}
+
+/**
  * Gets the number of free pages (4096 bytes) available in the system.
  */
 uint64_t memory_get_total_free();
