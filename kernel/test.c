@@ -709,8 +709,15 @@ bool test_all()
 {
   for (size_t i = 0; i < TEST_UNITS_SIZE; i++)
   {
-    if (!test_run(&test_units[i])) return false;
+    if (!test_run(&test_units[i]))
+    {
+      terminal_printf("\n %lu/%lu tests passed.\n", i, TEST_UNITS_SIZE);
+      return false;
+    }
   }
+
+  terminal_printf("\n %lu/%lu tests passed.\n",
+      TEST_UNITS_SIZE, TEST_UNITS_SIZE);
 
   return true;
 }
