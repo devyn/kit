@@ -40,8 +40,8 @@ bool archive_initialize(uint64_t modules_count, multiboot_module_t *modules)
   return false;
 }
 
-bool archive_get(archive_header_t *header, char *entry_name, char **buffer,
-    uint64_t *length)
+bool archive_get(archive_header_t *header, const char *entry_name,
+    char **buffer, uint64_t *length)
 {
   size_t entry_name_length = string_length(entry_name);
 

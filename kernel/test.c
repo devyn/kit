@@ -20,6 +20,8 @@
 #include "interrupt.h"
 #include "rbtree.h"
 #include "paging.h"
+#include "archive.h"
+#include "elf.h"
 
 #include "debug.h"
 #include "x86_64.h"
@@ -620,7 +622,91 @@ bool test_paging_c()
   return true;
 }
 
-bool test_all() {
+bool test_elf_c()
+{
+  HEADING("prerequisite: usertest.bin exists\n");
+
+  char     *buffer;
+  uint64_t  length;
+
+  if (archive_get(archive_system, "usertest.bin", &buffer, &length))
+  {
+    terminal_writestring("  - ok\n");
+  }
+  else
+  {
+    terminal_writestring("  E: usertest.bin not found\n");
+    return false;
+  }
+
+  HEADING("elf_verify() on usertest.bin returns true\n");
+
+  elf_header_64_t *elf = (elf_header_64_t *) buffer;
+
+  if (elf_verify(elf))
+  {
+    terminal_writestring("  - ok, compatible with kit\n");
+  }
+  else
+  {
+    terminal_writestring("  E: incompatible\n");
+    return false;
+  }
+
+  HEADING("program headers are present and make sense\n");
+
+  if (elf->e_phnum == 0)
+  {
+    terminal_writestring("  E: no program headers\n");
+    return false;
+  }
+
+  elf_program_header_iterator_t iterator = elf_program_header_iterate(elf);
+
+  elf_program_header_t *ph;
+
+  while ((ph = elf_program_header_next(&iterator)) != NULL)
+  {
+    elf_program_header_print(ph);
+  }
+
+  HEADING("entry point is within an executable segment\n");
+
+  bool found = false;
+
+  iterator = elf_program_header_iterate(elf);
+
+  terminal_printf("  - entry point: %#lx\n", elf->e_entry);
+
+  while ((ph = elf_program_header_next(&iterator)) != NULL)
+  {
+    if (elf->e_entry >= ph->p_vaddr &&
+        elf->e_entry <= ph->p_vaddr + ph->p_memsz)
+    {
+      if (ph->p_flags & ELF_P_FLAG_EXECUTE)
+      {
+        found = true;
+        break;
+      }
+      else
+      {
+        terminal_writestring("  E: matching segment is not executable\n");
+        return false;
+      }
+    }
+  }
+
+  if (!found)
+  {
+    terminal_writestring("  E: no matching segment\n");
+    return false;
+  }
+
+  return true;
+}
+
+bool test_all()
+{
   for (size_t i = 0; i < TEST_UNITS_SIZE; i++)
   {
     if (!test_run(&test_units[i])) return false;

@@ -77,7 +77,7 @@ archive_header_t *archive_system;
 
 bool archive_initialize(uint64_t modules_count, multiboot_module_t *modules);
 
-bool archive_get(archive_header_t *header, char *entry_name, char **buffer,
-    uint64_t *length);
+bool archive_get(archive_header_t *header, const char *entry_name,
+    char **buffer, uint64_t *length);
 
 #endif

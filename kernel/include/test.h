@@ -31,6 +31,7 @@ bool test_memory_c();
 bool test_interrupt_c();
 bool test_rbtree_c();
 bool test_paging_c();
+bool test_elf_c();
 
 /* List of test units */
 #ifdef TEST_C
@@ -39,6 +40,7 @@ bool test_paging_c();
     {"interrupt.c",  &test_interrupt_c},
     {"rbtree.c",     &test_rbtree_c},
     {"paging.c",     &test_paging_c},
+    {"elf.c",        &test_elf_c}
   };
 
   const size_t TEST_UNITS_SIZE =
