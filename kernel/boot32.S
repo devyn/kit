@@ -137,22 +137,22 @@ _bootstrap:
   # CPUID is supported.
 
   # Copy FLAGS into A and C and flip bit 21 on A
-  pushf
+  pushfl
   popl %eax
   movl %eax, %ecx
   xorl $(1 << 21), %eax
 
   # Put A back into FLAGS
   pushl %eax
-  popf
+  popfl
 
   # Now read FLAGS into A again...
-  pushf
+  pushfl
   popl %eax
 
   # ...also restore FLAGS to what it was before in case this is successful...
   pushl %ecx
-  popf
+  popfl
 
   # ...and test if A and C are identical. They shouldn't be, if CPUID is supported.
   xorl %ecx, %eax
@@ -173,7 +173,7 @@ _bootstrap:
 
   mov $0x80000001, %eax # Execute CPUID function 0x80000001
   cpuid
-  test $(1 << 29), %edx # Test bit 21 (LM) on EDX
+  test $(1 << 29), %edx # Test bit 29 (LM) on EDX
   jz .LnoLongMode       # If not set, long mode is not supported.
 
 .initializePaging:
