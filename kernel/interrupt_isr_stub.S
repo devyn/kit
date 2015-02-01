@@ -10,8 +10,8 @@
 .section .text
 
 # GDT-related constants
-.set GDT64_CODE_SEL, 0x08
-.set GDT64_DATA_SEL, 0x10
+.set KERNEL_CODE_SEL, 0x08
+.set KERNEL_DATA_SEL, 0x10
 
 # Emulates pusha on x86_64
 .macro PUSHAQ
@@ -164,7 +164,7 @@ interrupt_isr_stub_common:
   push %rax
 
   # Load kernel data selector
-  mov $GDT64_DATA_SEL, %ax
+  mov $KERNEL_DATA_SEL, %ax
   mov %ax, %ds
   mov %ax, %es
   mov %ax, %fs

@@ -16,8 +16,8 @@ FPU_INIT: .word 0x37a
 SSE_INIT: .long 0x1d00
 
 # GDT-related constants
-.set GDT64_CODE_SEL, 0x08
-.set GDT64_DATA_SEL, 0x10
+.set KERNEL_CODE_SEL, 0x08
+.set KERNEL_DATA_SEL, 0x10
 
 .section .text
 
@@ -34,13 +34,13 @@ _bootstrap64:
   # Workaround for x86_64, which doesn't have a far jump that sets CS
   # So we set up a fake stack frame
   pushq $0
-  pushq $GDT64_CODE_SEL
+  pushq $KERNEL_CODE_SEL
   pushq $.LafterLGDT
   lretq
 
 .LafterLGDT:
   # Load data selector into segment registers.
-  movw $GDT64_DATA_SEL, %ax
+  movw $KERNEL_DATA_SEL, %ax
   movw %ax, %ds
   movw %ax, %es
   movw %ax, %fs

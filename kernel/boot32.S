@@ -27,8 +27,10 @@
 .set KERNEL_VMA, 0xffff800000000000
 
 # GDT-related constants
-.set GDT64_CODE_SEL, 0x08
-.set GDT64_DATA_SEL, 0x10
+.set KERNEL_CODE_SEL, 0x08
+.set KERNEL_DATA_SEL, 0x10
+.set   USER_CODE_SEL, 0x18
+.set   USER_DATA_SEL, 0x20
 
 # Declare a header as in the Multiboot Standard. We put this into a special
 # section so we can force the header to be in the start of the final program.
@@ -53,6 +55,7 @@ stack_top:
 
 .section .bootstrap_gdt64
 
+.global gdt64
 gdt64:
 gdt64_null:
   .word 0             # Limit (low)
@@ -62,7 +65,7 @@ gdt64_null:
   .byte 0             # low nibble: Limit (high)
   .byte 0             # Base (high)
 
-gdt64_code:
+gdt64_kernel_code:
   .word 0             # Limit (low)
   .word 0             # Base (low)
   .byte 0             # Base (middle)
@@ -70,11 +73,27 @@ gdt64_code:
   .byte 0b00100000    # high nibble: Long mode bit set, low nibble: Limit (high)
   .byte 0             # Base (high)
 
-gdt64_data:
+gdt64_kernel_data:
   .word 0             # Limit (low)
   .word 0             # Base (low)
   .byte 0             # Base (middle)
   .byte 0b10010010    # Access: Present, <>, ring 0, read/write
+  .byte 0b00000000    # low nibble: Limit (high)
+  .byte 0             # Base (high)
+
+gdt64_user_code:
+  .word 0             # Limit (low)
+  .word 0             # Base (low)
+  .byte 0             # Base (middle)
+  .byte 0b11111000    # Access: Present, <>, ring 3, executable
+  .byte 0b00100000    # high nibble: Long mode bit set, low nibble: Limit (high)
+  .byte 0             # Base (high)
+
+gdt64_user_data:
+  .word 0             # Limit (low)
+  .word 0             # Base (low)
+  .byte 0             # Base (middle)
+  .byte 0b11110010    # Access: Present, <>, ring 3, read/write
   .byte 0b00000000    # low nibble: Limit (high)
   .byte 0             # Base (high)
 
@@ -255,8 +274,8 @@ _bootstrap:
 .jumpToBoot64:
   # Load the GDT and jump to our 64-bit bootstrapping code.
 
-  lgdt gdt64_pointer                   # Load Global Descriptor Table.
-  jmp  $GDT64_CODE_SEL, $_bootstrap64  # Jump to _bootstrap64 with GDT64 Code selector.
+  lgdt gdt64_pointer                    # Load Global Descriptor Table.
+  jmp  $KERNEL_CODE_SEL, $_bootstrap64  # Jump to _bootstrap64 with kernel code selector.
 
 .Lhalt:
   # Halt the system if something went wrong.
