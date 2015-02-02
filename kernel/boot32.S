@@ -24,7 +24,7 @@
 .set CHECKSUM, -(MAGIC + FLAGS) # checksum of above, to prove we are multiboot
 
 # Virtual memory offset
-.set KERNEL_VMA, 0xffff800000000000
+.set KERNEL_VMA, 0xffffffff80000000
 
 # GDT-related constants
 .set KERNEL_CODE_SEL, 0x08
@@ -100,7 +100,7 @@ gdt64_user_data:
 .global gdt64_pointer
 gdt64_pointer:
   .word . - gdt64 - 1      # Limit
-  .quad KERNEL_VMA + gdt64 # Base (will be read as 32-bit the first time)
+  .quad gdt64              # Base (will be read as 32-bit the first time)
 
 .section .data
 
@@ -199,7 +199,7 @@ _bootstrap:
   # Set up (temporary) paging the way x86_64 long mode likes it.
   # The result of this is a page table in which the first two megabytes of physical
   # memory are identity mapped (0-2MB virtual -> 0-2MB physical), as well as mapped
-  # at 0xffff800000000000 which is the "higher half" on x86_64 with 48-bit paging.
+  # at 0xffffffff80000000 which is the "higher half" on x86_64 with 48-bit paging.
 
   # Disable paging (though it probably isn't enabled at the moment anyway)
 
@@ -225,12 +225,12 @@ _bootstrap:
   movl $(pd_lo   + 0x3), (pdpt_lo) # Set pdpt_lo[0] to (pd_lo + P,R)
   movl $(pt_lo   + 0x3), (pd_lo)   # Set pd_lo[0] to (pt_lo + P,R)
 
-  # Also map the first two physical megabytes of memory at 0xffff800000000000,
+  # Also map the first two physical megabytes of memory at 0xffffffff80000000,
   # which is the start of kernel space. This is a bit more complicated.
 
-  movl $(pdpt_hi + 0x3), (pml4 + 0x800)   # Set pml4[256] to (pdpt_hi + P,R)
-  movl $(pd_hi   + 0x3), (pdpt_hi)        # Set pdpt_hi[0] to (pd_hi + P,R)
-  movl $(pt_hi   + 0x3), (pd_hi)          # Set pd_hi[0] to (pt_hi + P,R)
+  movl $(pdpt_hi + 0x3), (pml4 + 0xff8)    # Set pml4[511] to (pdpt_hi + P,R)
+  movl $(pd_hi   + 0x3), (pdpt_hi + 0xff0) # Set pdpt_hi[510] to (pd_hi + P,R)
+  movl $(pt_hi   + 0x3), (pd_hi)           # Set pd_hi[0] to (pt_hi + P,R)
 
   # Set up PT to identity map the first 2 MB of memory as promised,
   # and also set the high PT (at 0x7000) to the same.

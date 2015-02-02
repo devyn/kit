@@ -14,7 +14,7 @@
 ENTRY(_bootstrap)
 
 KERNEL_LMA = 0x100000;           /* Physical address */
-KERNEL_VMA = 0xffff800000000000; /* Virtual (higher half) address */
+KERNEL_VMA = 0xffffffff80000000; /* Virtual (higher half) address */
 
 /* Tell where the various sections of the object files will be put in the final
    kernel image. */

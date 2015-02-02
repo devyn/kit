@@ -14,7 +14,7 @@
 #ifndef CONFIG_H
 #define CONFIG_H
 
-#define KERNEL_OFFSET 0xffff800000000000
+#define KERNEL_OFFSET 0xffffffff80000000
 
 #if defined(__GNUC__) | defined(__clang__)
 

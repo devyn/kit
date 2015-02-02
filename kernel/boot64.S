@@ -19,6 +19,9 @@ SSE_INIT: .long 0x1d00
 .set KERNEL_CODE_SEL, 0x08
 .set KERNEL_DATA_SEL, 0x10
 
+# Virtual memory offset
+.set KERNEL_VMA, 0xffffffff80000000
+
 .section .text
 
 .global _bootstrap64
@@ -26,6 +29,20 @@ SSE_INIT: .long 0x1d00
 _bootstrap64:
   # Make sure interrupts are cleared
   cli
+
+  # Load data selector into segment registers.
+  movw $KERNEL_DATA_SEL, %ax
+  movw %ax, %ds
+  movw %ax, %es
+  movw %ax, %fs
+  movw %ax, %gs
+  movw %ax, %ss
+
+  # Add KERNEL_VMA to the GDT's base
+  movabs $KERNEL_VMA, %rax
+  mov (gdt64_pointer + 2), %rbx
+  add %rax, %rbx
+  mov %rbx, (gdt64_pointer + 2)
 
   # LGDT again to get the full 64 bits
   lgdt gdt64_pointer
@@ -39,14 +56,6 @@ _bootstrap64:
   lretq
 
 .LafterLGDT:
-  # Load data selector into segment registers.
-  movw $KERNEL_DATA_SEL, %ax
-  movw %ax, %ds
-  movw %ax, %es
-  movw %ax, %fs
-  movw %ax, %gs
-  movw %ax, %ss
-
   # Initialize FPU.
   movq %cr0, %rax
   andq $0xfffffffffffffff3, %rax # Clear CR0.TS and CR0.EM

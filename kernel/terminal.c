@@ -13,6 +13,7 @@
 
 #include "terminal.h"
 #include "x86_64.h"
+#include "config.h"
 
 uint8_t terminal_make_color(enum vga_color fg, enum vga_color bg)
 {
@@ -34,7 +35,7 @@ uint16_t* terminal_buffer;
 void terminal_initialize()
 {
   terminal_color = terminal_make_color(COLOR_LIGHT_GREY, COLOR_BLACK);
-  terminal_buffer = (uint16_t*) 0xffff8000000b8000;
+  terminal_buffer = (uint16_t*) (KERNEL_OFFSET + 0xb8000);
 
   terminal_clear();
 }
