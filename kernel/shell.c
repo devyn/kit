@@ -41,17 +41,22 @@ static void shell_read_line(char *buffer, size_t size)
 {
   size_t index = 0;
 
-  keyboard_event_t event;
-
-  event.keychar = 0;
+  // XXX: this shouldn't be necessary, but this stops working randomly
+  // sometimes without it and I have absolutely no idea why
+  keyboard_event_t event1, event2;
+  keyboard_event_t *event = &event2;
 
   while (index < size - 1)
   {
-    keyboard_wait_dequeue(&event);
+    // XXX
+    if (event == &event2) event = &event1;
+    else event = &event2;
 
-    if (event.pressed && event.keychar != 0)
+    keyboard_wait_dequeue(event);
+
+    if (event->pressed && event->keychar != 0)
     {
-      if (event.keychar == '\b')
+      if (event->keychar == '\b')
       {
         // Handle backspace only if there are characters to erase.
         if (index > 0)
@@ -62,10 +67,10 @@ static void shell_read_line(char *buffer, size_t size)
       }
       else
       {
-        terminal_writechar(event.keychar);
-        buffer[index++] = event.keychar;
+        terminal_writechar(event->keychar);
+        buffer[index++] = event->keychar;
 
-        if (event.keychar == '\n') break;
+        if (event->keychar == '\n') break;
       }
     }
   }
@@ -143,9 +148,9 @@ static int shell_command_mem(UNUSED int argc, UNUSED char **argv)
       " table_map: %lu entries (root %p)\n",
 
       pages, pages / 256,
-      pageset,
-      pageset->pml4, pageset->pml4_physical,
-      pageset->table_map.entries, pageset->table_map.tree.root);
+      (void *) pageset,
+      (void *) pageset->pml4, pageset->pml4_physical,
+      pageset->table_map.entries, (void *) pageset->table_map.tree.root);
 
   return 0;
 }

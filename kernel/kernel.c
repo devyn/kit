@@ -90,7 +90,7 @@ void kernel_main()
 
   terminal_printf("Kernel starts at:    %p\n"
                   "Kernel ends at:      %p\n",
-                  &_kernel_begin, &_kernel_end);
+                  (void *) &_kernel_begin, (void *) &_kernel_end);
 
   terminal_setcolor(COLOR_LIGHT_GREY, COLOR_BLACK);
   terminal_writechar('\n');
