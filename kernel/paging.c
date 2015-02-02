@@ -775,6 +775,9 @@ static void __paging_map_pt(paging_map_state_t *state, paging_pt_entry_t *pt)
       if (!(state->flags & PAGING_READONLY))
         pt_entry->writable = 1;
 
+      if (state->flags & PAGING_USER)
+        pt_entry->user = 1;
+
       pt_entry->present = 1;
 
       // Increment mapped by 1, and advance linear and physical by 1 page.

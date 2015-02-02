@@ -269,7 +269,8 @@ bool paging_resolve_linear_address(paging_pageset_t *pageset,
     void *linear_address, uint64_t *physical_address);
 
 typedef enum paging_flags {
-  PAGING_READONLY = 0x1
+  PAGING_READONLY = 0x01,
+  PAGING_USER     = 0x02
 } paging_flags_t;
 
 uint64_t paging_map(paging_pageset_t *pageset, void *linear_address,
