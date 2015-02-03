@@ -24,6 +24,8 @@
 #include "interrupt.h"
 #include "ps2_8042.h"
 #include "archive.h"
+#include "elf.h"
+#include "process.h"
 #include "debug.h"
 #include "test.h"
 #include "config.h"
@@ -264,10 +266,52 @@ static int shell_command_cat(int argc, char **argv)
     else
     {
       terminal_setcolor(COLOR_RED, COLOR_BLACK);
-      terminal_printf("E: file not found: %s\n", argv[i]);
+      terminal_printf(" E: file not found: %s\n", argv[i]);
       return 1;
     }
   }
+
+  return 0;
+}
+
+static int shell_command_run(int argc, char **argv)
+{
+  if (argc < 2)
+  {
+    terminal_writestring(" Usage: run <file>\n");
+    return 1;
+  }
+
+  char     *buffer;
+  uint64_t  length;
+
+  if (!archive_get(archive_system, argv[1], &buffer, &length))
+  {
+    terminal_setcolor(COLOR_RED, COLOR_BLACK);
+    terminal_printf(" E: file not found: %s\n", argv[1]);
+    return 1;
+  }
+
+  elf_header_64_t *elf = (elf_header_64_t *) buffer;
+
+  if (!elf_verify(elf))
+  {
+    terminal_setcolor(COLOR_RED, COLOR_BLACK);
+    terminal_printf(" E: invalid or incompatible ELF file: %s\n", argv[1]);
+    return 1;
+  }
+
+  process_t process;
+
+  DEBUG_ASSERT(process_create(&process, argv[1]));
+
+  DEBUG_ASSERT(elf_load(elf, &process));
+
+  process.registers.rax = 0x0ff0;
+
+  process_run(&process);
+
+  DEBUG_ASSERT(process.registers.rax == 0xf00f);
 
   return 0;
 }
@@ -286,7 +330,8 @@ const shell_command_t shell_commands[] = {
   {"mem",    &shell_command_mem},
   {"test",   &shell_command_test},
   {"ls",     &shell_command_ls},
-  {"cat",    &shell_command_cat}
+  {"cat",    &shell_command_cat},
+  {"run",    &shell_command_run},
 };
 
 static void shell_execute(const char *command)

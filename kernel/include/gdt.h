@@ -16,10 +16,11 @@
 
 typedef enum gdt_selector
 {
-  GDT_SEL_KERNEL_CODE = 0x08,
-  GDT_SEL_KERNEL_DATA = 0x10,
-  GDT_SEL_USER_CODE   = 0x18,
-  GDT_SEL_USER_DATA   = 0x20
+  GDT_SEL_KERNEL_CODE   = 0x08,
+  GDT_SEL_KERNEL_DATA   = 0x10,
+  GDT_SEL_USER_CODE_32  = 0x1b,
+  GDT_SEL_USER_DATA     = 0x23,
+  GDT_SEL_USER_CODE_64  = 0x2b
 } gdt_selector_t;
 
 typedef enum gdt_privilege

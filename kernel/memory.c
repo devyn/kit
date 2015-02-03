@@ -200,6 +200,7 @@ static void memory_free_region_insert(memory_free_region_node_t *node)
 uint64_t memory_free_region_acquire(const uint64_t pages,
                                     uint64_t *physical_base)
 {
+
   // Find the center node of the tree.
   memory_free_region_node_t *node =
     (memory_free_region_node_t *) memory_free_region_tree.tree.root;

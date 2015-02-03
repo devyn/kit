@@ -19,6 +19,7 @@
 #include <stddef.h>
 
 #include "config.h"
+#include "process.h"
 
 static const uint8_t ELF_MAGIC[4] = {0x7f, 'E', 'L', 'F'};
 
@@ -102,8 +103,6 @@ typedef struct PACKED elf_program_header
   uint64_t p_align;
 } elf_program_header_t;
 
-bool elf_verify(elf_header_64_t *header);
-
 typedef struct elf_program_header_iterator
 {
   uint16_t               remaining;
@@ -141,6 +140,10 @@ static inline elf_program_header_t *elf_program_header_next(
   }
 }
 
+bool elf_verify(elf_header_64_t *header);
+
 void elf_program_header_print(elf_program_header_t *ph);
+
+bool elf_load(elf_header_64_t *header, process_t *process);
 
 #endif

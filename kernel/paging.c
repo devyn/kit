@@ -581,6 +581,7 @@ static void __paging_map_pml4(paging_map_state_t *state)
       // Only page mapping entries should be affected by state->flags;
       // everything should be permitted at higher levels.
       pml4_entry->writable = 1;
+      pml4_entry->user     = 1;
       pml4_entry->present  = 1;
 
       // Insert into table map.
@@ -647,6 +648,7 @@ static void __paging_map_pdpt(paging_map_state_t *state,
       // Only page mapping entries should be affected by state->flags;
       // everything should be permitted at higher levels.
       pdpt_entry->as_pointer.writable = 1;
+      pdpt_entry->as_pointer.user     = 1;
       pdpt_entry->as_pointer.present  = 1;
 
       // Insert into table map.
@@ -715,6 +717,7 @@ static void __paging_map_pd(paging_map_state_t *state, paging_pd_entry_t *pd)
       // Only page mapping entries should be affected by state->flags;
       // everything should be permitted at higher levels.
       pd_entry->as_pointer.writable = 1;
+      pd_entry->as_pointer.user     = 1;
       pd_entry->as_pointer.present  = 1;
 
       // Insert into table map.

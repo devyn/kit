@@ -51,6 +51,9 @@ clean-kernel:
 
 # =System=
 
+SYSTEM_LDFLAGS=-O -nostdlib
+SYSTEM_ASFLAGS=-march=generic64
+
 all-system: build/system.kit
 
 build/system/hello.txt: system/hello.txt build/system/.dir
@@ -58,9 +61,9 @@ build/system/hello.txt: system/hello.txt build/system/.dir
 
 build/system/usertest.bin: system/usertest/usertest.S build/system/.dir
 	@echo -e "\e[36m AS \e[0m" build/system/usertest.o
-	@${AS} ${ASFLAGS} $< -o build/system/usertest.o
+	@${AS} ${ASFLAGS} ${SYSTEM_ASFLAGS} $< -o build/system/usertest.o
 	@echo -e "\e[36m LD \e[0m" $@
-	@${LD} ${LDFLAGS} build/system/usertest.o -o $@
+	@${LD} ${LDFLAGS} ${SYSTEM_LDFLAGS} build/system/usertest.o -o $@
 	rm build/system/usertest.o
 
 build/system.kit: build/system/hello.txt build/system/usertest.bin

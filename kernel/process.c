@@ -42,9 +42,10 @@ bool process_create(process_t *process, const char *name)
   }
 
   // Set up the stack
-  process->registers.rsp = 0x7fffffffe000;
+  process->registers.rsp = 0x7ffffffff000;
 
-  if (process_alloc(process, (void *) process->registers.rsp, 8192, 0) == NULL)
+  if (process_alloc(process, (void *) (process->registers.rsp - 8192), 8192, 0)
+      == NULL)
   {
     return false;
   }
@@ -90,7 +91,8 @@ void *process_alloc(process_t *process, void *address, uint64_t length,
     if (mapped > 0)
     {
       // FIXME: handle any errors here
-      paging_map(&process->pageset, address, physical_base, mapped, flags);
+      paging_map(&process->pageset, current_address.pointer,
+          physical_base, mapped, flags);
 
       current_address.linear += mapped << 12;
       pages                  -= mapped;
@@ -122,30 +124,42 @@ void process_run(process_t *process)
 
   process->state = PROCESS_STATE_RUNNING;
 
+  paging_pageset_t *old_pageset = paging_get_current_pageset();
+
+  paging_set_current_pageset(&process->pageset);
+
   process_registers_t *regs = &process->registers;
 
   process_asm_call(regs);
 
-  DEBUG_BEGIN_VALUES();
-    DEBUG_HEX(regs->rax);
-    DEBUG_HEX(regs->rcx);
-    DEBUG_HEX(regs->rdx);
-    DEBUG_HEX(regs->rbx);
-    DEBUG_HEX(regs->rsp);
-    DEBUG_HEX(regs->rbp);
-    DEBUG_HEX(regs->rsi);
-    DEBUG_HEX(regs->rdi);
-    DEBUG_HEX(regs->r8);
-    DEBUG_HEX(regs->r9);
-    DEBUG_HEX(regs->r10);
-    DEBUG_HEX(regs->r11);
-    DEBUG_HEX(regs->r12);
-    DEBUG_HEX(regs->r13);
-    DEBUG_HEX(regs->r14);
-    DEBUG_HEX(regs->r15);
-    DEBUG_HEX(regs->rip);
-    DEBUG_HEX(regs->eflags);
-  DEBUG_END_VALUES();
+  DEBUG_FORMAT(
+      "\n"
+      " RAX=%lx RCX=%lx RDX=%lx RBX=%lx\n"
+      " RSP=%lx RBP=%lx RSI=%lx RDI=%lx\n"
+      " R8 =%lx R9 =%lx R10=%lx R11=%lx\n"
+      " R12=%lx R13=%lx R14=%lx R15=%lx\n"
+      " RIP=%lx\n"
+      " EFLAGS=%x",
+      regs->rax,
+      regs->rcx,
+      regs->rdx,
+      regs->rbx,
+      regs->rsp,
+      regs->rbp,
+      regs->rsi,
+      regs->rdi,
+      regs->r8,
+      regs->r9,
+      regs->r10,
+      regs->r11,
+      regs->r12,
+      regs->r13,
+      regs->r14,
+      regs->r15,
+      regs->rip,
+      regs->eflags);
 
   process->state = PROCESS_STATE_DEAD; // XXX
+
+  paging_set_current_pageset(old_pageset);
 }

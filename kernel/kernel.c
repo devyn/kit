@@ -30,6 +30,7 @@
 #include "memory.h"
 #include "paging.h"
 #include "archive.h"
+#include "process.h"
 #include "debug.h"
 #include "shell.h"
 
@@ -122,6 +123,8 @@ void kernel_main()
   {
     goto hang;
   }
+
+  process_initialize();
 
   interrupt_enable();
 

@@ -13,8 +13,9 @@ process_asm_stack: .quad 0
 # GDT-related constants
 .set KERNEL_CODE_SEL, 0x08
 .set KERNEL_DATA_SEL, 0x10
-.set   USER_CODE_SEL, 0x18
-.set   USER_DATA_SEL, 0x20
+.set   USER_CD32_SEL, 0x1b
+.set   USER_DATA_SEL, 0x23
+.set   USER_CD64_SEL, 0x2b
 
 .section .text
 
@@ -44,7 +45,7 @@ process_asm_call:
   # Put our segment selectors into IA32_STAR
   mov $IA32_STAR, %ecx
   rdmsr
-  mov $((USER_CODE_SEL << 16) + KERNEL_CODE_SEL), %edx
+  mov $((USER_CD32_SEL << 16) + KERNEL_CODE_SEL), %edx
   wrmsr
 
   # Put where we intend to be after the syscall from user code into IA32_LSTAR
@@ -57,8 +58,8 @@ process_asm_call:
 
   # Put zero into the IA32_FMASK
   mov $IA32_FMASK, %ecx
+  rdmsr
   xor %eax, %eax
-  xor %edx, %edx
   wrmsr
 
   # Save our current stack
@@ -108,7 +109,7 @@ process_asm_call:
   pop %rsp
 
   # Now we can jump into user code
-  sysret
+  sysretq
 
 .Lreturn:
   # Swap RCX and R11 for now
@@ -132,7 +133,7 @@ process_asm_call:
   xchg (process_asm_stack), %rsp
 
   # Swap the process's register set address with R11 (EFLAGS)
-  xchg -8(%rsp), %r11
+  xchg (%rsp), %r11
 
   # Save the process's register set
   # This time, clear RCX and R11
@@ -176,4 +177,4 @@ process_asm_call:
 
   # Enable interrupts and return
   sti
-  ret
+  retq

@@ -1,6 +1,6 @@
 .section .rodata
 
-otherdata: .asciz "Test string, testing"
+otherdata: .asciz "aeosunth"
 
 .section .data
 
@@ -20,5 +20,9 @@ _start:
   movq (xorval1), %rbx
   movq %rbx, (xorval2)
   movq (xorval2), %rcx
-  xorq %rcx, %rax
+  push %rcx
+  pop  %rdx
+  xorq %rdx, %rax
+  push %rdx
+  push %rax
   syscall

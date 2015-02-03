@@ -29,8 +29,9 @@
 # GDT-related constants
 .set KERNEL_CODE_SEL, 0x08
 .set KERNEL_DATA_SEL, 0x10
-.set   USER_CODE_SEL, 0x18
-.set   USER_DATA_SEL, 0x20
+.set   USER_CD32_SEL, 0x1b
+.set   USER_DATA_SEL, 0x23
+.set   USER_CD64_SEL, 0x2b
 
 # Declare a header as in the Multiboot Standard. We put this into a special
 # section so we can force the header to be in the start of the final program.
@@ -55,6 +56,7 @@ stack_top:
 
 .section .bootstrap_gdt64
 
+.align 4096
 .global gdt64
 gdt64:
 gdt64_null:
@@ -81,12 +83,12 @@ gdt64_kernel_data:
   .byte 0b00000000    # low nibble: Limit (high)
   .byte 0             # Base (high)
 
-gdt64_user_code:
+gdt64_user_code_32:
   .word 0             # Limit (low)
   .word 0             # Base (low)
   .byte 0             # Base (middle)
   .byte 0b11111000    # Access: Present, <>, ring 3, executable
-  .byte 0b00100000    # high nibble: Long mode bit set, low nibble: Limit (high)
+  .byte 0b00000000    # high nibble: Long mode clear, low nibble: Limit (high)
   .byte 0             # Base (high)
 
 gdt64_user_data:
@@ -95,6 +97,14 @@ gdt64_user_data:
   .byte 0             # Base (middle)
   .byte 0b11110010    # Access: Present, <>, ring 3, read/write
   .byte 0b00000000    # low nibble: Limit (high)
+  .byte 0             # Base (high)
+
+gdt64_user_code_64:
+  .word 0             # Limit (low)
+  .word 0             # Base (low)
+  .byte 0             # Base (middle)
+  .byte 0b11111000    # Access: Present, <>, ring 3, executable
+  .byte 0b00100000    # high nibble: Long mode bit set, low nibble: Limit (high)
   .byte 0             # Base (high)
 
 .global gdt64_pointer
