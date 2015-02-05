@@ -13,8 +13,8 @@
 
 KERNEL_CFLAGS=-O3 -g -std=c99 -pedantic -Wall -Wextra -Werror -ffreestanding \
               -fno-exceptions -fomit-frame-pointer -mcmodel=kernel \
-              -mno-red-zone -mtune=core2 -mno-mmx -mno-sse3 -mno-ssse3 \
-              -mno-3dnow
+              -mno-red-zone -march=core2 -mtune=generic -mno-mmx -mno-sse3 \
+              -mno-ssse3 -mno-3dnow
 KERNEL_LDFLAGS=-O -nostdlib -z max-page-size=0x1000
 KERNEL_ASFLAGS=-march=generic64
 

@@ -108,6 +108,11 @@ bool elf_load(elf_header_64_t *elf, process_t *process)
       case ELF_P_TYPE_NULL: break;
       case ELF_P_TYPE_PHDR: break;
 
+      // XXX: Ignore GNU_STACK instruction.
+      // Really should be using this to decide if the stack should be
+      // executable, but so few programs use them and it's a security concern.
+      case ELF_P_TYPE_GNU_STACK: break;
+
       case ELF_P_TYPE_LOAD: {
 
         // Figure out which page flags to set.
@@ -148,7 +153,8 @@ bool elf_load(elf_header_64_t *elf, process_t *process)
 
       default:
         // Other instructions are not supported yet.
-        DEBUG_FORMAT("unsupported p_type at ph=%p", (void *) ph);
+        DEBUG_FORMAT("unsupported p_type %#x at ph=%p",
+            ph->p_type, (void *) ph);
         elf_program_header_print(ph);
         goto error;
     }

@@ -80,14 +80,19 @@ typedef struct PACKED elf_header_64
 
 typedef struct PACKED elf_program_header
 {
-# define ELF_P_TYPE_NULL    0
-# define ELF_P_TYPE_LOAD    1
-# define ELF_P_TYPE_DYNAMIC 2
-# define ELF_P_TYPE_INTERP  3
-# define ELF_P_TYPE_NOTE    4
-# define ELF_P_TYPE_SHLIB   5
-# define ELF_P_TYPE_PHDR    6
-# define ELF_P_TYPE_TLS     7
+# define ELF_P_TYPE_NULL       0
+# define ELF_P_TYPE_LOAD       1
+# define ELF_P_TYPE_DYNAMIC    2
+# define ELF_P_TYPE_INTERP     3
+# define ELF_P_TYPE_NOTE       4
+# define ELF_P_TYPE_SHLIB      5
+# define ELF_P_TYPE_PHDR       6
+# define ELF_P_TYPE_TLS        7
+# define ELF_P_TYPE_LOOS       0x60000000
+# define ELF_P_TYPE_HIOS       0x6fffffff
+# define ELF_P_TYPE_LOPROC     0x70000000
+# define ELF_P_TYPE_HIPROC     0x7fffffff
+# define ELF_P_TYPE_GNU_STACK  0x6474e551
   uint32_t p_type;
 
 # define ELF_P_FLAG_READ    4

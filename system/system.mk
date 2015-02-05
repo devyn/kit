@@ -11,6 +11,9 @@
 #
 ################################################################################
 
+SYSTEM_CFLAGS=-O3 -g -std=c99 -pedantic -Wall -Wextra -Werror -ffreestanding \
+              -march=core2 -mtune=generic -mno-mmx -mno-sse3 -mno-ssse3 \
+              -mno-3dnow
 SYSTEM_LDFLAGS=-O -nostdlib
 SYSTEM_ASFLAGS=-march=generic64
 
@@ -36,7 +39,14 @@ build/system/usertest.bin: system/usertest/usertest.S build/system/.dir
 	@${ECHO_LD} $@
 	@${LD} ${LDFLAGS} ${SYSTEM_LDFLAGS} build/system/usertest.o -o $@
 
-	rm build/system/usertest.o
+build/system/stub.o: system/stub.S build/system/.dir
+	@${ECHO_AS} $@
+	@${AS} ${ASFLAGS} ${SYSTEM_ASFLAGS} $< -o $@
 
-build/system.kit: build/system/hello.txt build/system/usertest.bin
-	ruby resources/build-util/kit-archive.rb build/system > $@
+include system/util/util.mk
+
+build/system.kit: build/system/hello.txt build/system/usertest.bin \
+                  ${SYSTEM_UTILS}
+	ruby resources/build-util/kit-archive.rb build/system \
+		$^ \
+		> $@
