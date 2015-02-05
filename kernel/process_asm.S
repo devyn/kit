@@ -1,3 +1,16 @@
+################################################################################
+#
+# kit/kernel/process_asm.S
+# - user process trampoline
+#
+# vim:ts=2:sw=2:et:tw=80:ft=asm
+#
+# Copyright (C) 2015, Devyn Cairns
+# Redistribution of this file is permitted under the terms of the simplified BSD
+# license. See LICENSE for more information.
+#
+################################################################################
+
 .section .data
 
 # XXX: this really isn't what we want to do, but whatever
