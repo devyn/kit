@@ -27,6 +27,17 @@
 #define FORMAT_PRINTF(string_index, first_to_check) \
   __attribute__((__format__ (__printf__, string_index, first_to_check)))
 
+
+// The following three are stolen from Linux. <3
+
+#define DEFINE(sym, val) \
+        __asm__ volatile("\n->" #sym " %0 " #val : : "i" (val))
+
+#define BLANK() __asm__ volatile("\n->" : : )
+
+#define OFFSET(sym, str, mem) \
+        DEFINE(sym, offsetof(struct str, mem));
+
 #endif
 
 #endif

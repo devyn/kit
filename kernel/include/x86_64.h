@@ -52,29 +52,33 @@ static inline void sti()
   __asm__ volatile("sti");
 }
 
-static inline void rep_stosb(void *pointer, uint8_t value, size_t count)
-{
-  int d0, d1; // black holes
-
-  __asm__ volatile("cld; rep stosb"
-                  : "=&D" (d0), "=&c" (d1)
-                  : "0" (pointer), "a" (value), "1" (count)
-                  : "memory");
-}
-
-static inline void rep_stosq(void *pointer, uint64_t value, size_t count)
-{
-  int d0, d1; // black holes
-
-  __asm__ volatile("cld; rep stosq"
-                  : "=&D" (d0), "=&c" (d1)
-                  : "0" (pointer), "a" (value), "1" (count)
-                  : "memory");
-}
-
 static inline void invlpg(void *pointer)
 {
   __asm__ volatile("invlpg (%0)" : : "r" (pointer));
+}
+
+#define IA32_EFER  0xC0000080
+#define IA32_STAR  0xC0000081
+#define IA32_LSTAR 0xC0000082
+#define IA32_CSTAR 0xC0000083
+#define IA32_FMASK 0xC0000084
+
+static inline uint64_t rdmsr(uint32_t msr)
+{
+  uint64_t rax;
+  uint64_t rdx;
+  
+  __asm__ volatile("rdmsr" : "=a" (rax), "=d" (rdx) : "c" (msr));
+
+  return (rax << 32) | rdx;
+}
+
+static inline void wrmsr(uint64_t value, uint32_t msr)
+{
+  uint64_t rax = value & ~((uint64_t) -1 << 32);
+  uint64_t rdx = value >> 32;
+
+  __asm__ volatile("wrmsr" : : "a" (rax), "d" (rdx), "c" (msr));
 }
 
 #endif

@@ -307,13 +307,9 @@ static int shell_command_run(int argc, char **argv)
 
   DEBUG_ASSERT(elf_load(elf, &process));
 
-  process.registers.rax = 0x0ff0;
-
   process_run(&process);
 
-  DEBUG_ASSERT(process.registers.rax == 0xf00f);
-
-  return 0;
+  return process.registers.rdi /* exit code */;
 }
 
 typedef struct shell_command

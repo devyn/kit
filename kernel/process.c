@@ -12,15 +12,20 @@
  ******************************************************************************/
 
 #include "process.h"
+#include "syscall.h"
 #include "string.h"
 #include "memory.h"
 #include "debug.h"
 
-uint16_t process_next_id;
+process_t *process_current;
+uint16_t   process_next_id;
 
 void process_initialize()
 {
+  process_current = NULL;
   process_next_id = 1;
+
+  syscall_initialize();
 }
 
 bool process_create(process_t *process, const char *name)
@@ -116,22 +121,30 @@ void process_set_entry_point(process_t *process, void *instruction)
   process->registers.rip = (uint64_t) instruction;
 }
 
-extern void process_asm_call(process_registers_t *registers);
+extern void process_asm_call();
 
 void process_run(process_t *process)
 {
+  // Make sure we aren't already running a process.
+  DEBUG_ASSERT(process_current == NULL);
+
+  // Make sure the process is ready to be run, and set it to RUNNING.
   DEBUG_ASSERT(process->state == PROCESS_STATE_LOADING);
 
   process->state = PROCESS_STATE_RUNNING;
 
+  // Set the current process.
+  process_current = process;
+
+  // Load the process's pageset.
   paging_pageset_t *old_pageset = paging_get_current_pageset();
 
   paging_set_current_pageset(&process->pageset);
 
-  process_registers_t *regs = &process->registers;
+  // Enter the process.
+  process_asm_call();
 
-  process_asm_call(regs);
-
+  // Print the process's registers. [DEBUG]
   DEBUG_FORMAT(
       "\n"
       " RAX=%lx RCX=%lx RDX=%lx RBX=%lx\n"
@@ -140,26 +153,31 @@ void process_run(process_t *process)
       " R12=%lx R13=%lx R14=%lx R15=%lx\n"
       " RIP=%lx\n"
       " EFLAGS=%x",
-      regs->rax,
-      regs->rcx,
-      regs->rdx,
-      regs->rbx,
-      regs->rsp,
-      regs->rbp,
-      regs->rsi,
-      regs->rdi,
-      regs->r8,
-      regs->r9,
-      regs->r10,
-      regs->r11,
-      regs->r12,
-      regs->r13,
-      regs->r14,
-      regs->r15,
-      regs->rip,
-      regs->eflags);
+      process->registers.rax,
+      process->registers.rcx,
+      process->registers.rdx,
+      process->registers.rbx,
+      process->registers.rsp,
+      process->registers.rbp,
+      process->registers.rsi,
+      process->registers.rdi,
+      process->registers.r8,
+      process->registers.r9,
+      process->registers.r10,
+      process->registers.r11,
+      process->registers.r12,
+      process->registers.r13,
+      process->registers.r14,
+      process->registers.r15,
+      process->registers.rip,
+      process->registers.eflags);
 
+  // Kill the process.
   process->state = PROCESS_STATE_DEAD; // XXX
 
+  // Set the current process to NULL (no process).
+  process_current = NULL;
+
+  // Load the original pageset.
   paging_set_current_pageset(old_pageset);
 }

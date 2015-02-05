@@ -13,7 +13,7 @@
 
 .section .text
 
-.set KIT_EXIT, 0x0
+.set SYSCALL_EXIT, 0x0
 
 .global _start
 _start:
@@ -25,7 +25,7 @@ _start:
   callq *%rcx
 
   mov %rax, %rdi # exit code
-  mov $KIT_EXIT, %rax
+  mov $SYSCALL_EXIT, %rax
   syscall
 
   # should not return
