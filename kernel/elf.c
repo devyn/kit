@@ -55,23 +55,25 @@ void elf_program_header_print(elf_program_header_t *ph)
   switch (ph->p_type)
   {
     case ELF_P_TYPE_NULL:
-      terminal_writestring("NULL    "); break;
+      terminal_writestring("NULL      "); break;
     case ELF_P_TYPE_LOAD:
-      terminal_writestring("LOAD    "); break;
+      terminal_writestring("LOAD      "); break;
     case ELF_P_TYPE_DYNAMIC:
-      terminal_writestring("DYNAMIC "); break;
+      terminal_writestring("DYNAMIC   "); break;
     case ELF_P_TYPE_INTERP:
-      terminal_writestring("INTERP  "); break;
+      terminal_writestring("INTERP    "); break;
     case ELF_P_TYPE_NOTE:
-      terminal_writestring("NOTE    "); break;
+      terminal_writestring("NOTE      "); break;
     case ELF_P_TYPE_SHLIB:
-      terminal_writestring("SHLIB   "); break;
+      terminal_writestring("SHLIB     "); break;
     case ELF_P_TYPE_PHDR:
-      terminal_writestring("PHDR    "); break;
+      terminal_writestring("PHDR      "); break;
     case ELF_P_TYPE_TLS:
-      terminal_writestring("TLS     "); break;
+      terminal_writestring("TLS       "); break;
+    case ELF_P_TYPE_GNU_STACK:
+      terminal_writestring("GNU_STACK "); break;
     default:
-      terminal_writestring("UNKNOWN ");
+      terminal_writestring("UNKNOWN   ");
   }
 
   terminal_writechar(ph->p_flags & ELF_P_FLAG_READ    ? 'r' : '-');
