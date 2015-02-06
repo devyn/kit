@@ -32,21 +32,13 @@ build/system/.dir: build/.dir
 build/system/hello.txt: system/hello.txt build/system/.dir
 	cp $< $@
 
-build/system/usertest.bin: system/usertest/usertest.S build/system/.dir
-	@${ECHO_AS} build/system/usertest.o
-	@${AS} ${ASFLAGS} ${SYSTEM_ASFLAGS} $< -o build/system/usertest.o
-
-	@${ECHO_LD} $@
-	@${LD} ${LDFLAGS} ${SYSTEM_LDFLAGS} build/system/usertest.o -o $@
-
 build/system/stub.o: system/stub.S build/system/.dir
 	@${ECHO_AS} $@
 	@${AS} ${ASFLAGS} ${SYSTEM_ASFLAGS} $< -o $@
 
 include system/util/util.mk
 
-build/system.kit: build/system/hello.txt build/system/usertest.bin \
-                  ${SYSTEM_UTILS}
+build/system.kit: build/system/hello.txt ${SYSTEM_UTILS}
 	ruby resources/build-util/kit-archive.rb build/system \
 		$^ \
 		> $@
