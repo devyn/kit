@@ -25,10 +25,11 @@ endif
 KERNEL_OBJECTS:=$(addprefix build/, $(patsubst %.c,%.o,$(wildcard kernel/*.c)))
 KERNEL_OBJECTS+=$(addprefix build/, $(patsubst %.S,%.o,$(wildcard kernel/*.S)))
 
-all-kernel: build/kernel/kernel.bin
+all-kernel: build/kernel.elf
 
 clean-kernel:
 	rm -rf build/kernel
+	rm -f build/kernel.elf
 
 .PHONY: all-kernel clean-kernel
 
@@ -36,9 +37,10 @@ build/kernel/.dir: build/.dir
 	mkdir -p build/kernel
 	touch build/kernel/.dir
 
-build/kernel/kernel.bin: ${KERNEL_OBJECTS} kernel/scripts/link.ld build/kernel/.dir
-	@${ECHO_LD} build/kernel/kernel.bin
-	@${LD} ${LDFLAGS} ${KERNEL_LDFLAGS} -T kernel/scripts/link.ld -o build/kernel/kernel.bin ${KERNEL_OBJECTS}
+build/kernel.elf: ${KERNEL_OBJECTS} kernel/scripts/link.ld
+	@${ECHO_LD} $@
+	@${LD} ${LDFLAGS} ${KERNEL_LDFLAGS} -T kernel/scripts/link.ld -o $@ \
+		${KERNEL_OBJECTS}
 
 build/kernel/%.o: kernel/%.S build/kernel/.dir
 	@${ECHO_AS} $@

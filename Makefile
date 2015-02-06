@@ -44,10 +44,10 @@ clean-iso:
 
 .PHONY: all-iso clean-iso
 
-build/kit.iso: resources/grub.cfg build/kernel/kernel.bin build/system.kit
+build/kit.iso: resources/grub.cfg build/kernel.elf build/system.kit
 	mkdir -p build/isodir/boot/grub
 	cp resources/grub.cfg build/isodir/boot/grub/grub.cfg
-	cp build/kernel/kernel.bin build/isodir/boot/kernel.bin
+	cp build/kernel.elf build/isodir/boot/kernel.elf
 	cp build/system.kit build/isodir/boot/system.kit
 	grub-mkimage --format=i386-pc --output=build/core.img \
 		--config=build/isodir/boot/grub/grub.cfg biosdisk iso9660 normal multiboot
