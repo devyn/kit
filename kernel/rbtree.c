@@ -102,6 +102,8 @@ static inline void rbtree_replace_node(rbtree_t *tree,
 
 static inline void rbtree_rotate_left(rbtree_t *tree, rbtree_node_t *node)
 {
+  DEBUG_ASSERT(node->right != NULL);
+
   rbtree_node_t *saved_right_left = node->right->left;
 
   node->right->left = node;
@@ -123,6 +125,8 @@ static inline void rbtree_rotate_left(rbtree_t *tree, rbtree_node_t *node)
 
 static inline void rbtree_rotate_right(rbtree_t *tree, rbtree_node_t *node)
 {
+  DEBUG_ASSERT(node->left != NULL);
+
   rbtree_node_t *saved_left_right = node->left->right;
 
   node->left->right = node;
@@ -373,8 +377,9 @@ void rbtree_delete(rbtree_t *tree, rbtree_node_t *node) {
      */
     if (current->parent->color == RBTREE_COLOR_BLACK &&
         sibling->color         == RBTREE_COLOR_BLACK &&
-        ((sibling->left == NULL && sibling->right == NULL) ||
-         (sibling->left->color  == RBTREE_COLOR_BLACK &&
+        ((sibling->left == NULL ||
+          sibling->left->color == RBTREE_COLOR_BLACK) &&
+         (sibling->right == NULL ||
           sibling->right->color == RBTREE_COLOR_BLACK)))
     {
       sibling->color = RBTREE_COLOR_RED;
@@ -392,6 +397,8 @@ case456:
 
   sibling = rbtree_node_sibling(current);
 
+  DEBUG_ASSERT(sibling->color == RBTREE_COLOR_BLACK);
+
   /**
    * Case 4: sibling and sibling's children are black, but parent is red. Swap
    * the colors of sibling and parent. This doesn't affect sibling's path,
@@ -399,9 +406,9 @@ case456:
    * done.
    */
   if (current->parent->color == RBTREE_COLOR_RED &&
-      sibling->color         == RBTREE_COLOR_BLACK &&
-      ((sibling->left == NULL && sibling->right == NULL) ||
-       (sibling->left->color  == RBTREE_COLOR_BLACK &&
+      ((sibling->left == NULL ||
+        sibling->left->color == RBTREE_COLOR_BLACK) &&
+       (sibling->right == NULL ||
         sibling->right->color == RBTREE_COLOR_BLACK)))
   {
     sibling->color         = RBTREE_COLOR_RED;
@@ -426,10 +433,15 @@ case456:
    *                        \
    *                         R
    */
-  DEBUG_ASSERT(sibling->color == RBTREE_COLOR_BLACK);
+  DEBUG_ASSERT(
+      (sibling->left != NULL &&
+       sibling->left->color == RBTREE_COLOR_RED) ||
+      (sibling->right != NULL &&
+       sibling->right->color == RBTREE_COLOR_RED));
 
   if (current == current->parent->left &&
-      sibling->right->color == RBTREE_COLOR_BLACK)
+      (sibling->right == NULL ||
+       sibling->right->color == RBTREE_COLOR_BLACK))
   {
     sibling->color       = RBTREE_COLOR_RED;
     sibling->left->color = RBTREE_COLOR_BLACK;
@@ -438,7 +450,8 @@ case456:
     sibling = sibling->parent;
   }
   else if (current == current->parent->right &&
-           sibling->left->color == RBTREE_COLOR_BLACK)
+           (sibling->left == NULL ||
+            sibling->left->color == RBTREE_COLOR_BLACK))
   {
     sibling->color        = RBTREE_COLOR_RED;
     sibling->right->color = RBTREE_COLOR_BLACK;
@@ -479,11 +492,17 @@ case456:
 
   if (current == current->parent->left)
   {
+    DEBUG_ASSERT(sibling->right != NULL &&
+        sibling->right->color == RBTREE_COLOR_RED);
+
     sibling->right->color = RBTREE_COLOR_BLACK;
     rbtree_rotate_left(tree, current->parent);
   }
   else
   {
+    DEBUG_ASSERT(sibling->left != NULL &&
+        sibling->left->color == RBTREE_COLOR_RED);
+
     sibling->left->color = RBTREE_COLOR_BLACK;
     rbtree_rotate_right(tree, current->parent);
   }

@@ -48,8 +48,10 @@
   { \
     terminal_printf("%s:%d(%s): assertion failed: %s\n", \
         __FILE__, __LINE__, __func__, #condition); \
-    cli(); \
-    hlt(); \
+    while (1) { \
+      cli(); \
+      hlt(); \
+    } \
   }
 
 #endif
