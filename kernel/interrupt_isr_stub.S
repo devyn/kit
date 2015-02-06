@@ -94,27 +94,27 @@ interrupt_isr_stub_\index:
   jmp interrupt_isr_stub_common
 .endm
 
-ISR_NOERRCODE 0
-ISR_NOERRCODE 1
-ISR_NOERRCODE 2
-ISR_NOERRCODE 3
-ISR_NOERRCODE 4
-ISR_NOERRCODE 5
-ISR_NOERRCODE 6
-ISR_NOERRCODE 7
+ISR_NOERRCODE 0  # Divide by zero error
+ISR_NOERRCODE 1  # Debug
+ISR_NOERRCODE 2  # Non-maskable interrupt
+ISR_NOERRCODE 3  # Breakpoint
+ISR_NOERRCODE 4  # Overflow
+ISR_NOERRCODE 5  # Bound range exceeded
+ISR_NOERRCODE 6  # Invalid opcode
+ISR_NOERRCODE 7  # Device not available
 ISR_ERRCODE   8  # Double fault
-ISR_NOERRCODE 9
+ISR_NOERRCODE 9  # Coprocessor segment overrun
 ISR_ERRCODE   10 # Invalid TSS
-ISR_NOERRCODE 11
-ISR_NOERRCODE 12
-ISR_NOERRCODE 13
+ISR_ERRCODE   11 # Segment not present
+ISR_ERRCODE   12 # Stack segment fault
+ISR_ERRCODE   13 # General protection fault
 ISR_ERRCODE   14 # Page fault
 ISR_NOERRCODE 15
-ISR_NOERRCODE 16
-ISR_NOERRCODE 17
-ISR_NOERRCODE 18
-ISR_NOERRCODE 19
-ISR_NOERRCODE 20
+ISR_NOERRCODE 16 # x87 floating point exception
+ISR_ERRCODE   17 # Alignment check
+ISR_NOERRCODE 18 # Machine check
+ISR_NOERRCODE 19 # SIMD floating point exception
+ISR_NOERRCODE 20 # Virtualization exception
 ISR_NOERRCODE 21
 ISR_NOERRCODE 22
 ISR_NOERRCODE 23
@@ -124,7 +124,7 @@ ISR_NOERRCODE 26
 ISR_NOERRCODE 27
 ISR_NOERRCODE 28
 ISR_NOERRCODE 29
-ISR_NOERRCODE 30
+ISR_ERRCODE   30 # Security exception
 ISR_NOERRCODE 31
 ISR_NOERRCODE 32
 ISR_NOERRCODE 33

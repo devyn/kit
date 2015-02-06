@@ -70,7 +70,7 @@ static inline uint64_t rdmsr(uint32_t msr)
   
   __asm__ volatile("rdmsr" : "=a" (rax), "=d" (rdx) : "c" (msr));
 
-  return (rax << 32) | rdx;
+  return (rdx << 32) | rax;
 }
 
 static inline void wrmsr(uint64_t value, uint32_t msr)
