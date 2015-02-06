@@ -39,7 +39,9 @@ static inline void lidt(void *pointer)
 
 static inline void hlt()
 {
-  __asm__ volatile("hlt");
+  // Clobber memory because it's possible that it changed during an interrupt
+  // handler or something.
+  __asm__ volatile("hlt" ::: "memory");
 }
 
 static inline void cli()
