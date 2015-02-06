@@ -51,9 +51,8 @@ bool archive_get(archive_header_t *header, const char *entry_name,
 
   while ((entry = archive_next(&iterator)) != NULL)
   {
-    if (memory_compare(&entry->name, entry_name,
-          (entry_name_length > entry->name_length ?
-           entry->name_length : entry_name_length)) == 0)
+    if (entry_name_length == entry->name_length &&
+        memory_compare(&entry->name, entry_name, entry_name_length) == 0)
     {
       *buffer = ((char *) header) + entry->offset;
       *length = entry->length;
