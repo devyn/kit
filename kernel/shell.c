@@ -30,10 +30,21 @@
 #include "test.h"
 #include "config.h"
 
+static int shell_last_exit_code = 0;
+
 static void shell_display_prompt(uint64_t lineno)
 {
   terminal_writechar('\n');
-  terminal_setcolor(COLOR_BLACK, COLOR_GREEN);
+
+  if (shell_last_exit_code == 0)
+  {
+    terminal_setcolor(COLOR_BLACK, COLOR_GREEN);
+  }
+  else
+  {
+    terminal_setcolor(COLOR_BLACK, COLOR_RED);
+  }
+
   terminal_printf("[%lu]", lineno);
   terminal_setcolor(COLOR_WHITE, COLOR_BLACK);
   terminal_writechar(' ');
@@ -383,7 +394,7 @@ static void shell_execute(const char *command)
     if (string_compare(shell_commands[i].name, argv[0]) == 0)
     {
       // We found it.
-      shell_commands[i].main(argc, argv);
+      shell_last_exit_code = shell_commands[i].main(argc, argv);
       return;
     }
   }
@@ -391,6 +402,7 @@ static void shell_execute(const char *command)
   // We didn't find it.
   terminal_setcolor(COLOR_RED, COLOR_BLACK);
   terminal_printf("E: command not found: %s\n", argv[0]);
+  shell_last_exit_code = 127;
 }
 
 void shell()
