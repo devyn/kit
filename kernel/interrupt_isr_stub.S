@@ -175,10 +175,14 @@ interrupt_isr_stub_common:
   mov %ax, %gs
 
   # Align the stack
-  and  $-16, %rsp
+  mov %rsp, %rbp
+  and $-16, %rsp
 
   # Execute interrupt handler
   call interrupt_handler
+
+  # Reset the stack
+  mov %rbp, %rsp
 
   # Reload data selector
   pop %rax

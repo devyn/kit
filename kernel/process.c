@@ -212,7 +212,8 @@ void process_run(process_t *process)
   // Enter the process.
   process_asm_call();
 
-  // Print the process's registers. [DEBUG]
+#ifdef PROCESS_DEBUG
+  // Print the process's registers.
   DEBUG_FORMAT(
       "\n"
       " RAX=%lx RCX=%lx RDX=%lx RBX=%lx\n"
@@ -239,6 +240,7 @@ void process_run(process_t *process)
       process->registers.r15,
       process->registers.rip,
       process->registers.eflags);
+#endif
 
   // Kill the process.
   process->state = PROCESS_STATE_DEAD; // XXX

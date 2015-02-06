@@ -168,9 +168,19 @@ void terminal_writechar(char c)
   terminal_updatecursor();
 }
 
+void terminal_writebuf(uint64_t length, const char *buffer)
+{
+  for (uint64_t i = 0; i < length; i++)
+  {
+    terminal_writechar_internal(buffer[i]);
+  }
+
+  terminal_updatecursor();
+}
+
 void terminal_writestring(const char *data)
 {
-  for (ptrdiff_t i = 0; data[i] != '\0'; i++)
+  for (size_t i = 0; data[i] != '\0'; i++)
   {
     terminal_writechar_internal(data[i]);
   }

@@ -11,6 +11,8 @@
  *
  ******************************************************************************/
 
+#define SYSCALL_C
+
 #include <stdint.h>
 
 #include "syscall.h"
@@ -18,6 +20,8 @@
 #include "process.h"
 #include "x86_64.h"
 #include "gdt.h"
+
+#include "terminal.h"
 
 // IA32_EFER.SCE (SysCall Enable); bit #0
 #define IA32_EFER_SCE 0x1
@@ -59,4 +63,10 @@ void syscall_initialize()
 
   // Load FMASK with the flag mask.
   wrmsr(SYSCALL_FLAG_MASK, IA32_FMASK);
+}
+
+int syscall_twrite(uint64_t length, const char *buffer)
+{
+  terminal_writebuf(length, buffer);
+  return 0;
 }
