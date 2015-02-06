@@ -59,6 +59,8 @@ bool process_create(process_t *process, const char *name);
 void *process_alloc(process_t *process, void *address, uint64_t length,
     paging_flags_t flags);
 
+bool process_set_args(process_t *process, int argc, char **argv);
+
 void process_set_entry_point(process_t *process, void *instruction);
 
 void process_run(process_t *process);

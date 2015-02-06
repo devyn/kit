@@ -278,7 +278,7 @@ static int shell_command_run(int argc, char **argv)
 {
   if (argc < 2)
   {
-    terminal_writestring(" Usage: run <file>\n");
+    terminal_writestring(" Usage: run <file> [args]\n");
     return 1;
   }
 
@@ -306,6 +306,8 @@ static int shell_command_run(int argc, char **argv)
   DEBUG_ASSERT(process_create(&process, argv[1]));
 
   DEBUG_ASSERT(elf_load(elf, &process));
+
+  DEBUG_ASSERT(process_set_args(&process, argc - 1, argv + 1));
 
   process_run(&process);
 

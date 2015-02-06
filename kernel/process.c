@@ -11,6 +11,8 @@
  *
  ******************************************************************************/
 
+#include <stddef.h>
+
 #include "process.h"
 #include "syscall.h"
 #include "string.h"
@@ -112,6 +114,72 @@ void *process_alloc(process_t *process, void *address, uint64_t length,
 
   // Done. Return the padded address.
   return padded_address.pointer;
+}
+
+bool process_set_args(process_t *process, int argc, char **argv)
+{
+  // If there are a negative number of args, return an error.
+  if (argc < 0)
+  {
+    return false;
+  }
+
+  // If there are exactly zero args, just set r8 to argc and r9 to NULL.
+  if (argc == 0)
+  {
+    process->registers.r8 = argc;
+    process->registers.r9 = (uint64_t) NULL;
+    return true;
+  }
+
+  // Count the number of total bytes that will be needed to store the strings
+  // and the pointer array.
+  size_t total_bytes = 0;
+
+  for (int i = 0; i < argc; i++)
+  {
+    total_bytes += sizeof(char *) + string_length(argv[i]) + 1;
+  }
+
+  // Allocate memory within the process by subtracting from a known pointer
+  // value and aligning to page.
+  uint64_t intended_base = (0x7feeffffffff - total_bytes) & (-1 << 12);
+
+  void *base = process_alloc(process, (void *) intended_base, total_bytes, 0);
+
+  if (base == NULL)
+  {
+    return false;
+  }
+
+  // Load the process's pageset.
+  paging_pageset_t *old_pageset = paging_get_current_pageset();
+
+  paging_set_current_pageset(&process->pageset);
+
+  // Copy the args.
+  char **pointer_array = (char **) base;
+  char  *data          = (char  *) (pointer_array + argc);
+
+  for (int i = 0; i < argc; i++)
+  {
+    pointer_array[i] = data;
+
+    for (char *arg = argv[i]; *arg != '\0'; data++, arg++)
+    {
+      *data = *arg;
+    }
+    *(data++) = '\0';
+  }
+
+  // Set argc, argv.
+  process->registers.r8 = argc;
+  process->registers.r9 = (uint64_t) pointer_array;
+
+  // Restore old pageset.
+  paging_set_current_pageset(old_pageset);
+
+  return true;
 }
 
 void process_set_entry_point(process_t *process, void *instruction)
