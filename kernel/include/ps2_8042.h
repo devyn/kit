@@ -32,20 +32,20 @@ void ps2_8042_write_to_keyboard(uint8_t data);
 
 typedef struct PACKED ps2_8042_status
 {
-  int output_full : 1;
-  int input_full  : 1;
-  int system_ok   : 1;
+  uint8_t output_full : 1;
+  uint8_t input_full  : 1;
+  uint8_t system_ok   : 1;
 
   enum {
     PS2_8042_MODE_COMMAND = 0,
     PS2_8042_MODE_DATA    = 1
   } data_mode : 1;
 
-  int unknown1    : 1;
-  int unknown2    : 1;
+  uint8_t unknown1    : 1;
+  uint8_t unknown2    : 1;
 
-  int timeout_err : 1;
-  int parity_err  : 1;
+  uint8_t timeout_err : 1;
+  uint8_t parity_err  : 1;
 } ps2_8042_status_t;
 
 ps2_8042_status_t ps2_8042_read_status();
@@ -59,14 +59,14 @@ void ps2_8042_cpu_reset();
 
 typedef struct PACKED ps2_8042_config
 {
-  int device1_irq_enabled : 1;
-  int device2_irq_enabled : 1;
-  int system_ok           : 1;
-  int zero1               : 1;
-  int device1_clock       : 1;
-  int device2_clock       : 1;
-  int device1_translate   : 1;
-  int zero2               : 1;
+  uint8_t device1_irq_enabled : 1;
+  uint8_t device2_irq_enabled : 1;
+  uint8_t system_ok           : 1;
+  uint8_t zero1               : 1;
+  uint8_t device1_clock       : 1;
+  uint8_t device2_clock       : 1;
+  uint8_t device1_translate   : 1;
+  uint8_t zero2               : 1;
 } ps2_8042_config_t;
 
 ps2_8042_config_t ps2_8042_read_config();
