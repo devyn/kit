@@ -40,5 +40,5 @@ include system/util/util.mk
 
 build/system.kit: build/system/hello.txt ${SYSTEM_UTILS}
 	ruby resources/build-util/kit-archive.rb build/system \
-		$^ \
+		$(patsubst build/system/%,%,$^) \
 		> $@

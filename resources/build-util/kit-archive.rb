@@ -4,9 +4,9 @@ abort "Usage: #$0 <system-dir> <files>" unless ARGV.size >= 2 and
                                         File.directory?(ARGV[0])
 
 system_dir = File.expand_path(ARGV[0])
-files      = ARGV[1..-1].map { |f| File.expand_path(f) }
+files      = ARGV[1..-1]
 
-Entry = Struct.new(:file, :name, :offset, :size)
+Entry = Struct.new(:name, :offset, :size)
 
 entries = []
 
@@ -15,17 +15,13 @@ warn "\e[1;34m# \e[0;1mBuilding entry list\e[0m"
 offset = 0
 
 files.each do |file|
-  next unless File.file?(file)
+  path = File.join(system_dir, file)
 
-  unless file.start_with? "#{system_dir}/"
-    warn "  Skipping #{file} (not in system-dir)"
-    next
-  end
+  abort " file not found: #{file}" unless File.file?(path)
 
-  size = File.size(file)
+  size = File.size(path)
 
-  entries << Entry.new(file, file.sub(/^#{Regexp.escape(system_dir)}\/?/,''),
-                       offset, size)
+  entries << Entry.new(file, offset, size)
 
   offset += size
 end
@@ -71,7 +67,7 @@ entries.each do |entry|
 
   written = 0
 
-  File.open(entry.file, "rb") do |file|
+  File.open(File.join(system_dir, entry.name), "rb") do |file|
     until file.eof?
       s = file.read(4096)
       $stdout << s
