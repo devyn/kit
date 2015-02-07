@@ -34,8 +34,8 @@ process_asm_call:
   push %r14
   push %r15
 
-  # Save our current stack
-  mov %rsp, syscall_stack
+  # Save our current stack to the TSS.
+  mov %rsp, tss_stack
 
   # Load the current process's registers' base address into R15.
   mov process_current,                  %r15

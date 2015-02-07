@@ -1,0 +1,4 @@
+symbol-file build/kernel.elf
+set arch i386:x86-64
+target remote localhost:1234
+set arch i386:x86-64

@@ -20,7 +20,8 @@ typedef enum gdt_selector
   GDT_SEL_KERNEL_DATA   = 0x10,
   GDT_SEL_USER_CODE_32  = 0x1b,
   GDT_SEL_USER_DATA     = 0x23,
-  GDT_SEL_USER_CODE_64  = 0x2b
+  GDT_SEL_USER_CODE_64  = 0x2b,
+  GDT_SEL_KERNEL_TSS    = 0x30
 } gdt_selector_t;
 
 typedef enum gdt_privilege

@@ -32,9 +32,6 @@
 // Not intended to be called.
 extern void syscall_handler();
 
-// A pointer to the stack to be used by the syscall handler.
-void *syscall_stack;
-
 // For the syscall handler.
 const size_t SYSCALL_OFFSET_PROCESS_REGISTERS = offsetof(process_t, registers);
 

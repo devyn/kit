@@ -22,6 +22,7 @@ SSE_INIT: .long 0x1d00
 # GDT-related constants
 .set KERNEL_CODE_SEL, 0x08
 .set KERNEL_DATA_SEL, 0x10
+.set KERNEL_TSS_SEL,  0x30
 
 # Virtual memory offset
 .set KERNEL_VMA, 0xffffffff80000000
@@ -60,6 +61,32 @@ _bootstrap64:
   lretq
 
 .LafterLGDT:
+  # Initialize TSS segment.
+  mov $(KERNEL_VMA + gdt64 + KERNEL_TSS_SEL), %rbx
+  mov $(KERNEL_VMA + tss64),                  %rax
+
+  mov %ax,   2(%rbx) # Base (15:0)
+  shr $16,     %rax
+  mov %al,   4(%rbx) # Base (23:16)
+  shr $8,      %rax
+  mov %al,   7(%rbx) # Base (31:24)
+  shr $8,      %rax
+  mov %eax,  8(%rbx) # Base (63:32)
+
+  mov $tss64_limit, %rax
+  mov %ax,         (%rbx) # Limit (15:0)
+  shr $16,          %rax
+  and $0x0f,        %al
+  mov 6(%rbx),      %dl
+  and $0xf0,        %dl
+  or  %dl,          %al
+  mov %al,        6(%rbx) # Limit (19:16)
+
+  # Load task register.
+  xor %eax, %eax
+  mov $KERNEL_TSS_SEL, %ax
+  ltr %ax
+
   # Initialize FPU.
   movq %cr0, %rax
   andq $0xfffffffffffffff3, %rax # Clear CR0.TS and CR0.EM

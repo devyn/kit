@@ -60,8 +60,8 @@ syscall_handler:
   mov rax_temp, %r12
   mov %r12,     0x00(%rax)
 
-  # Load the syscall stack.
-  mov syscall_stack, %rsp
+  # Load the stack for ring 0 from the TSS.
+  mov tss_stack, %rsp
 
   # If R12 (syscall no.) is zero, this is SYSCALL_EXIT which we emulate right
   # here.
@@ -106,7 +106,7 @@ syscall_handler:
 .Lsysret:
   # Now we can return to the system. The result should be in RAX, so don't touch
   # that. First, let's save the stack:
-  mov %rsp, syscall_stack
+  mov %rsp, tss_stack
 
   # Set up the segment registers.
   mov $USER_DATA_SEL, %bx

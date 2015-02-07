@@ -173,6 +173,7 @@ interrupt_isr_stub_common:
   mov %ax, %es
   mov %ax, %fs
   mov %ax, %gs
+  mov %ax, %ss # to replace the hacky NULL selector one
 
   # Align the stack
   mov %rsp, %rbp

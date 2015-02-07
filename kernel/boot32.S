@@ -32,6 +32,7 @@
 .set   USER_CD32_SEL, 0x1b
 .set   USER_DATA_SEL, 0x23
 .set   USER_CD64_SEL, 0x2b
+.set KERNEL_TSS_SEL,  0x30
 
 # Declare a header as in the Multiboot Standard. We put this into a special
 # section so we can force the header to be in the start of the final program.
@@ -59,6 +60,8 @@ stack_top:
 .align 4096
 .global gdt64
 gdt64:
+
+# 0000
 gdt64_null:
   .word 0             # Limit (low)
   .word 0             # Base (low)
@@ -67,6 +70,7 @@ gdt64_null:
   .byte 0             # low nibble: Limit (high)
   .byte 0             # Base (high)
 
+# 0008
 gdt64_kernel_code:
   .word 0             # Limit (low)
   .word 0             # Base (low)
@@ -75,6 +79,7 @@ gdt64_kernel_code:
   .byte 0b00100000    # high nibble: Long mode bit set, low nibble: Limit (high)
   .byte 0             # Base (high)
 
+# 0010
 gdt64_kernel_data:
   .word 0             # Limit (low)
   .word 0             # Base (low)
@@ -83,6 +88,7 @@ gdt64_kernel_data:
   .byte 0b00000000    # low nibble: Limit (high)
   .byte 0             # Base (high)
 
+# 0018
 gdt64_user_code_32:
   .word 0             # Limit (low)
   .word 0             # Base (low)
@@ -91,6 +97,7 @@ gdt64_user_code_32:
   .byte 0b00000000    # high nibble: Long mode clear, low nibble: Limit (high)
   .byte 0             # Base (high)
 
+# 0020
 gdt64_user_data:
   .word 0             # Limit (low)
   .word 0             # Base (low)
@@ -99,6 +106,7 @@ gdt64_user_data:
   .byte 0b00000000    # low nibble: Limit (high)
   .byte 0             # Base (high)
 
+# 0028
 gdt64_user_code_64:
   .word 0             # Limit (low)
   .word 0             # Base (low)
@@ -107,10 +115,47 @@ gdt64_user_code_64:
   .byte 0b00100000    # high nibble: Long mode bit set, low nibble: Limit (high)
   .byte 0             # Base (high)
 
+# To be initialized later.
+# 0030
+gdt64_tss:
+  .word 0             # Limit (low)
+  .word 0             # Base (15:0)
+  .byte 0             # Base (23:16)
+  .byte 0b10001001    # Present, Type: non-busy TSS64, ring 0
+  .byte 0b00000000    # high nibble: nothing, low nibble: Limit (high)
+  .byte 0             # Base (31:24)
+  .long 0             # Base (63:32)
+  .long 0             # Reserved
+
 .global gdt64_pointer
 gdt64_pointer:
   .word . - gdt64 - 1      # Limit
   .quad gdt64              # Base (will be read as 32-bit the first time)
+
+.global tss64
+tss64:
+  .long 0             # Reserved
+  .quad 0             # RSP0
+  .quad 0             # RSP1
+  .quad 0             # RSP2
+  .quad 0             # Reserved
+  .quad 0             # IST1
+  .quad 0             # IST2
+  .quad 0             # IST3
+  .quad 0             # IST4
+  .quad 0             # IST5
+  .quad 0             # IST6
+  .quad 0             # IST7
+  .quad 0             # Reserved
+  .word 0             # Reserved
+  .word tss64_limit   # I/O Map Base Address (default out of TSS limit)
+
+.global tss64_limit
+.set tss64_limit, . - tss64 - 1
+
+# For convenience.
+.global tss_stack
+.set tss_stack, KERNEL_VMA + tss64 + 4
 
 .section .data
 
