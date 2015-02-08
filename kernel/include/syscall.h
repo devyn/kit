@@ -14,6 +14,10 @@
 #ifndef SYSCALL_H
 #define SYSCALL_H
 
+#include <stdint.h>
+
+#include "keyboard.h"
+
 void syscall_initialize();
 
 #define SYSCALL_EXIT 0x0
@@ -22,11 +26,15 @@ void syscall_initialize();
 #define SYSCALL_TWRITE 0x1
   int syscall_twrite(uint64_t length, const char *buffer);
 
+#define SYSCALL_KEY_GET 0x2
+  int syscall_key_get(keyboard_event_t *event);
+
 #ifdef SYSCALL_C
   const uint64_t syscall_table[] =
   {
     0, // SYSCALL_EXIT
     (uint64_t) &syscall_twrite,
+    (uint64_t) &syscall_key_get,
   };
   const uint64_t syscall_table_size = sizeof(syscall_table)/8;
 #else

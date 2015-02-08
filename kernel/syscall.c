@@ -13,8 +13,6 @@
 
 #define SYSCALL_C
 
-#include <stdint.h>
-
 #include "syscall.h"
 #include "config.h"
 #include "process.h"
@@ -22,6 +20,7 @@
 #include "gdt.h"
 
 #include "terminal.h"
+#include "interrupt.h"
 
 // IA32_EFER.SCE (SysCall Enable); bit #0
 #define IA32_EFER_SCE 0x1
@@ -65,5 +64,13 @@ void syscall_initialize()
 int syscall_twrite(uint64_t length, const char *buffer)
 {
   terminal_writebuf(length, buffer);
+  return 0;
+}
+
+int syscall_key_get(keyboard_event_t *event)
+{
+  interrupt_enable();
+  keyboard_wait_dequeue(event);
+  interrupt_disable();
   return 0;
 }
