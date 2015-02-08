@@ -145,6 +145,12 @@ void keyboard_handle_keypress(uint8_t keycode)
   // if so.
   switch (keycode)
   {
+    case KEYBOARD_KC_CTRL:
+      keyboard_ctrl_down  = true;
+      break;
+    case KEYBOARD_KC_ALT:
+      keyboard_alt_down   = true;
+      break;
     case KEYBOARD_KC_SHIFT:
       keyboard_shift_down = true;
       break;
@@ -171,6 +177,12 @@ void keyboard_handle_keyrelease(uint8_t keycode)
   // flag if so.
   switch (keycode)
   {
+    case KEYBOARD_KC_CTRL:
+      keyboard_ctrl_down  = false;
+      break;
+    case KEYBOARD_KC_ALT:
+      keyboard_alt_down   = false;
+      break;
     case KEYBOARD_KC_SHIFT:
       keyboard_shift_down = false;
       break;

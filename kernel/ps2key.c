@@ -33,10 +33,10 @@ static const uint8_t ps2key_noprefix_usqwerty_map[128] = {
   /*0E*/ (1  << 5) + 0,   // ` (backtick)
   /*0F*/ 0xFF,            // TODO
   /*10*/ 0xFF,            // TODO
-  /*11*/ 0xFF,            // TODO
+  /*11*/ (5  << 5) + 2,   // Left Alt
   /*12*/ (4  << 5) + 0,   // Left Shift
   /*13*/ 0xFF,            // TODO
-  /*14*/ 0xFF,            // TODO
+  /*14*/ (5  << 5) + 0,   // Left Control
   /*15*/ (2  << 5) + 1,   // q
   /*16*/ (1  << 5) + 1,   // 1
   /*17*/ 0xFF,            // TODO

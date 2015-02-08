@@ -17,6 +17,8 @@
 #include <stdint.h>
 #include <stdbool.h>
 
+#define KEYBOARD_KC_CTRL  ((5 << 5) + 0)
+#define KEYBOARD_KC_ALT   ((5 << 5) + 2)
 #define KEYBOARD_KC_SHIFT ((4 << 5) + 0)
 
 typedef struct keyboard_event
