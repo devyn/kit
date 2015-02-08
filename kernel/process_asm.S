@@ -48,6 +48,7 @@ process_asm_call:
   push  %rcx
 
   mov   0x88(%r15), %ecx # EFLAGS
+  or    $(1 << 9),  %ecx # make sure interrupts are enabled
   push  %rcx
 
   pushq $USER_CD64_SEL # CS

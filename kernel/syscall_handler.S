@@ -134,6 +134,9 @@ syscall_handler:
   mov %ss:0x70(%r15), %r14
   mov %ss:0x78(%r15), %r15
 
+  # Make sure interrupts are enabled in the user process's EFLAGS.
+  or  $(1 << 9),      %r11d
+
   # Everything should be in order now. Return to the user process.
   sysretq
 
