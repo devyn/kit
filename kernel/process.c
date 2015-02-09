@@ -15,12 +15,26 @@
 
 #include "process.h"
 #include "syscall.h"
+#include "scheduler.h"
 #include "string.h"
 #include "memory.h"
 #include "debug.h"
 
-process_t *process_current;
-uint16_t   process_next_id;
+void *process_original_ksp;
+
+uint16_t process_next_id;
+
+extern void *process_asm_prepare(void *stack_pointer);
+
+extern void process_asm_switch(void **old_stack_pointer,
+    void *new_stack_pointer);
+
+// Offsets for access from assembly.
+const size_t PROCESS_OFFSET_KERNEL_STACK_POINTER =
+  offsetof(process_t, kernel_stack_pointer);
+
+const size_t PROCESS_OFFSET_REGISTERS =
+  offsetof(process_t, registers);
 
 void process_initialize()
 {
@@ -48,7 +62,21 @@ bool process_create(process_t *process, const char *name)
     return false;
   }
 
-  // Set up the stack
+  // Set up the kernel stack
+  process->kernel_stack_base = memory_alloc_aligned(2048, 16);
+
+  if (process->kernel_stack_base == NULL)
+  {
+    return false;
+  }
+
+  process->kernel_stack_pointer =
+    (void *) ((uintptr_t) process->kernel_stack_base + 2048);
+
+  process->kernel_stack_pointer =
+    process_asm_prepare(process->kernel_stack_pointer);
+
+  // Set up the user stack
   process->registers.rsp = 0x7ffffffff000;
 
   if (process_alloc(process, (void *) (process->registers.rsp - 8192), 8192, 0)
@@ -189,65 +217,51 @@ void process_set_entry_point(process_t *process, void *instruction)
   process->registers.rip = (uint64_t) instruction;
 }
 
-extern void process_asm_call();
+void process_switch(process_t *process)
+{
+  if (process != NULL)
+  {
+    DEBUG_FORMAT("-> [%hu] %s", process->id, process->name);
+
+    DEBUG_ASSERT(process->state == PROCESS_STATE_RUNNING);
+
+    process_t *old_process = process_current;
+
+    process_current = process;
+
+    paging_set_current_pageset(&process->pageset);
+
+    if (old_process != NULL)
+    {
+      process_asm_switch(&old_process->kernel_stack_pointer,
+          process->kernel_stack_pointer);
+    }
+    else
+    {
+      process_asm_switch(&process_original_ksp,
+          process->kernel_stack_pointer);
+    }
+  }
+  else if (process_current != NULL)
+  {
+    DEBUG_MESSAGE("-> kernel");
+
+    process_t *old_process = process_current;
+
+    process_current = NULL;
+
+    paging_set_current_pageset(&paging_kernel_pageset);
+
+    process_asm_switch(&old_process->kernel_stack_pointer,
+        process_original_ksp);
+  }
+}
 
 void process_run(process_t *process)
 {
-  // Make sure we aren't already running a process.
-  DEBUG_ASSERT(process_current == NULL);
-
-  // Make sure the process is ready to be run, and set it to RUNNING.
   DEBUG_ASSERT(process->state == PROCESS_STATE_LOADING);
 
   process->state = PROCESS_STATE_RUNNING;
 
-  // Set the current process.
-  process_current = process;
-
-  // Load the process's pageset.
-  paging_pageset_t *old_pageset = paging_get_current_pageset();
-
-  paging_set_current_pageset(&process->pageset);
-
-  // Enter the process.
-  process_asm_call();
-
-#ifdef PROCESS_DEBUG
-  // Print the process's registers.
-  DEBUG_FORMAT(
-      "\n"
-      " RAX=%lx RCX=%lx RDX=%lx RBX=%lx\n"
-      " RSP=%lx RBP=%lx RSI=%lx RDI=%lx\n"
-      " R8 =%lx R9 =%lx R10=%lx R11=%lx\n"
-      " R12=%lx R13=%lx R14=%lx R15=%lx\n"
-      " RIP=%lx\n"
-      " EFLAGS=%x",
-      process->registers.rax,
-      process->registers.rcx,
-      process->registers.rdx,
-      process->registers.rbx,
-      process->registers.rsp,
-      process->registers.rbp,
-      process->registers.rsi,
-      process->registers.rdi,
-      process->registers.r8,
-      process->registers.r9,
-      process->registers.r10,
-      process->registers.r11,
-      process->registers.r12,
-      process->registers.r13,
-      process->registers.r14,
-      process->registers.r15,
-      process->registers.rip,
-      process->registers.eflags);
-#endif
-
-  // Kill the process.
-  process->state = PROCESS_STATE_DEAD; // XXX
-
-  // Set the current process to NULL (no process).
-  process_current = NULL;
-
-  // Load the original pageset.
-  paging_set_current_pageset(old_pageset);
+  scheduler_enqueue_run(process);
 }

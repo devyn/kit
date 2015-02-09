@@ -16,6 +16,7 @@
 #include "keyboard.h"
 #include "debug.h"
 #include "memory.h"
+#include "scheduler.h"
 #include "x86_64.h"
 
 /**
@@ -94,6 +95,26 @@ static inline char keyboard_get_keychar(uint8_t keycode)
   return keychar;
 }
 
+process_t *keyboard_blocked_process = NULL;
+
+static bool keyboard_wake_blocked()
+{
+  if (keyboard_blocked_process != NULL)
+  {
+    process_t *process = keyboard_blocked_process;
+
+    keyboard_blocked_process = NULL;
+
+    scheduler_wake(process);
+
+    return true;
+  }
+  else
+  {
+    return false;
+  }
+}
+
 bool keyboard_enqueue(const keyboard_event_t *event)
 {
   if (keyboard_queue.end != keyboard_queue.start - 1)
@@ -104,6 +125,8 @@ bool keyboard_enqueue(const keyboard_event_t *event)
     // Wrap around.
     if (++keyboard_queue.end >= keyboard_queue.length)
       keyboard_queue.end = 0;
+
+    keyboard_wake_blocked();
 
     return true;
   }
@@ -137,6 +160,16 @@ bool keyboard_dequeue(keyboard_event_t *event)
 void keyboard_wait_dequeue(keyboard_event_t *event)
 {
   while (!keyboard_dequeue(event)) hlt();
+}
+
+void keyboard_sleep_dequeue(keyboard_event_t *event)
+{
+  if (!keyboard_dequeue(event))
+  {
+    keyboard_blocked_process = process_current;
+    scheduler_sleep();
+    keyboard_dequeue(event);
+  }
 }
 
 void keyboard_handle_keypress(uint8_t keycode)

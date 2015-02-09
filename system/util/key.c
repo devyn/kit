@@ -78,9 +78,6 @@ int main(UNUSED int argc, UNUSED char **argv)
     event_info[5] = '\n';
 
     syscall_twrite(sizeof(event_info), event_info);
-
-    // Slowdown is intentional in order to capture IRQs during user mode.
-    for (int i = 0; i < 40000000; i++) __asm__ volatile("mfence");
   }
 
   return 0;

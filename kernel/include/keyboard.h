@@ -37,6 +37,7 @@ void keyboard_initialize();
 bool keyboard_enqueue(const keyboard_event_t *event);
 bool keyboard_dequeue(keyboard_event_t *event);
 void keyboard_wait_dequeue(keyboard_event_t *event);
+void keyboard_sleep_dequeue(keyboard_event_t *event);
 
 void keyboard_handle_keypress(uint8_t keycode);
 void keyboard_handle_keyrelease(uint8_t keycode);

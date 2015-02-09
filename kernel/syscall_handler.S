@@ -33,8 +33,8 @@ syscall_handler:
   mov %ax, %gs
 
   # Load the current process's registers' base address into RAX.
-  mov process_current,                  %rax
-  add SYSCALL_OFFSET_PROCESS_REGISTERS, %rax
+  mov process_current,          %rax
+  add PROCESS_OFFSET_REGISTERS, %rax
 
   # Save the process's register set.
   # Clear RCX and R11 (they are clobbered by syscalls).
@@ -62,11 +62,6 @@ syscall_handler:
 
   # Load the stack for ring 0 from the TSS.
   mov tss_stack, %rsp
-
-  # If R12 (syscall no.) is zero, this is SYSCALL_EXIT which we emulate right
-  # here.
-  test %r12, %r12
-  jz syscall_handler_exit
 
   # Otherwise, let's see if the syscall is within the valid range:
   mov syscall_table_size, %r13
@@ -107,6 +102,10 @@ syscall_handler:
   # Now we can return to the system. The result should be in RAX, so don't touch
   # that. First, let's save the stack:
   mov %rsp, tss_stack
+
+  mov process_current, %rdi
+  add PROCESS_OFFSET_KERNEL_STACK_POINTER, %rdi
+  mov %rsp, (%rdi)
 
   # Set up the segment registers.
   mov $USER_DATA_SEL, %bx
@@ -149,15 +148,3 @@ syscall_handler:
   mov %rax,  %r15
   mov $-257, %rax
   jmp .Lsysret
-
-syscall_handler_exit:
-  # Return to kernel.
-  pop %r15
-  pop %r14
-  pop %r13
-  pop %r12
-  pop %rbx
-  pop %rbp
-  xor %rax, %rax
-  sti
-  retq

@@ -13,10 +13,15 @@
 
 #define SYSCALL_C
 
+#include <stddef.h>
+#include <stdbool.h>
+
 #include "syscall.h"
 #include "config.h"
 #include "process.h"
+#include "scheduler.h"
 #include "x86_64.h"
+#include "debug.h"
 #include "gdt.h"
 
 #include "terminal.h"
@@ -30,9 +35,6 @@
 
 // Not intended to be called.
 extern void syscall_handler();
-
-// For the syscall handler.
-const size_t SYSCALL_OFFSET_PROCESS_REGISTERS = offsetof(process_t, registers);
 
 void syscall_initialize()
 {
@@ -61,6 +63,17 @@ void syscall_initialize()
   wrmsr(SYSCALL_FLAG_MASK, IA32_FMASK);
 }
 
+int syscall_exit(int status)
+{
+  /// FIXME: this is wrong but it's good enough for now I guess
+  process_current->exit_status = status;
+  process_current->state = PROCESS_STATE_DEAD;
+  process_switch(NULL);
+
+  DEBUG_MESSAGE("process_switch(NULL) returned!");
+  while (true) hlt();
+}
+
 int syscall_twrite(uint64_t length, const char *buffer)
 {
   terminal_writebuf(length, buffer);
@@ -69,8 +82,19 @@ int syscall_twrite(uint64_t length, const char *buffer)
 
 int syscall_key_get(keyboard_event_t *event)
 {
-  interrupt_enable();
-  keyboard_wait_dequeue(event);
-  interrupt_disable();
+  keyboard_sleep_dequeue(event);
+  return 0;
+}
+
+int syscall_yield()
+{
+  // Might return immediately if there's nothing else to do.
+  scheduler_tick();
+  return 0;
+}
+
+int syscall_sleep()
+{
+  scheduler_sleep();
   return 0;
 }

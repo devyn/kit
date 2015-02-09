@@ -20,26 +20,28 @@
 
 .section .text
 
-# C: (void) -> void
-.global process_asm_call
-process_asm_call:
-  # Disable interrupts
-  cli
+# C: (void *stack_pointer) -> void *stack_pointer
+.global process_asm_prepare
+process_asm_prepare:
+  xchg %rdi, %rsp
+  pushq $.Lbootstrap # return address
+  pushq $0
+  pushq $0
+  pushq $0
+  pushq $0
+  pushq $0
+  pushq $0
+  xchg %rdi, %rsp
+  mov  %rdi, %rax
+  retq
 
-  # System V ABI requirements
-  push %rbp
-  push %rbx
-  push %r12
-  push %r13
-  push %r14
-  push %r15
-
+.Lbootstrap:
   # Save our current stack to the TSS.
   mov %rsp, tss_stack
 
   # Load the current process's registers' base address into R15.
-  mov process_current,                  %r15
-  add SYSCALL_OFFSET_PROCESS_REGISTERS, %r15
+  mov process_current,          %r15
+  add PROCESS_OFFSET_REGISTERS, %r15
 
   # Put SS, RSP, EFLAGS, CS, RIP on the stack
   pushq $USER_DATA_SEL # SS
@@ -93,3 +95,36 @@ process_asm_call:
   cli
   hlt
   jmp .LsomethingWentWrong
+
+# C: (void **old_stack_pointer, void *new_stack_pointer) -> void
+# This function is a bit tricky because it actually returns out of a different
+# invocation of this function on a different stack.
+#
+# (Which is why we don't do it in C.)
+.global process_asm_switch
+process_asm_switch:
+  # Disable interrupts, though they probably should be disabled already anyway.
+  cli
+
+  # System V ABI requirements
+  push %rbp
+  push %rbx
+  push %r12
+  push %r13
+  push %r14
+  push %r15
+
+  # Save stack
+  mov %rsp, (%rdi)
+
+  # Switch stacks
+  mov %rsi, %rsp
+
+  # Return into process_switch() on other stack
+  pop %r15
+  pop %r14
+  pop %r13
+  pop %r12
+  pop %rbx
+  pop %rbp
+  retq

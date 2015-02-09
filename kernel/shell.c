@@ -26,6 +26,7 @@
 #include "archive.h"
 #include "elf.h"
 #include "process.h"
+#include "scheduler.h"
 #include "debug.h"
 #include "test.h"
 #include "config.h"
@@ -282,17 +283,31 @@ static int shell_command_run(int argc, char **argv)
 {
   if (argc < 2)
   {
-    terminal_writestring(" Usage: run <file> [args]\n");
+    terminal_writestring(
+        " Usage: run [-q] <file> [args]\n"
+        "\n"
+        " Options:\n"
+        "   -q     Enqueue only (don't start)\n");
     return 1;
   }
 
   char     *buffer;
   uint64_t  length;
 
-  if (!archive_get(archive_system, argv[1], &buffer, &length))
+  int name_index = 1;
+
+  bool enqueue_only = false;
+
+  if (string_compare(argv[name_index], "-q") == 0)
+  {
+    enqueue_only = true;
+    name_index++;
+  }
+
+  if (!archive_get(archive_system, argv[name_index], &buffer, &length))
   {
     terminal_setcolor(COLOR_RED, COLOR_BLACK);
-    terminal_printf(" E: file not found: %s\n", argv[1]);
+    terminal_printf(" E: file not found: %s\n", argv[name_index]);
     return 1;
   }
 
@@ -301,21 +316,37 @@ static int shell_command_run(int argc, char **argv)
   if (!elf_verify(elf))
   {
     terminal_setcolor(COLOR_RED, COLOR_BLACK);
-    terminal_printf(" E: invalid or incompatible ELF file: %s\n", argv[1]);
+    terminal_printf(" E: invalid or incompatible ELF file: %s\n",
+        argv[name_index]);
     return 1;
   }
 
-  process_t process;
+  process_t *process = memory_alloc(sizeof(process_t));
 
-  DEBUG_ASSERT(process_create(&process, argv[1]));
+  DEBUG_ASSERT(process != NULL);
 
-  DEBUG_ASSERT(elf_load(elf, &process));
+  DEBUG_ASSERT(process_create(process, argv[name_index]));
 
-  DEBUG_ASSERT(process_set_args(&process, argc - 1, argv + 1));
+  DEBUG_ASSERT(elf_load(elf, process));
 
-  process_run(&process);
+  DEBUG_ASSERT(process_set_args(process,
+        argc - name_index,
+        argv + name_index));
 
-  return process.registers.rdi /* exit code */;
+  process_run(process);
+
+  if (!enqueue_only)
+  {
+    scheduler_tick();
+
+    interrupt_enable();
+
+    return process->exit_status;
+  }
+  else
+  {
+    return 0;
+  }
 }
 
 typedef struct shell_command
