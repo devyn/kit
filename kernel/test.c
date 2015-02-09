@@ -624,22 +624,22 @@ bool test_paging_c()
 
 bool test_elf_c()
 {
-  HEADING("prerequisite: usertest.bin exists\n");
+  HEADING("prerequisite: util/true exists\n");
 
   char     *buffer;
   uint64_t  length;
 
-  if (archive_get(archive_system, "usertest.bin", &buffer, &length))
+  if (archive_get(archive_system, "util/true", &buffer, &length))
   {
     terminal_writestring("  - ok\n");
   }
   else
   {
-    terminal_writestring("  E: usertest.bin not found\n");
+    terminal_writestring("  E: util/true not found\n");
     return false;
   }
 
-  HEADING("elf_verify() on usertest.bin returns true\n");
+  HEADING("elf_verify() on util/true returns true\n");
 
   elf_header_64_t *elf = (elf_header_64_t *) buffer;
 
