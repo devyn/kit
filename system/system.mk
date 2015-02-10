@@ -11,11 +11,15 @@
 #
 ################################################################################
 
-SYSTEM_CFLAGS=-O3 -g -std=c99 -pedantic -Wall -Wextra -Werror -ffreestanding \
+SYSTEM_CFLAGS=-O2 -g -std=c99 -pedantic -Wall -Wextra -Werror -ffreestanding \
               -march=core2 -mtune=generic -mno-mmx -mno-sse3 -mno-ssse3 \
-              -mno-3dnow
+              -mno-3dnow -mno-sse -mno-sse2
 SYSTEM_LDFLAGS=-O -nostdlib
 SYSTEM_ASFLAGS=-march=generic64
+
+ifeq ($(CC),clang)
+	SYSTEM_CFLAGS+=-target x86_64-pc-none-elf
+endif
 
 all-system: build/system.kit
 
@@ -29,6 +33,10 @@ build/system/.dir: build/.dir
 	mkdir -p build/system
 	touch build/system/.dir
 
+build/system/bin/.dir: build/system/.dir
+	mkdir -p build/system/bin
+	touch build/system/bin/.dir
+
 build/system/hello.txt: system/hello.txt build/system/.dir
 	cp $< $@
 
@@ -37,8 +45,9 @@ build/system/stub.o: system/stub.S build/system/.dir
 	@${AS} ${ASFLAGS} ${SYSTEM_ASFLAGS} $< -o $@
 
 include system/util/util.mk
+include system/shell/shell.mk
 
-build/system.kit: build/system/hello.txt ${SYSTEM_UTILS}
+build/system.kit: build/system/hello.txt ${SYSTEM_UTILS} build/system/bin/shell
 	ruby resources/build-util/kit-archive.rb build/system \
 		$(patsubst build/system/%,%,$^) \
 		> $@
