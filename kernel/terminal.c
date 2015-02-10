@@ -139,26 +139,98 @@ void terminal_newline()
 #endif
 }
 
+static bool    terminal_ansiattrib_read = false;
+static uint8_t terminal_ansiattrib_number;
+
+static enum vga_color terminal_ansiattrib_color[] = {
+  [0] = COLOR_BLACK,
+  [1] = COLOR_RED,
+  [2] = COLOR_GREEN,
+  [3] = COLOR_BROWN,
+  [4] = COLOR_BLUE,
+  [5] = COLOR_MAGENTA,
+  [6] = COLOR_CYAN,
+  [7] = COLOR_LIGHT_GREY
+};
+
 void terminal_writechar_internal(char c)
 {
-  switch (c) {
-    case '\n': // newline
-      terminal_newline();
-      break;
-
-    case '\b': // backspace
-      if ( terminal_column > 0 ) terminal_column--;
-
-      terminal_putentryat(' ', terminal_color, terminal_column, terminal_row);
-      terminal_updatecursor();
-      break;
-
-    default:
-      terminal_putentryat(c, terminal_color, terminal_column, terminal_row);
-      if ( ++terminal_column == VGA_WIDTH )
-      {
+  if (!terminal_ansiattrib_read)
+  {
+    switch (c) {
+      case '\n': // newline
         terminal_newline();
+        break;
+
+      case '\b': // backspace
+        if ( terminal_column > 0 ) terminal_column--;
+
+        terminal_putentryat(' ', terminal_color, terminal_column, terminal_row);
+        terminal_updatecursor();
+        break;
+
+      case '\033': // escape
+        terminal_ansiattrib_read = true;
+        terminal_ansiattrib_number = 0;
+        break;
+
+      default:
+        terminal_putentryat(c, terminal_color, terminal_column, terminal_row);
+        if ( ++terminal_column == VGA_WIDTH )
+        {
+          terminal_newline();
+        }
+    }
+  }
+  else
+  {
+    // XXX: the following is a total hack
+    if (c >= '0' && c <= '9')
+    {
+      terminal_ansiattrib_number *= 10;
+      terminal_ansiattrib_number += c - '0';
+    }
+    else if (c == ';' || c == 'm')
+    {
+      enum vga_color fg, bg;
+
+      terminal_getcolor(&fg, &bg);
+
+      if (terminal_ansiattrib_number == 0)
+      {
+        fg = COLOR_LIGHT_GREY;
+        bg = COLOR_BLACK;
       }
+      else if (terminal_ansiattrib_number == 1)
+      {
+        if (fg < COLOR_DARK_GREY) fg += 8; // bright offset
+      }
+      else if (terminal_ansiattrib_number >= 30 &&
+               terminal_ansiattrib_number <= 37)
+      {
+        fg = terminal_ansiattrib_color[terminal_ansiattrib_number - 30];
+      }
+      else if (terminal_ansiattrib_number >= 40 &&
+               terminal_ansiattrib_number <= 47)
+      {
+        bg = terminal_ansiattrib_color[terminal_ansiattrib_number - 40];
+      }
+
+      terminal_setcolor(fg, bg);
+
+      if (c == ';')
+      {
+        terminal_ansiattrib_number = 0;
+      }
+      else
+      {
+        terminal_ansiattrib_read = false;
+      }
+    }
+    else if (c != '[')
+    {
+      terminal_ansiattrib_read = false;
+    }
   }
 }
 
