@@ -11,7 +11,8 @@
 #
 ################################################################################
 
-SYSTEM_UTILS:=$(addprefix build/, $(patsubst %.c,%,$(wildcard system/util/*.c)))
+SYSTEM_UTILS:=$(patsubst system/util/%.c,build/system/bin/%,\
+								$(wildcard system/util/*.c))
 
 all-system-util: ${SYSTEM_UTILS}
 
@@ -25,6 +26,7 @@ build/system/util/%.o: system/util/%.c build/system/util/.dir
 	@${ECHO_CC} $@
 	@${CC} ${CFLAGS} ${SYSTEM_CFLAGS} -c $< -o $@
 
-build/system/util/%: build/system/util/%.o build/system/stub.o
+build/system/bin/%: build/system/util/%.o build/system/stub.o \
+		build/system/bin/.dir
 	@${ECHO_LD} $@
-	@${LD} ${LDFLAGS} ${SYSTEM_LDFLAGS} $^ -o $@
+	@${LD} ${LDFLAGS} ${SYSTEM_LDFLAGS} $< build/system/stub.o -o $@
