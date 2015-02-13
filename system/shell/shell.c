@@ -13,8 +13,11 @@
 
 #include <stdbool.h>
 #include <stdint.h>
+#include <stddef.h>
 
 #include "io.h"
+#include "syscall.h"
+#include "parser.h"
 
 static int last_exit_code = 0;
 
@@ -34,6 +37,22 @@ static void display_prompt(uint64_t lineno)
   tprintf("[%lu]\033[0;1m ", lineno);
 }
 
+static void execute(char *line)
+{
+  size_t length = strlen(line);
+
+  int argc = parser_prepare(length, line);
+
+  char *argv[argc];
+
+  parser_make_argv(length, line, argc, argv);
+
+  for (int i = 0; i < argc; i++)
+  {
+    tprintf("%s\n", argv[i]);
+  }
+}
+
 #define UNUSED __attribute__((__unused__))
 
 char line[4096];
@@ -47,6 +66,6 @@ int main(UNUSED int argc, UNUSED char **argv)
     display_prompt(lineno++);
     tgets(line, 4096);
     tputs("\033[0m");
-    //execute(line);
+    execute(line);
   }
 }

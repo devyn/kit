@@ -181,6 +181,8 @@ bool process_set_args(process_t *process, int argc, char **argv)
   }
 
   // Load the process's pageset.
+  // TODO: avoid this. probably want a paging_map_clone() into
+  // paging_kernel_pageset
   paging_pageset_t *old_pageset = paging_get_current_pageset();
 
   paging_set_current_pageset(&process->pageset);

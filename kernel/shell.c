@@ -378,7 +378,7 @@ static void shell_execute(const char *command)
 
   // Prepare argc and argv_strings.
   int  argc = 0;
-  char argv_strings[length - 1];
+  char argv_strings[length];
 
   size_t i;
 

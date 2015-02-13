@@ -38,6 +38,13 @@
       : "a" (number), "D" (arg1), "S" (arg2) \
       : "%rcx", "%r11")
 
+# define SYSCALL3(number, ret, arg1, arg2, arg3) \
+  __asm__ volatile( \
+      "syscall" \
+      : "=a" (ret) \
+      : "a" (number), "D" (arg1), "S" (arg2), "d" (arg3) \
+      : "%rcx", "%r11")
+
 static inline int syscall_exit(int status)
 {
 # define SYSCALL_EXIT 0x0
@@ -100,6 +107,17 @@ static inline int syscall_sleep()
   int ret;
 
   SYSCALL0(SYSCALL_SLEEP, ret);
+
+  return ret;
+}
+
+static inline int syscall_spawn(const char *name, int argc, const char **argv)
+{
+# define SYSCALL_SPAWN 0x5
+
+  int ret; // PID or error
+
+  SYSCALL3(SYSCALL_SPAWN, ret, name, argc, argv);
 
   return ret;
 }
