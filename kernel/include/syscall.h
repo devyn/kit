@@ -17,6 +17,7 @@
 #include <stdint.h>
 
 #include "keyboard.h"
+#include "process.h"
 
 void syscall_initialize();
 
@@ -35,6 +36,12 @@ void syscall_initialize();
 #define SYSCALL_SLEEP 0x4
   int syscall_sleep();
 
+#define SYSCALL_SPAWN 0x5
+  int syscall_spawn(const char *file, int argc, const char *const *argv);
+
+#define SYSCALL_WAIT_PROCESS 0x6
+  int syscall_wait_process(process_id_t id, int *exit_status);
+
 #ifdef SYSCALL_C
   const uint64_t syscall_table[] =
   {
@@ -43,6 +50,8 @@ void syscall_initialize();
     (uint64_t) &syscall_key_get,
     (uint64_t) &syscall_yield,
     (uint64_t) &syscall_sleep,
+    (uint64_t) &syscall_spawn,
+    (uint64_t) &syscall_wait_process
   };
   const uint64_t syscall_table_size = sizeof(syscall_table)/8;
 #else

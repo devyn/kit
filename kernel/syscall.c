@@ -26,6 +26,8 @@
 
 #include "terminal.h"
 #include "interrupt.h"
+#include "archive.h"
+#include "elf.h"
 
 // IA32_EFER.SCE (SysCall Enable); bit #0
 #define IA32_EFER_SCE 0x1
@@ -65,12 +67,17 @@ void syscall_initialize()
 
 int syscall_exit(int status)
 {
-  /// FIXME: this is wrong but it's good enough for now I guess
   process_current->exit_status = status;
   process_current->state = PROCESS_STATE_DEAD;
-  process_switch(NULL);
 
-  DEBUG_MESSAGE("process_switch(NULL) returned!");
+  if (process_current->waiting != NULL)
+  {
+    scheduler_wake(process_current->waiting);
+  }
+
+  scheduler_tick();
+
+  DEBUG_FORMAT("failed to exit process %u", process_current->id);
   while (true) hlt();
 }
 
@@ -97,4 +104,67 @@ int syscall_sleep()
 {
   scheduler_sleep();
   return 0;
+}
+
+int syscall_spawn(const char *file, int argc, const char *const *argv)
+{
+  char     *buffer;
+  uint64_t  length;
+
+  if (!archive_get(archive_system, file, &buffer, &length))
+  {
+    return -1;
+  }
+
+  elf_header_64_t *elf = (elf_header_64_t *) buffer;
+
+  if (!elf_verify(elf))
+  {
+    return -2;
+  }
+
+  process_t *process = process_create(argv[0]);
+
+  if (process == NULL)
+  {
+    return -3;
+  }
+
+  if (!elf_load(elf, process))
+  {
+    return -4;
+  }
+
+  if (!process_set_args(process, argc, argv))
+  {
+    return -5;
+  }
+
+  process_run(process);
+
+  return process->id;
+}
+
+int syscall_wait_process(process_id_t id, int *exit_status)
+{
+  process_t *target = process_get(id);
+
+  if (target == NULL) return -1;
+
+  if (target->state == PROCESS_STATE_DEAD)
+  {
+    // Already dead; just return exit status
+    *exit_status = target->exit_status;
+    return 0;
+  }
+  else
+  {
+    DEBUG_ASSERT(target->waiting == NULL);
+
+    target->waiting = process_current;
+    scheduler_sleep();
+
+    *exit_status = target->exit_status;
+    return 0;
+  }
 }

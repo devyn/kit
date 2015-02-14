@@ -31,8 +31,11 @@
 #include "paging.h"
 #include "archive.h"
 #include "process.h"
-#include "debug.h"
+#include "scheduler.h"
+#include "string.h"
+#include "elf.h"
 #include "shell.h"
+#include "debug.h"
 
 /**
  * These aren't actually meant to be of type int; they're just here so that
@@ -46,7 +49,10 @@ extern int _kernel_end;
  */
 extern struct multiboot_info kernel_multiboot_info;
 
-bool kernel_test_memory_c();
+/**
+ * Loads and executes the initial process.
+ */
+static void kernel_init(const char *filename);
 
 #if defined(__cplusplus)
 extern "C" /* Use C linkage for kernel_main. */
@@ -78,16 +84,14 @@ void kernel_main()
       "W: Bootloader did not provide valid memory information!\n");
   }
 
+  const char *cmdline = "";
+
   if (mb_info->flags & MULTIBOOT_INFO_CMDLINE)
   {
-    terminal_printf("Kernel command line: %s\n",
-        (char *) (KERNEL_OFFSET + mb_info->cmdline));
+    cmdline = (const char *) (KERNEL_OFFSET + mb_info->cmdline);
   }
-  else
-  {
-    terminal_writestring(
-      "W: Bootloader did not provide kernel command line!\n");
-  }
+
+  terminal_printf("Kernel command line: %s\n", cmdline);
 
   terminal_printf("Kernel starts at:    %p\n"
                   "Kernel ends at:      %p\n",
@@ -126,12 +130,80 @@ void kernel_main()
 
   process_initialize();
 
-  interrupt_enable();
-
-  shell();
+  if (string_length(cmdline) > 0)
+  {
+    kernel_init(cmdline);
+  }
+  else
+  {
+    terminal_writestring("W: No initial program specified on kernel command"
+        " line; dropping into kernel\n   shell.\n");
+    interrupt_enable();
+    shell();
+  }
 
   goto hang;
 
 hang:
   while (true) hlt();
+}
+
+static void kernel_init(const char *filename)
+{
+  char     *buffer;
+  uint64_t  length;
+
+  terminal_setcolor(COLOR_WHITE, COLOR_MAGENTA);
+
+  if (string_length(filename) == 0)
+  {
+    terminal_writestring("E: No initial program specified!"
+        " (use kernel command line)\n");
+    return;
+  }
+
+  if (!archive_get(archive_system, filename, &buffer, &length))
+  {
+    terminal_printf("E: Initial program '%s' not found.\n", filename);
+    return;
+  }
+
+  elf_header_64_t *elf = (elf_header_64_t *) buffer;
+
+  if (!elf_verify(elf))
+  {
+    terminal_printf("E: Initial program '%s' is not executable.\n", filename);
+    return;
+  }
+
+  process_t *process = process_create(filename);
+
+  if (process == NULL)
+  {
+    terminal_writestring("E: Failed to create a process for"
+        " the initial program!\n");
+    return;
+  }
+
+  if (!elf_load(elf, process))
+  {
+    terminal_writestring("E: Failed to load the executable image for"
+        " the initial program!\n");
+    return;
+  }
+
+  const char *const argv[1] = {filename};
+
+  if (!process_set_args(process, 1, argv))
+  {
+    terminal_writestring("E: Failed to set the arguments for"
+        " the initial program!\n");
+    return;
+  }
+
+  terminal_setcolor(COLOR_LIGHT_GREY, COLOR_BLACK);
+
+  process_run(process);
+
+  scheduler_tick();
 }

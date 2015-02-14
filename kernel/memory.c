@@ -89,25 +89,6 @@ void memory_initialize(const char *mmap_buffer, const uint32_t mmap_length)
       memory_free_region_release(physical_base, pages);
     }
   }
-
-  // Now print our tree.
-  rbtree_t *tree = &memory_free_region_tree.tree;
-
-  rbtree_node_t *node = rbtree_first_node(tree);
-  while (node != NULL) {
-    memory_free_region_node_t *region = (memory_free_region_node_t *) node;
-
-    DEBUG_BEGIN_VALUES();
-      DEBUG_HEX(region->physical_base);
-      DEBUG_DEC(region->pages);
-    DEBUG_END_VALUES();
-
-    node = rbtree_node_next(node);
-  }
-
-  DEBUG_BEGIN_VALUES();
-    DEBUG_DEC(memory_free_region_tree.total_free);
-  DEBUG_END_VALUES();
 }
 
 void *memory_alloc(const size_t size)

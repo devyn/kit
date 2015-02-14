@@ -39,14 +39,14 @@ static void shell_display_prompt(uint64_t lineno)
 
   if (shell_last_exit_code == 0)
   {
-    terminal_setcolor(COLOR_BLACK, COLOR_GREEN);
+    terminal_setcolor(COLOR_LIGHT_GREEN, COLOR_BLACK);
   }
   else
   {
-    terminal_setcolor(COLOR_BLACK, COLOR_RED);
+    terminal_setcolor(COLOR_LIGHT_RED, COLOR_BLACK);
   }
 
-  terminal_printf("[%lu]", lineno);
+  terminal_printf("kernel %lu>>", lineno);
   terminal_setcolor(COLOR_WHITE, COLOR_BLACK);
   terminal_writechar(' ');
 }
@@ -321,17 +321,18 @@ static int shell_command_run(int argc, char **argv)
     return 1;
   }
 
-  process_t *process = memory_alloc(sizeof(process_t));
+  process_t *process = process_create(argv[name_index]);
 
   DEBUG_ASSERT(process != NULL);
 
-  DEBUG_ASSERT(process_create(process, argv[name_index]));
-
   DEBUG_ASSERT(elf_load(elf, process));
 
-  DEBUG_ASSERT(process_set_args(process,
-        argc - name_index,
-        argv + name_index));
+  {
+    int                pargc = argc - name_index;
+    const char *const *pargv = (const char *const *) (argv + name_index);
+
+    DEBUG_ASSERT(process_set_args(process, pargc, pargv));
+  }
 
   process_run(process);
 

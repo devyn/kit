@@ -18,11 +18,10 @@
 #include "scheduler.h"
 #include "string.h"
 #include "memory.h"
+#include "rbtree.h"
 #include "debug.h"
 
-void *process_original_ksp;
-
-uint16_t process_next_id;
+static void *process_original_ksp;
 
 extern void *process_asm_prepare(void *stack_pointer);
 
@@ -36,15 +35,112 @@ const size_t PROCESS_OFFSET_KERNEL_STACK_POINTER =
 const size_t PROCESS_OFFSET_REGISTERS =
   offsetof(process_t, registers);
 
+typedef struct {
+  rbtree_t     tree;
+  uint64_t     size;
+  process_id_t next_id;
+} process_list_t;
+
+typedef struct {
+  rbtree_node_t  node;
+  process_id_t   id;
+  process_t     *process;
+} process_list_node_t;
+
+static process_list_t process_list;
+
 void process_initialize()
 {
   process_current = NULL;
-  process_next_id = 1;
+
+  process_list.tree.root = NULL;
+  process_list.size      = 0;
+  process_list.next_id   = 1;
 
   syscall_initialize();
 }
 
-bool process_create(process_t *process, const char *name)
+process_t *process_get(process_id_t id)
+{
+  process_list_node_t *node =
+    (process_list_node_t *) process_list.tree.root;
+
+  while (node != NULL)
+  {
+    if (node->id == id)
+    {
+      return node->process;
+    }
+    else if (node->id < id)
+    {
+      node = (process_list_node_t *) node->node.right;
+    }
+    else if (node->id > id)
+    {
+      node = (process_list_node_t *) node->node.left;
+    }
+  }
+
+  return NULL;
+}
+
+static void __process_list_insert(process_t *process)
+{
+  process_list_node_t *parent = NULL;
+
+  process_list_node_t *node =
+    (process_list_node_t *) process_list.tree.root;
+
+  DEBUG_ASSERT(process_list.size != 65535); // XXX
+
+  while (node != NULL)
+  {
+    DEBUG_ASSERT(node->id != process->id);
+
+    if (node->id < process->id)
+    {
+      parent = node;
+      node   = (process_list_node_t *) node->node.right;
+    }
+    else
+    {
+      parent = node;
+      node   = (process_list_node_t *) node->node.left;
+    }
+  }
+
+  process_list_node_t *new_node = memory_alloc(sizeof(process_list_node_t *));
+
+  DEBUG_ASSERT(new_node != NULL);
+
+  memory_set((void *) new_node, 0, sizeof(process_list_node_t *));
+
+  new_node->id          = process->id;
+  new_node->process     = process;
+  new_node->node.parent = &parent->node;
+
+  if (parent != NULL)
+  {
+    if (parent->id < process->id)
+    {
+      parent->node.right = &new_node->node;
+    }
+    else
+    {
+      parent->node.left = &new_node->node;
+    }
+
+    rbtree_balance_insert(&process_list.tree, &new_node->node);
+  }
+  else
+  {
+    process_list.tree.root = &new_node->node;
+  }
+
+  process_list.size++;
+}
+
+process_t *process_create(const char *name)
 {
   size_t name_length = string_length(name);
 
@@ -53,13 +149,20 @@ bool process_create(process_t *process, const char *name)
     return false;
   }
 
+  process_t *process = memory_alloc(sizeof(process_t));
+
+  if (process == NULL)
+  {
+    return NULL;
+  }
+
   memory_set(process, 0, sizeof(process_t));
 
   memory_copy(name, &process->name, name_length + 1);
 
   if (!paging_create_pageset(&process->pageset))
   {
-    return false;
+    return NULL;
   }
 
   // Set up the kernel stack
@@ -67,7 +170,7 @@ bool process_create(process_t *process, const char *name)
 
   if (process->kernel_stack_base == NULL)
   {
-    return false;
+    return NULL;
   }
 
   process->kernel_stack_pointer =
@@ -82,12 +185,14 @@ bool process_create(process_t *process, const char *name)
   if (process_alloc(process, (void *) (process->registers.rsp - 8192), 8192, 0)
       == NULL)
   {
-    return false;
+    return NULL;
   }
 
-  process->id = process_next_id++;
+  process->id = process_list.next_id++;
 
-  return true;
+  __process_list_insert(process);
+
+  return process;
 }
 
 void *process_alloc(process_t *process, void *address, uint64_t length,
@@ -144,7 +249,64 @@ void *process_alloc(process_t *process, void *address, uint64_t length,
   return padded_address.pointer;
 }
 
-bool process_set_args(process_t *process, int argc, char **argv)
+bool process_alloc_with_kernel(process_t *process, void *user_address,
+    void *kernel_address, uint64_t length, paging_flags_t flags)
+{
+  union {
+    uint64_t  linear;
+    void     *pointer;
+  } current_user, current_kernel;
+
+  current_user.pointer   = user_address;
+  current_kernel.pointer = kernel_address;
+
+  // Address must be normalized.
+  DEBUG_ASSERT(current_user.linear   % 4096 == 0);
+  DEBUG_ASSERT(current_kernel.linear % 4096 == 0);
+
+  // Normalize the length to get a number of pages.
+  uint64_t pages = (length >> 12) + ((length & 0xfff) == 0 ? 0 : 1);
+
+  // Ensure we have a non-zero number of pages.
+  if (pages == 0) return NULL;
+
+  // Retrieve and map physical pages until we've fulfilled the request.
+  while (pages > 0)
+  {
+    uint64_t physical_base, mapped;
+
+    mapped = memory_free_region_acquire(pages, &physical_base);
+
+    // Make sure we didn't run out of memory.
+    if (mapped > 0)
+    {
+      uint64_t mapped_user =
+        paging_map(&process->pageset, current_user.pointer,
+            physical_base, mapped, flags | PAGING_USER);
+
+      uint64_t mapped_kernel =
+        paging_map(&paging_kernel_pageset, current_kernel.pointer,
+            physical_base, mapped, flags & ~PAGING_USER);
+
+      DEBUG_ASSERT(mapped_user   == mapped);
+      DEBUG_ASSERT(mapped_kernel == mapped);
+
+      current_user.linear    += mapped << 12;
+      current_kernel.linear  += mapped << 12;
+      pages                  -= mapped;
+    }
+    else
+    {
+      // Out of memory.
+      // FIXME: free any allocations
+      return false;
+    }
+  }
+
+  return true;
+}
+
+bool process_set_args(process_t *process, int argc, const char *const *argv)
 {
   // If there are a negative number of args, return an error.
   if (argc < 0)
@@ -171,43 +333,42 @@ bool process_set_args(process_t *process, int argc, char **argv)
 
   // Allocate memory within the process by subtracting from a known pointer
   // value and aligning to page.
-  uint64_t intended_base = (0x7feeffffffff - total_bytes) & (-1 << 12);
+  void *user_base   = (void *) ((0x7feeffffffff - total_bytes) & (-1 << 12));
+  void *kernel_base = (void *) 0xffff888800000000;
 
-  void *base = process_alloc(process, (void *) intended_base, total_bytes, 0);
+  ptrdiff_t base_delta = (uintptr_t) kernel_base - (uintptr_t) user_base;
 
-  if (base == NULL)
+  if (!process_alloc_with_kernel(process, user_base, kernel_base,
+        total_bytes, 0))
   {
     return false;
   }
 
-  // Load the process's pageset.
-  // TODO: avoid this. probably want a paging_map_clone() into
-  // paging_kernel_pageset
-  paging_pageset_t *old_pageset = paging_get_current_pageset();
-
-  paging_set_current_pageset(&process->pageset);
-
   // Copy the args.
-  char **pointer_array = (char **) base;
+  char **pointer_array = (char **) kernel_base;
   char  *data          = (char  *) (pointer_array + argc);
 
   for (int i = 0; i < argc; i++)
   {
-    pointer_array[i] = data;
+    pointer_array[i] = (char *) ((uintptr_t) data - base_delta);
 
-    for (char *arg = argv[i]; *arg != '\0'; data++, arg++)
+    for (const char *arg = argv[i]; *arg != '\0'; data++, arg++)
     {
       *data = *arg;
     }
     *(data++) = '\0';
   }
 
+  // Unmap the arg region in the kernel.
+  uint64_t pages = total_bytes >> 12;
+
+  if (total_bytes % 4096 != 0) pages++;
+
+  paging_unmap(&paging_kernel_pageset, kernel_base, pages);
+
   // Set argc, argv.
   process->registers.r8 = argc;
-  process->registers.r9 = (uint64_t) pointer_array;
-
-  // Restore old pageset.
-  paging_set_current_pageset(old_pageset);
+  process->registers.r9 = (uint64_t) user_base;
 
   return true;
 }

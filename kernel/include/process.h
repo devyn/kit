@@ -40,16 +40,21 @@ typedef enum process_state
   PROCESS_STATE_DEAD
 } process_state_t;
 
+typedef uint16_t process_id_t;
+
 typedef struct process
 {
-  uint16_t             id;
+  process_id_t         id;
   char                 name[256];
   process_state_t      state;
   paging_pageset_t     pageset;
   process_registers_t  registers;
+
   void                *kernel_stack_base;
   void                *kernel_stack_pointer;
+
   int                  exit_status;
+  struct process      *waiting; // XXX
 
   // For scheduler use.
   struct {
@@ -60,7 +65,9 @@ typedef struct process
 
 process_t *process_current;
 
-bool process_create(process_t *process, const char *name);
+process_t *process_get(process_id_t id);
+
+process_t *process_create(const char *name);
 
 /**
  * Allocates 'length' bytes at 'address' (both aligned to the minimum page size)
@@ -71,7 +78,10 @@ bool process_create(process_t *process, const char *name);
 void *process_alloc(process_t *process, void *address, uint64_t length,
     paging_flags_t flags);
 
-bool process_set_args(process_t *process, int argc, char **argv);
+bool process_alloc_with_kernel(process_t *process, void *user_address,
+    void *kernel_address, uint64_t length, paging_flags_t flags);
+
+bool process_set_args(process_t *process, int argc, const char *const *argv);
 
 void process_set_entry_point(process_t *process, void *instruction);
 

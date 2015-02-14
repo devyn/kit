@@ -124,7 +124,7 @@ bool ps2_8042_initialize()
   // Wait for the self-test to pass.
   if (ps2_8042_wait_for_output_buffer() && ps2_8042_read_data() == 0xAA)
   {
-    DEBUG_MESSAGE("PS/2 device 1 self-test passed");
+    //DEBUG_MESSAGE("PS/2 device 1 self-test passed");
   }
   else
   {

@@ -27,14 +27,14 @@ static void display_prompt(uint64_t lineno)
 
   if (last_exit_code == 0)
   {
-    tputs("\033[30;42m");
+    tputs("\033[32;1m");
   }
   else
   {
-    tputs("\033[30;41m");
+    tputs("\033[31;1m");
   }
 
-  tprintf("[%lu]\033[0;1m ", lineno);
+  tprintf("user %lu>>\033[0;1m ", lineno);
 }
 
 static void execute(char *line)
@@ -47,9 +47,32 @@ static void execute(char *line)
 
   parser_make_argv(length, line, argc, argv);
 
-  for (int i = 0; i < argc; i++)
+  // XXX FIXME XXX FIXME XXX WTFBBQ
+  char filename[256];
+  filename[0]='b';
+  filename[1]='i';
+  filename[2]='n';
+  filename[3]='/';
+  filename[4]='\0';
+  strcat(filename, argv[0]);
+
+  const char *const *pargv = (const char *const *) argv;
+
+  int pid = syscall_spawn(filename, argc, pargv);
+
+  if (pid <= 0)
   {
-    tprintf("%s\n", argv[i]);
+    last_exit_code = -100 + pid;
+
+    tprintf("\033[31m E: spawn() failed; => %d\033[0m\n", pid);
+    return;
+  }
+
+  if (syscall_wait_process(pid, &last_exit_code) < 0)
+  {
+    last_exit_code = -99;
+    tputs("\033[31m E: wait_process() failed\033[0m\n");
+    return;
   }
 }
 

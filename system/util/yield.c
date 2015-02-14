@@ -1,7 +1,7 @@
 /*******************************************************************************
  *
  * kit/system/util/yield.c
- * - spins and yields up to a count given in args, then sleeps
+ * - spins and yields up to a count given in args
  *
  * vim:ts=2:sw=2:et:tw=80:ft=c
  *
@@ -44,21 +44,6 @@ int syscall_yield()
       "syscall"
       : "=a" (ret)
       : "a" (SYSCALL_YIELD)
-      : "%rcx", "%r11");
-
-  return ret;
-}
-
-int syscall_sleep()
-{
-# define SYSCALL_SLEEP 0x4
-
-  int ret;
-
-  __asm__ volatile(
-      "syscall"
-      : "=a" (ret)
-      : "a" (SYSCALL_SLEEP)
       : "%rcx", "%r11");
 
   return ret;
@@ -123,7 +108,6 @@ int main(int argc, char **argv)
       syscall_yield();
     }
 
-    syscall_sleep();
     return 0;
   }
 }

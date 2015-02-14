@@ -71,6 +71,12 @@ void paging_initialize()
           (paging_pdpt_entry_t *) (addr + KERNEL_OFFSET));
     }
   }
+
+  // FIXME: This is a hack to make 0xffff888800000000 available, but really we
+  // need to create all of the PDPTs we ever want to use in the kernel right
+  // here, since any changes to the PML4 further on won't propagate.
+  paging_map  (&paging_kernel_pageset, (void *) 0xffff888800000000, 0, 1, 0);
+  paging_unmap(&paging_kernel_pageset, (void *) 0xffff888800000000, 1);
 }
 
 static void __paging_initialize_scan_pdpt(paging_pdpt_entry_t *pdpt)
@@ -1018,8 +1024,6 @@ static void __paging_unmap_pt(paging_unmap_state_t *state, paging_pt_entry_t *pt
     pt_entry->present = 0;
 
     invlpg(state->linear.pointer);
-
-    DEBUG_MESSAGE_HEX("invlpg", state->linear.pointer);
 
     state->linear.pointer += 0x1000;
     state->unmapped++;

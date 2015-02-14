@@ -111,13 +111,25 @@ static inline int syscall_sleep()
   return ret;
 }
 
-static inline int syscall_spawn(const char *name, int argc, const char **argv)
+static inline int syscall_spawn(const char *file, int argc,
+    const char *const *argv)
 {
 # define SYSCALL_SPAWN 0x5
 
   int ret; // PID or error
 
-  SYSCALL3(SYSCALL_SPAWN, ret, name, argc, argv);
+  SYSCALL3(SYSCALL_SPAWN, ret, file, argc, argv);
+
+  return ret;
+}
+
+static inline int syscall_wait_process(uint16_t id, int *exit_status)
+{
+# define SYSCALL_WAIT_PROCESS 0x6
+
+  int ret;
+
+  SYSCALL2(SYSCALL_WAIT_PROCESS, ret, id, exit_status);
 
   return ret;
 }

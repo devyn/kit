@@ -77,11 +77,6 @@ void interrupt_8259pic_set_irq_mask(uint8_t irq, bool masked)
     value = inb(port) & ~(1 << irq); // clear bit
   }
 
-  DEBUG_BEGIN_VALUES();
-    DEBUG_HEX(port);
-    DEBUG_HEX(value);
-  DEBUG_END_VALUES();
-
   // Send the new mask to the PIC.
   outb(value, port);
 }

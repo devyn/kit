@@ -1,7 +1,7 @@
 megs: 128
 ata0-master: type=cdrom, path=build/kit.iso, status=inserted
 boot: cdrom
-log: bochsout.txt
+#log: bochsout.txt
 cpu: model=trinity_apu, ips=5000000
 clock: sync=realtime, time0=local
 display_library: sdl2
