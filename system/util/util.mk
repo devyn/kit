@@ -26,7 +26,6 @@ build/system/util/%.o: system/util/%.c build/system/util/.dir
 	@${ECHO_CC} $@
 	@${CC} ${CFLAGS} ${SYSTEM_CFLAGS} -c $< -o $@
 
-build/system/bin/%: build/system/util/%.o build/system/stub.o \
-		build/system/bin/.dir
+build/system/bin/%: build/system/util/%.o ${LIBC} build/system/bin/.dir
 	@${ECHO_LD} $@
-	@${LD} ${LDFLAGS} ${SYSTEM_LDFLAGS} $< build/system/stub.o -o $@
+	@${LD} ${LDFLAGS} ${SYSTEM_LDFLAGS} $< ${LIBC} -o $@

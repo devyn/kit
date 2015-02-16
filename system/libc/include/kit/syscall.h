@@ -1,6 +1,6 @@
 /*******************************************************************************
  *
- * kit/system/shell/include/syscall.h
+ * kit/system/libc/include/kit/syscall.h
  * - system call helpers
  *
  * vim:ts=2:sw=2:et:tw=80:ft=c
@@ -11,8 +11,8 @@
  *
  ******************************************************************************/
 
-#ifndef _KIT_SHELL_SYSCALL_H
-#define _KIT_SHELL_SYSCALL_H
+#ifndef _KIT_SYSCALL_H
+#define _KIT_SYSCALL_H
 
 #include <stdint.h>
 #include <stdbool.h>

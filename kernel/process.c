@@ -314,11 +314,11 @@ bool process_set_args(process_t *process, int argc, const char *const *argv)
     return false;
   }
 
-  // If there are exactly zero args, just set r8 to argc and r9 to NULL.
+  // If there are exactly zero args, just set rdi to argc and rsi to NULL.
   if (argc == 0)
   {
-    process->registers.r8 = argc;
-    process->registers.r9 = (uint64_t) NULL;
+    process->registers.rdi = argc;
+    process->registers.rsi = (uint64_t) NULL;
     return true;
   }
 
@@ -367,8 +367,8 @@ bool process_set_args(process_t *process, int argc, const char *const *argv)
   paging_unmap(&paging_kernel_pageset, kernel_base, pages);
 
   // Set argc, argv.
-  process->registers.r8 = argc;
-  process->registers.r9 = (uint64_t) user_base;
+  process->registers.rdi = argc;
+  process->registers.rsi = (uint64_t) user_base;
 
   return true;
 }

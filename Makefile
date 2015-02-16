@@ -15,6 +15,8 @@ CC=clang
 AS=as
 LD=ld
 
+export CPATH=system/libc/include
+
 GRUB_LIB=/usr/lib/grub
 
 ECHO_CC=echo "[36m CC [0m"

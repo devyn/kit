@@ -14,9 +14,9 @@
 #include <stdbool.h>
 #include <stdint.h>
 #include <stddef.h>
+#include <kit/syscall.h>
 
 #include "io.h"
-#include "syscall.h"
 #include "parser.h"
 
 static int last_exit_code = 0;

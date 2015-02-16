@@ -14,47 +14,7 @@
 #include <stdint.h>
 #include <stddef.h>
 #include <stdbool.h>
-
-int syscall_twrite(uint64_t length, const char *buffer)
-{
-# define SYSCALL_TWRITE 0x1
-
-  int ret;
-
-  __asm__ volatile(
-      "syscall"
-      : "=a" (ret)
-      : "a" (SYSCALL_TWRITE), "D" (length), "S" (buffer)
-      : "%rcx", "%r11");
-
-  return ret;
-}
-
-typedef struct keyboard_event
-{
-  uint8_t keycode;
-  char    keychar; // ignore if '\0'
-
-  bool    pressed    : 1;
-  bool    ctrl_down  : 1;
-  bool    alt_down   : 1;
-  bool    shift_down : 1;
-} keyboard_event_t;
-
-int syscall_key_get(keyboard_event_t *event)
-{
-# define SYSCALL_KEY_GET 0x2
-
-  int ret;
-
-  __asm__ volatile(
-      "syscall"
-      : "=a" (ret)
-      : "a" (SYSCALL_KEY_GET), "D" (event)
-      : "%rcx", "%r11", "memory");
-
-  return ret;
-}
+#include <kit/syscall.h>
 
 #define UNUSED __attribute__((__unused__))
 

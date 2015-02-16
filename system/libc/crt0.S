@@ -1,7 +1,7 @@
 ################################################################################
 #
-# kit/system/stub.S
-# - includes an entry point which calls C main() and then exits
+# kit/system/crt0.S
+# - C runtime entry point
 #
 # vim:ts=2:sw=2:et:tw=80:ft=asm
 #
@@ -15,20 +15,27 @@
 
 .set SYSCALL_EXIT, 0x0
 
+# %rdi: argc, %rsi: argv (SysV)
 .global _start
 _start:
-  mov %r8, %rdi # argc
-  mov %r9, %rsi # argv
+  # Initialize the standard library.
+  push %rdi
+  push %rsi
+  call libc_init
+  pop  %rsi
+  pop  %rdi
 
   # int main(int argc, char **argv)
   movabs $main, %rcx
   callq *%rcx
 
+  # Exit implicitly.
   mov %rax, %rdi # exit code
-  mov $SYSCALL_EXIT, %rax
-  syscall
+  call exit
 
-  # should not return
+# In case the exit doesn't work, for some reason.
+1:
   hlt
+  jmp 1b
 
 .section .note.GNU-stack,"",%progbits

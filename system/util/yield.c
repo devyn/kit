@@ -14,40 +14,11 @@
 #include <stdint.h>
 #include <stddef.h>
 #include <stdbool.h>
+#include <kit/syscall.h>
 
 const char USAGE[] =
   " Usage: util/yield <n>\n"
   " Where <n> is number of loop cycles to yield\n";
-
-int syscall_twrite(uint64_t length, const char *buffer)
-{
-# define SYSCALL_TWRITE 0x1
-
-  int ret;
-
-  __asm__ volatile(
-      "syscall"
-      : "=a" (ret)
-      : "a" (SYSCALL_TWRITE), "D" (length), "S" (buffer)
-      : "%rcx", "%r11");
-
-  return ret;
-}
-
-int syscall_yield()
-{
-# define SYSCALL_YIELD 0x3
-
-  int ret;
-
-  __asm__ volatile(
-      "syscall"
-      : "=a" (ret)
-      : "a" (SYSCALL_YIELD)
-      : "%rcx", "%r11");
-
-  return ret;
-}
 
 unsigned long uatol(const char *nptr)
 {

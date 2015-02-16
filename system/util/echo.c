@@ -13,21 +13,7 @@
 
 #include <stdint.h>
 #include <stddef.h>
-
-int syscall_twrite(uint64_t length, const char *buffer)
-{
-# define SYSCALL_TWRITE 0x1
-
-  int ret;
-
-  __asm__ volatile(
-      "syscall"
-      : "=a" (ret)
-      : "a" (SYSCALL_TWRITE), "D" (length), "S" (buffer)
-      : "%rcx", "%r11");
-
-  return ret;
-}
+#include <kit/syscall.h>
 
 static inline size_t strlen(const char *s)
 {

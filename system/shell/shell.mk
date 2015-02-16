@@ -25,10 +25,10 @@ build/system/shell/.dir: build/system/.dir
 	mkdir -p build/system/shell
 	touch build/system/shell/.dir
 
-build/system/bin/shell: ${SHELL_OBJECTS} build/system/stub.o \
+build/system/bin/shell: ${SHELL_OBJECTS} ${LIBC} \
 		build/system/bin/.dir
 	@${ECHO_LD} $@
-	@${LD} ${LDFLAGS} ${SYSTEM_LDFLAGS} ${SHELL_OBJECTS} build/system/stub.o \
+	@${LD} ${LDFLAGS} ${SYSTEM_LDFLAGS} ${SHELL_OBJECTS} ${LIBC} \
 		-o $@
 
 build/system/shell/%.o: system/shell/%.c build/system/shell/.dir

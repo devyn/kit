@@ -13,9 +13,9 @@
 
 #include <stdbool.h>
 #include <stdarg.h>
+#include <kit/syscall.h>
 
 #include "io.h"
-#include "syscall.h"
 
 void tputc(char c)
 {

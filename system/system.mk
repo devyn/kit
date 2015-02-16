@@ -13,7 +13,7 @@
 
 SYSTEM_CFLAGS=-O2 -g -std=c99 -pedantic -Wall -Wextra -Werror -ffreestanding \
               -march=core2 -mtune=generic -mno-mmx -mno-sse3 -mno-ssse3 \
-              -mno-3dnow -mno-sse -mno-sse2
+              -mno-3dnow -mno-sse -mno-sse2 -nostdlibinc
 SYSTEM_LDFLAGS=-O -nostdlib
 SYSTEM_ASFLAGS=-march=generic64
 
@@ -40,10 +40,7 @@ build/system/bin/.dir: build/system/.dir
 build/system/hello.txt: system/hello.txt build/system/.dir
 	cp $< $@
 
-build/system/stub.o: system/stub.S build/system/.dir
-	@${ECHO_AS} $@
-	@${AS} ${ASFLAGS} ${SYSTEM_ASFLAGS} $< -o $@
-
+include system/libc/libc.mk
 include system/util/util.mk
 include system/shell/shell.mk
 
