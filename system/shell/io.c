@@ -13,6 +13,7 @@
 
 #include <stdbool.h>
 #include <stdarg.h>
+#include <string.h>
 #include <kit/syscall.h>
 
 #include "io.h"

@@ -14,7 +14,7 @@
 SYSTEM_CFLAGS=-O2 -g -std=c99 -pedantic -Wall -Wextra -Werror -ffreestanding \
               -march=core2 -mtune=generic -mno-mmx -mno-sse3 -mno-ssse3 \
               -mno-3dnow -mno-sse -mno-sse2 -nostdlibinc
-SYSTEM_LDFLAGS=-O -nostdlib
+SYSTEM_LDFLAGS=-O1 -nostdlib
 SYSTEM_ASFLAGS=-march=generic64
 
 ifeq ($(CC),clang)
