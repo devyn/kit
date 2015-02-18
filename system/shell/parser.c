@@ -73,7 +73,7 @@ st_finish_consume:
     if (arg == NULL) exit(8); // Out of memory
 
     memcpy(arg, &line[arg_start], index - arg_start);
-    arg[index - arg_start + 1] = '\0';
+    arg[index - arg_start] = '\0';
 
     ptr_vec_push(&command->args, (void *) arg);
 
