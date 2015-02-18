@@ -41,6 +41,15 @@ void *malloc(size_t size);
 void *calloc(size_t count, size_t size);
 
 /**
+ * Resize and possibly relocate a previously allocated block of memory, and
+ * return the new pointer.
+ *
+ * If ptr is NULL, this is equivalent to malloc(size).
+ * If size is zero, this is equivalent to free(ptr), and NULL is returned.
+ */
+void *realloc(void *ptr, size_t size);
+
+/**
  * Free previously allocated memory.
  */
 void free(void *ptr);
