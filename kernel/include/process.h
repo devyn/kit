@@ -89,9 +89,8 @@ bool process_alloc_with_kernel(process_t *process, void *user_address,
     void *kernel_address, uint64_t length, paging_flags_t flags);
 
 /**
- * Adjusts the length of the process's heap by 'amount' bytes and returns the
- * original heap pointer (i.e., the start of the allocated space if amount is
- * positive).
+ * Adjusts the length of the process's heap by 'amount' bytes and returns a
+ * pointer to the new end of the heap.
  */
 void *process_adjust_heap(process_t *process, int64_t amount);
 
