@@ -14,16 +14,22 @@
 #include <stdbool.h>
 
 #include "memory.h"
+#include "paging.h"
 #include "multiboot.h"
 #include "rbtree.h"
 #include "debug.h"
 
-/* reserve space for an initial heap (512 KiB) */
-static uint8_t memory_initial_heap[512 * 1024];
+/* reserve space for an initial heap (64 KiB) */
+static uint8_t memory_initial_heap[64 * 1024];
 
 /* uint8_t in order to operate byte-by-byte. */
-uint8_t *memory_stack_base    = memory_initial_heap;
-uint8_t *memory_stack_pointer = memory_initial_heap;
+uint8_t *memory_heap_start = memory_initial_heap;
+uint8_t *memory_heap_end   = memory_initial_heap + sizeof(memory_initial_heap);
+
+uint64_t memory_heap_length = 0;
+
+bool memory_large_heap_enabled = false;
+bool memory_grow_enabled       = false;
 
 /* free region tree */
 
@@ -91,25 +97,89 @@ void memory_initialize(const char *mmap_buffer, const uint32_t mmap_length)
   }
 }
 
+#define MEMORY_LARGE_HEAP_START 0xffffffff81000000
+#define MEMORY_BUFZONE_SIZE     (4 * 4096)
+
+void memory_enable_large_heap()
+{
+  if (!memory_large_heap_enabled)
+  {
+    uint64_t physical_base;
+
+    DEBUG_ASSERT(memory_free_region_acquire(
+          MEMORY_BUFZONE_SIZE/4096, &physical_base) ==
+        MEMORY_BUFZONE_SIZE/4096);
+
+    paging_map(&paging_kernel_pageset, (void *) MEMORY_LARGE_HEAP_START,
+        physical_base, MEMORY_BUFZONE_SIZE/4096, 0);
+
+    memory_heap_start  = (uint8_t *) MEMORY_LARGE_HEAP_START;
+    memory_heap_end    = memory_heap_start + MEMORY_BUFZONE_SIZE;
+    memory_heap_length = 0;
+
+    memory_large_heap_enabled = true;
+    memory_grow_enabled       = true;
+  }
+}
+
 void *memory_alloc(const size_t size)
 {
-  /**
-   * TODO: Proper memory management and bounds checking.
-   */
+  void *result = memory_heap_start + memory_heap_length;
 
-  void *result = memory_stack_pointer;
+  memory_heap_length += size;
 
-  memory_stack_pointer += size;
-
-  if (memory_stack_pointer <= memory_stack_base + sizeof(memory_initial_heap))
+  // If we don't have enough memory, loop through the following:
+  while (memory_heap_start + memory_heap_length >
+         memory_heap_end   - (memory_grow_enabled ? MEMORY_BUFZONE_SIZE : 0))
   {
-    return result;
+    if (memory_large_heap_enabled && memory_grow_enabled)
+    {
+      // The large heap is enabled and we're allowed to grow it.
+      uint64_t physical_base;
+
+      uint64_t grow  = memory_heap_length + MEMORY_BUFZONE_SIZE -
+        ((uint64_t) memory_heap_end -
+         (uint64_t) memory_heap_start);
+
+      uint64_t pages = grow / 4096;
+
+      if (grow % 4096 != 0) pages++;
+
+      if (!memory_free_region_acquire(pages, &physical_base))
+      {
+        DEBUG_MESSAGE("out of memory");
+        return NULL;
+      }
+
+      // Map the pages we just got, being careful to avoid ending up in a loop.
+      memory_grow_enabled = false;
+      paging_map(&paging_kernel_pageset, (void *) memory_heap_end,
+          physical_base, pages, 0);
+      memory_grow_enabled = true;
+
+      // Update memory_heap_end.
+      memory_heap_end += pages * 4096;
+    }
+    else
+    {
+      if (!memory_large_heap_enabled)
+      {
+        // We don't have the large heap enabled yet, so we can't try to allocate
+        // more.
+        DEBUG_MESSAGE("ran out of initial heap");
+        return NULL;
+      }
+      else
+      {
+        // We aren't allowed to grow the heap right now.
+        DEBUG_MESSAGE("tried to grow the heap recursively");
+        return NULL;
+      }
+    }
   }
-  else
-  {
-    DEBUG_MESSAGE("out of memory");
-    return NULL;
-  }
+
+  // All okay.
+  return result;
 }
 
 void memory_free(void *pointer) {
@@ -120,11 +190,11 @@ void memory_free(void *pointer) {
 
 void *memory_alloc_aligned(size_t size, size_t alignment)
 {
-  size_t pointer_value = (size_t) memory_stack_pointer;
+  size_t pointer_value = (size_t) (memory_heap_start + memory_heap_length);
 
   if (pointer_value % alignment != 0)
   {
-    memory_stack_pointer += alignment - (pointer_value % alignment);
+    memory_heap_length += alignment - (pointer_value % alignment);
   }
 
   return memory_alloc(size);

@@ -77,6 +77,9 @@ void paging_initialize()
   // here, since any changes to the PML4 further on won't propagate.
   paging_map  (&paging_kernel_pageset, (void *) 0xffff888800000000, 0, 1, 0);
   paging_unmap(&paging_kernel_pageset, (void *) 0xffff888800000000, 1);
+
+  // We can now allow the large heap to be used.
+  memory_enable_large_heap();
 }
 
 static void __paging_initialize_scan_pdpt(paging_pdpt_entry_t *pdpt)

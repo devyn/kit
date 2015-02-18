@@ -23,6 +23,8 @@
  */
 void memory_initialize(const char *mmap_buffer, const uint32_t mmap_length);
 
+void memory_enable_large_heap();
+
 void *memory_alloc(size_t size);
 
 // Currently no-op
