@@ -180,7 +180,7 @@ process_t *process_create(const char *name)
     process_asm_prepare(process->kernel_stack_pointer);
 
   // Set up the user stack
-  process->registers.rsp = 0x7ffffffff000;
+  process->registers.rsp = PROCESS_STACK_BASE;
 
   if (process_alloc(process, (void *) (process->registers.rsp - 8192), 8192, 0)
       == NULL)
@@ -304,6 +304,110 @@ bool process_alloc_with_kernel(process_t *process, void *user_address,
   }
 
   return true;
+}
+
+void process_free(process_t *process, void *address, uint64_t length)
+{
+  union {
+    uint64_t  linear;
+    void     *pointer;
+  } padded_address, current_address;
+
+  padded_address.pointer = address;
+
+  // Normalize the address.
+  length                += padded_address.linear & 0xfff;
+  padded_address.linear &= ~0xfff;
+
+  current_address = padded_address;
+
+  // Normalize the length to get a number of pages.
+  uint64_t pages = (length >> 12) + ((length & 0xfff) == 0 ? 0 : 1);
+
+  // Unmap and release physical pages until we've fulfilled the request.
+  while (pages > 0)
+  {
+    uint64_t physical_base;
+
+    if (paging_resolve_linear_address(&process->pageset,
+          current_address.pointer, &physical_base))
+    {
+      // Page is present.
+      uint64_t unmap = 1;
+      current_address.linear += 4096;
+
+      // Look for a contiguous physical region. FIXME: probably slow
+      while (true)
+      {
+        uint64_t this_physical_base;
+
+        if (paging_resolve_linear_address(&process->pageset,
+              current_address.pointer, &this_physical_base))
+        {
+          if (this_physical_base == physical_base + unmap * 4096)
+          {
+            unmap++;
+            current_address.linear += 4096;
+          }
+          else
+          {
+            break;
+          }
+        }
+        else
+        {
+          break;
+        }
+      }
+
+      // Release the region.
+      memory_free_region_release(physical_base, unmap);
+
+      pages -= unmap;
+    }
+    else
+    {
+      // Page is not present. Ignore.
+      current_address.linear += 4096;
+      pages--;
+    }
+  }
+}
+
+void *process_adjust_heap(process_t *process, int64_t amount)
+{
+  uint64_t old_heap_length = process->heap_length;
+
+  process->heap_length += amount;
+
+  uint64_t old_heap_pages = old_heap_length      / 4096;
+  uint64_t new_heap_pages = process->heap_length / 4096;
+
+  if (old_heap_length      % 4096 != 0) old_heap_pages++;
+  if (process->heap_length % 4096 != 0) new_heap_pages++;
+
+  if (new_heap_pages > old_heap_pages)
+  {
+    // Allocate pages
+    if (process_alloc(process,
+          (void *) (PROCESS_HEAP_BASE + old_heap_pages * 4096),
+          (new_heap_pages - old_heap_pages) * 4096, 0) == NULL)
+    {
+      DEBUG_MESSAGE("allocation error");
+
+      // Allocation error?
+      process->heap_length -= amount;
+      new_heap_pages = old_heap_pages;
+    }
+  }
+  else if (new_heap_pages < old_heap_pages)
+  {
+    // Free pages
+    process_free(process, (void *) (PROCESS_HEAP_BASE + new_heap_pages * 4096),
+        (old_heap_pages - new_heap_pages) * 4096);
+  }
+
+  return (void *) (PROCESS_HEAP_BASE + new_heap_pages * 4096);
 }
 
 bool process_set_args(process_t *process, int argc, const char *const *argv)

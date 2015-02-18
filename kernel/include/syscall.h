@@ -42,6 +42,9 @@ void syscall_initialize();
 #define SYSCALL_WAIT_PROCESS 0x6
   int syscall_wait_process(process_id_t id, int *exit_status);
 
+#define SYSCALL_ADJUST_HEAP 0x7
+  void *syscall_adjust_heap(int64_t amount);
+
 #ifdef SYSCALL_C
   const uint64_t syscall_table[] =
   {
@@ -51,7 +54,8 @@ void syscall_initialize();
     (uint64_t) &syscall_yield,
     (uint64_t) &syscall_sleep,
     (uint64_t) &syscall_spawn,
-    (uint64_t) &syscall_wait_process
+    (uint64_t) &syscall_wait_process,
+    (uint64_t) &syscall_adjust_heap
   };
   const uint64_t syscall_table_size = sizeof(syscall_table)/8;
 #else

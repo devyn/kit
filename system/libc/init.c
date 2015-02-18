@@ -11,6 +11,16 @@
  *
  ******************************************************************************/
 
-void libc_init()
+#include <kit/syscall.h>
+
+extern uint64_t  _libc_heap_length;
+extern void     *_libc_heap_start;
+extern void     *_libc_heap_end;
+
+void _libc_init()
 {
+  _libc_heap_length = 0;
+
+  _libc_heap_start = syscall_adjust_heap(0);
+  _libc_heap_end   = _libc_heap_start;
 }

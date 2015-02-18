@@ -21,7 +21,7 @@ _start:
   # Initialize the standard library.
   push %rdi
   push %rsi
-  call libc_init
+  call _libc_init
   pop  %rsi
   pop  %rdi
 

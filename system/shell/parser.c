@@ -11,39 +11,111 @@
  *
  ******************************************************************************/
 
+#include <stdlib.h>
+#include <stdint.h>
+#include <string.h>
+
+#include "io.h"
 #include "parser.h"
 
-int parser_prepare(size_t length, char *command_buf)
+char *parse_command(const char *line, command_t *command)
 {
-  int argc = 0;
+  bool        ignore_spaces = true;
+  const char *command_end;
 
-  for (size_t i = 0; i < length - 1; i++)
+  command->argc = *line == '\0' ? 0 : 1;
+
+  for (const char *c = line; ; c++)
   {
-    if (command_buf[i] == ' ')
+    switch (*c)
     {
-      command_buf[i] = '\0';
-      argc++;
+      case ' ':
+        if (!ignore_spaces)
+        {
+          command->argc++;
+          ignore_spaces = true;
+        }
+        break;
+
+      case ';':
+      case '&':
+      case '\n':
+        command_end = c;
+        command->end_of_stream = false;
+        goto make_argv;
+
+      case '\0':
+        command_end = c;
+        command->end_of_stream = true;
+        goto make_argv;
+
+      default:
+        ignore_spaces = false;
     }
   }
 
-  command_buf[length - 1] = '\0';
-  argc++;
+make_argv:
 
-  return argc;
+  if (command->argc > 0)
+  {
+    size_t length = (uintptr_t) command_end - (uintptr_t) line + 1;
+
+    command->argv = malloc(command->argc * sizeof(char *) + length);
+
+    if (command->argv == NULL)
+    {
+      exit(8);
+    }
+
+    char *command_strings = (char *) (command->argv + command->argc);
+
+    memcpy(command_strings, line, length - 1);
+    command_strings[length - 1] = '\0';
+
+    char *pos = command_strings;
+
+    while (*pos == ' ') pos++;
+
+    command->argv[0] = pos;
+
+    for (int i = 1; i < command->argc; i++)
+    {
+      while (*pos == ' ') pos++;
+      while (*pos != ' ') pos++;
+
+      *pos = '\0';
+
+      command->argv[i] = ++pos;
+    }
+
+    command->filename = malloc(strlen(command->argv[0]) + 5);
+
+    if (command->filename == NULL)
+    {
+      exit(8);
+    }
+
+    memcpy(command->filename, "bin/", 5);
+    strcat(command->filename, command->argv[0]);
+  }
+  else
+  {
+    command->filename = NULL;
+    command->argv = NULL;
+  }
+
+  return (char *) command_end + 1;
 }
 
-void parser_make_argv(size_t length, char *command_buf,
-    int argc, char **argv)
+void parse_command_cleanup(command_t *command)
 {
-  int ai = 1;
-
-  argv[0] = command_buf;
-
-  for (size_t ci = 0; ci < length - 1 && ai < argc; ci++)
+  if (command->filename != NULL)
   {
-    if (command_buf[ci] == '\0')
-    {
-      argv[ai++] = command_buf + ci + 1;
-    }
+    free(command->filename);
+  }
+
+  if (command->argv != NULL)
+  {
+    free(command->argv);
   }
 }

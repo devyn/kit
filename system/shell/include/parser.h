@@ -15,10 +15,18 @@
 #define _KIT_SHELL_PARSER_H
 
 #include <stddef.h>
+#include <stdbool.h>
 
-int parser_prepare(size_t length, char *command_buf);
+typedef struct command
+{
+  char  *filename;
+  int    argc;
+  char **argv;
+  bool   end_of_stream;
+} command_t;
 
-void parser_make_argv(size_t length, char *command_buf,
-    int argc, char **argv);
+char *parse_command(const char *line, command_t *command);
+
+void parse_command_cleanup(command_t *command);
 
 #endif

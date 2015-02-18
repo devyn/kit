@@ -168,3 +168,8 @@ int syscall_wait_process(process_id_t id, int *exit_status)
     return 0;
   }
 }
+
+void *syscall_adjust_heap(int64_t amount)
+{
+  return process_adjust_heap(process_current, amount);
+}

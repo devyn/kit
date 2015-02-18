@@ -23,4 +23,6 @@ void exit(int status)
 void _Exit(int status)
 {
   syscall_exit(status);
+
+  __builtin_trap();
 }

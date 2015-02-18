@@ -11,7 +11,7 @@
 #
 ################################################################################
 
-SYSTEM_CFLAGS=-O2 -g -std=c99 -pedantic -Wall -Wextra -Werror -ffreestanding \
+SYSTEM_CFLAGS=-O2 -g -std=c99 -pedantic -Wall -Wextra -Werror \
               -march=core2 -mtune=generic -mno-mmx -mno-sse3 -mno-ssse3 \
               -mno-3dnow -mno-sse -mno-sse2 -nostdlibinc
 SYSTEM_LDFLAGS=-O1 -nostdlib

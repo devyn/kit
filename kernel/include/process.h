@@ -42,6 +42,11 @@ typedef enum process_state
 
 typedef uint16_t process_id_t;
 
+//                             48  32  16   0
+//                              |   |   |   |
+#define PROCESS_STACK_BASE 0x00007ffffffff000
+#define PROCESS_HEAP_BASE  0x0000000100000000
+
 typedef struct process
 {
   process_id_t         id;
@@ -52,6 +57,8 @@ typedef struct process
 
   void                *kernel_stack_base;
   void                *kernel_stack_pointer;
+
+  uint64_t             heap_length;
 
   int                  exit_status;
   struct process      *waiting; // XXX
@@ -80,6 +87,13 @@ void *process_alloc(process_t *process, void *address, uint64_t length,
 
 bool process_alloc_with_kernel(process_t *process, void *user_address,
     void *kernel_address, uint64_t length, paging_flags_t flags);
+
+/**
+ * Adjusts the length of the process's heap by 'amount' bytes and returns the
+ * original heap pointer (i.e., the start of the allocated space if amount is
+ * positive).
+ */
+void *process_adjust_heap(process_t *process, int64_t amount);
 
 bool process_set_args(process_t *process, int argc, const char *const *argv);
 

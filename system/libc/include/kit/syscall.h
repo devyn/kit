@@ -134,4 +134,15 @@ static inline int syscall_wait_process(uint16_t id, int *exit_status)
   return ret;
 }
 
+static inline void *syscall_adjust_heap(int64_t amount)
+{
+# define SYSCALL_ADJUST_HEAP 0x7
+
+  void *ret;
+
+  SYSCALL1(SYSCALL_ADJUST_HEAP, ret, amount);
+
+  return ret;
+}
+
 #endif

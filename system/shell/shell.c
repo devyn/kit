@@ -40,41 +40,36 @@ static void display_prompt(uint64_t lineno)
 
 static void execute(char *line)
 {
-  size_t length = strlen(line);
+  char *current_line = line;
 
-  int argc = parser_prepare(length, line);
+  command_t command;
 
-  char *argv[argc];
+  do {
+    current_line = parse_command(current_line, &command);
 
-  parser_make_argv(length, line, argc, argv);
+    if (command.filename != NULL)
+    {
+      const char *const *argv = (const char *const *) command.argv;
 
-  // XXX FIXME XXX FIXME XXX WTFBBQ
-  char filename[256];
-  filename[0]='b';
-  filename[1]='i';
-  filename[2]='n';
-  filename[3]='/';
-  filename[4]='\0';
-  strcat(filename, argv[0]);
+      int pid = syscall_spawn(command.filename, command.argc, argv);
 
-  const char *const *pargv = (const char *const *) argv;
+      if (pid <= 0)
+      {
+        last_exit_code = -100 + pid;
 
-  int pid = syscall_spawn(filename, argc, pargv);
+        tprintf("\033[31m E: spawn('%s', %d, argv) failed; => %d\033[0m\n",
+            command.filename, command.argc, pid);
+      }
+      else if (syscall_wait_process(pid, &last_exit_code) < 0)
+      {
+        last_exit_code = -99;
+        tputs("\033[31m E: wait_process() failed\033[0m\n");
+      }
+    }
 
-  if (pid <= 0)
-  {
-    last_exit_code = -100 + pid;
+    parse_command_cleanup(&command);
 
-    tprintf("\033[31m E: spawn() failed; => %d\033[0m\n", pid);
-    return;
-  }
-
-  if (syscall_wait_process(pid, &last_exit_code) < 0)
-  {
-    last_exit_code = -99;
-    tputs("\033[31m E: wait_process() failed\033[0m\n");
-    return;
-  }
+  } while (!command.end_of_stream);
 }
 
 #define UNUSED __attribute__((__unused__))
