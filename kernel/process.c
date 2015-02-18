@@ -488,7 +488,9 @@ void process_switch(process_t *process)
 {
   if (process != NULL)
   {
+#ifdef PROCESS_DEBUG
     DEBUG_FORMAT("-> [%hu] %s", process->id, process->name);
+#endif
 
     DEBUG_ASSERT(process->state == PROCESS_STATE_RUNNING);
 
@@ -511,7 +513,9 @@ void process_switch(process_t *process)
   }
   else if (process_current != NULL)
   {
+#ifdef PROCESS_DEBUG
     DEBUG_MESSAGE("-> kernel");
+#endif
 
     process_t *old_process = process_current;
 
