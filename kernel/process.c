@@ -113,7 +113,7 @@ static void __process_list_insert(process_t *process)
 
   DEBUG_ASSERT(new_node != NULL);
 
-  memory_set((void *) new_node, 0, sizeof(process_list_node_t *));
+  memory_set((void *) new_node, 0, sizeof(process_list_node_t));
 
   new_node->id          = process->id;
   new_node->process     = process;
