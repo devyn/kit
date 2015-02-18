@@ -95,16 +95,21 @@ void *memory_alloc(const size_t size)
 {
   /**
    * TODO: Proper memory management and bounds checking.
-   * As it is, this function can easily "allocate" memory
-   * outside of the hilariously puny page that we have set
-   * up for our kernel (first 2MB).
    */
 
   void *result = memory_stack_pointer;
 
   memory_stack_pointer += size;
 
-  return result;
+  if (memory_stack_pointer <= memory_stack_base + sizeof(memory_initial_heap))
+  {
+    return result;
+  }
+  else
+  {
+    DEBUG_MESSAGE("out of memory");
+    return NULL;
+  }
 }
 
 void memory_free(void *pointer) {
