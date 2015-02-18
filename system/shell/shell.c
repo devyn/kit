@@ -49,16 +49,16 @@ static void execute(char *line)
 
     if (command.filename != NULL)
     {
-      const char *const *argv = (const char *const *) command.argv;
+      const char *const *argv = (const char *const *) command.args.ptr;
 
-      int pid = syscall_spawn(command.filename, command.argc, argv);
+      int pid = syscall_spawn(command.filename, command.args.len, argv);
 
       if (pid <= 0)
       {
         last_exit_code = -100 + pid;
 
-        tprintf("\033[31m E: spawn('%s', %d, argv) failed; => %d\033[0m\n",
-            command.filename, command.argc, pid);
+        tprintf("\033[31m E: spawn('%s', %lu, argv) failed; => %d\033[0m\n",
+            command.filename, command.args.len, pid);
       }
       else if (syscall_wait_process(pid, &last_exit_code) < 0)
       {

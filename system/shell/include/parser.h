@@ -17,12 +17,13 @@
 #include <stddef.h>
 #include <stdbool.h>
 
+#include "vec.h"
+
 typedef struct command
 {
-  char  *filename;
-  int    argc;
-  char **argv;
-  bool   end_of_stream;
+  char      *filename;
+  ptr_vec_t  args;
+  bool       end_of_stream;
 } command_t;
 
 char *parse_command(const char *line, command_t *command);

@@ -15,96 +15,108 @@
 #include <stdint.h>
 #include <string.h>
 
-#include "io.h"
 #include "parser.h"
 
 char *parse_command(const char *line, command_t *command)
 {
-  bool        ignore_spaces = true;
-  const char *command_end;
+  ptr_vec_init(&command->args);
 
-  command->argc = *line == '\0' ? 0 : 1;
+  size_t index = 0;
+  size_t arg_start;
+  bool   continue_after_consume = true;
 
-  for (const char *c = line; ; c++)
+st_find_arg_start:
+
+  switch (line[index])
   {
-    switch (*c)
-    {
-      case ' ':
-        if (!ignore_spaces)
-        {
-          command->argc++;
-          ignore_spaces = true;
-        }
-        break;
+    case ' ':
+    case '\n':
+      index++;
+      goto st_find_arg_start;
 
+    case ';':
+    case '&':
+    case '\0':
+      goto st_command_end;
+
+    default:
+      goto st_consume_bare_arg;
+  }
+
+st_consume_bare_arg:
+
+  arg_start = index;
+
+  while (true)
+  {
+    switch (line[index])
+    {
       case ';':
       case '&':
-      case '\n':
-        command_end = c;
-        command->end_of_stream = false;
-        goto make_argv;
-
       case '\0':
-        command_end = c;
-        command->end_of_stream = true;
-        goto make_argv;
+        continue_after_consume = false;
+
+      case ' ':
+      case '\n':
+        goto st_finish_consume;
 
       default:
-        ignore_spaces = false;
+        index++;
     }
   }
 
-make_argv:
+st_finish_consume:
 
-  if (command->argc > 0)
   {
-    size_t length = (uintptr_t) command_end - (uintptr_t) line + 1;
+    char *arg = malloc(index - arg_start + 1);
 
-    command->argv = malloc(command->argc * sizeof(char *) + length);
+    if (arg == NULL) exit(8); // Out of memory
 
-    if (command->argv == NULL)
+    memcpy(arg, &line[arg_start], index - arg_start);
+    arg[index - arg_start + 1] = '\0';
+
+    ptr_vec_push(&command->args, (void *) arg);
+
+    if (continue_after_consume)
     {
-      exit(8);
+      index++;
+      goto st_find_arg_start;
     }
-
-    char *command_strings = (char *) (command->argv + command->argc);
-
-    memcpy(command_strings, line, length - 1);
-    command_strings[length - 1] = '\0';
-
-    char *pos = command_strings;
-
-    while (*pos == ' ') pos++;
-
-    command->argv[0] = pos;
-
-    for (int i = 1; i < command->argc; i++)
+    else
     {
-      while (*pos == ' ') pos++;
-      while (*pos != ' ') pos++;
-
-      *pos = '\0';
-
-      command->argv[i] = ++pos;
+      goto st_command_end;
     }
+  }
 
-    command->filename = malloc(strlen(command->argv[0]) + 5);
+st_command_end:
 
-    if (command->filename == NULL)
-    {
-      exit(8);
-    }
+  if (line[index] == '\0')
+  {
+    command->end_of_stream = true;
+  }
+  else
+  {
+    index++;
+    command->end_of_stream = false;
+  }
+
+  if (command->args.len > 0)
+  {
+    size_t length = strlen((char *) command->args.ptr[0]) + 5;
+
+    command->filename = malloc(length);
+
+    if (command->filename == NULL) exit(8); // Out of memory
 
     memcpy(command->filename, "bin/", 5);
-    strcat(command->filename, command->argv[0]);
+    strcat(command->filename, (char *) command->args.ptr[0]);
   }
   else
   {
     command->filename = NULL;
-    command->argv = NULL;
   }
 
-  return (char *) command_end + 1;
+  return (char *) &line[index];
 }
 
 void parse_command_cleanup(command_t *command)
@@ -112,10 +124,13 @@ void parse_command_cleanup(command_t *command)
   if (command->filename != NULL)
   {
     free(command->filename);
+    command->filename = NULL;
   }
 
-  if (command->argv != NULL)
+  for (size_t i = 0; i < command->args.len; i++)
   {
-    free(command->argv);
+    free(command->args.ptr[i]);
   }
+
+  ptr_vec_free(&command->args);
 }
