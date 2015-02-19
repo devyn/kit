@@ -19,11 +19,11 @@
 
 char *parse_command(const char *line, command_t *command)
 {
-  ptr_vec_init(&command->args);
-
   size_t index = 0;
   size_t arg_start;
   bool   continue_after_consume = true;
+
+  ptr_vec_init(&command->args);
 
 st_find_arg_start:
 
@@ -89,6 +89,16 @@ st_finish_consume:
   }
 
 st_command_end:
+
+  switch (line[index])
+  {
+    case '&':
+      command->foreground = false;
+      break;
+
+    default:
+      command->foreground = true;
+  }
 
   if (line[index] == '\0')
   {

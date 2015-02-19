@@ -23,6 +23,7 @@ typedef struct command
 {
   char      *filename;
   ptr_vec_t  args;
+  bool       foreground;
   bool       end_of_stream;
 } command_t;
 

@@ -38,7 +38,7 @@ static void display_prompt(uint64_t lineno)
   tprintf("user %lu>>\033[0;1m ", lineno);
 }
 
-static void execute(char *line)
+static void execute(char *line, uint64_t lineno)
 {
   char *current_line = line;
 
@@ -60,10 +60,23 @@ static void execute(char *line)
         tprintf("\033[31m E: spawn('%s', %lu, argv) failed; => %d\033[0m\n",
             command.filename, command.args.len, pid);
       }
-      else if (syscall_wait_process(pid, &last_exit_code) < 0)
+      else if (command.foreground &&
+               syscall_wait_process(pid, &last_exit_code) < 0)
       {
         last_exit_code = -99;
         tputs("\033[31m E: wait_process() failed\033[0m\n");
+      }
+
+      if (!command.foreground)
+      {
+        tprintf("[%lu] %d          ", lineno, pid);
+
+        for (size_t i = 0; i < command.args.len; i++)
+        {
+          tprintf(" %s", command.args.ptr[i]);
+        }
+
+        tputc('\n');
       }
     }
 
@@ -82,9 +95,9 @@ int main(UNUSED int argc, UNUSED char **argv)
 
   while (true)
   {
-    display_prompt(lineno++);
+    display_prompt(lineno);
     tgets(line, 4096);
     tputs("\033[0m");
-    execute(line);
+    execute(line, lineno++);
   }
 }
