@@ -338,7 +338,7 @@ static int shell_command_run(int argc, char **argv)
 
   if (!enqueue_only)
   {
-    scheduler_tick();
+    scheduler_enter();
 
     interrupt_enable();
 

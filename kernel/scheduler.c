@@ -16,57 +16,72 @@
 #include "x86_64.h"
 #include "debug.h"
 
-process_t *run_queue_front = NULL;
-process_t *run_queue_back  = NULL;
+static bool scheduler_entered = false;
+
+static process_t *run_queue_front = NULL;
+static process_t *run_queue_back  = NULL;
+
+void scheduler_enter()
+{
+  if (!scheduler_entered)
+  {
+    scheduler_entered = true;
+    scheduler_tick();
+    scheduler_entered = false;
+  }
+}
 
 void scheduler_tick()
 {
-  process_t *next;
-
-  if (process_current != NULL)
+  if (scheduler_entered)
   {
-    if (process_current->sched.waiting)
-    {
-      // Don't do anything.
-      return;
-    }
+    process_t *next;
 
-    while ((next = scheduler_dequeue_run()) == NULL)
+    if (process_current != NULL)
     {
-      if (process_current->state == PROCESS_STATE_RUNNING)
+      if (process_current->sched.waiting)
       {
-        // Nothing to do. Continue running.
+        // Don't do anything.
         return;
       }
-      else
+
+      while ((next = scheduler_dequeue_run()) == NULL)
       {
-        // Wait for an interrupt to wake us up.
-        process_current->sched.waiting = true;
+        if (process_current->state == PROCESS_STATE_RUNNING)
+        {
+          // Nothing to do. Continue running.
+          return;
+        }
+        else
+        {
+          // Wait for an interrupt to wake us up.
+          process_current->sched.waiting = true;
 
-        interrupt_enable();
-        hlt();
-        interrupt_disable();
+          interrupt_enable();
+          hlt();
+          interrupt_disable();
 
-        process_current->sched.waiting = false;
+          process_current->sched.waiting = false;
+        }
+      }
+
+      if (next != process_current)
+      {
+        if (process_current->state == PROCESS_STATE_RUNNING)
+        {
+          // Enqueue to be run again later.
+          scheduler_enqueue_run(process_current);
+        }
+
+        process_switch(next);
       }
     }
-
-    if (next != process_current)
+    else
     {
-      if (process_current->state == PROCESS_STATE_RUNNING)
-      {
-        // Enqueue to be run again later.
-        scheduler_enqueue_run(process_current);
-      }
+      DEBUG_ASSERT((next = scheduler_dequeue_run()) != NULL);
 
       process_switch(next);
     }
-  }
-  else
-  {
-    DEBUG_ASSERT((next = scheduler_dequeue_run()) != NULL);
-
-    process_switch(next);
   }
 }
 

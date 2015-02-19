@@ -205,5 +205,5 @@ static void kernel_init(const char *filename)
 
   process_run(process);
 
-  scheduler_tick();
+  scheduler_enter();
 }
