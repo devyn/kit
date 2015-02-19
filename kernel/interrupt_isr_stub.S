@@ -13,6 +13,8 @@
 
 .section .text
 
+.set INTERRUPT_STACK_SIZE, 192
+
 # GDT-related constants
 .set KERNEL_CODE_SEL, 0x08
 .set KERNEL_DATA_SEL, 0x10
@@ -185,8 +187,32 @@ interrupt_isr_stub_common:
   # Reset the stack
   mov %rbp, %rsp
 
-  # Reload data selector
+  # Load the old data selector
   pop %rax
+
+  # If the data selector was not the kernel data selector, then we got here from
+  # user code, which means we should save the stack as it will be once we return
+  # to the TSS and to the current process.
+  #
+  # Otherwise, skip the following.
+  mov $KERNEL_DATA_SEL, %bx
+  cmp %ax, %bx
+  je  1f
+
+  # This is what the stack pointer will be after iret.
+  lea (INTERRUPT_STACK_SIZE - 8)(%rsp), %rbx
+
+  # Store this in the TSS.
+  mov %rbx, tss_stack
+
+  # And the process.
+  mov process_current,                     %rdi
+  add PROCESS_OFFSET_KERNEL_STACK_POINTER, %rdi
+
+  mov %rbx, (%rdi)
+
+1:
+  # Restore the data selector
   mov %ax, %ds
   mov %ax, %es
   mov %ax, %fs
@@ -197,9 +223,6 @@ interrupt_isr_stub_common:
 
   # Clean up space used by interrupt number and error code
   add $16, %rsp
-
-  # Re-enable interrupts
-  sti
 
   # Return from interrupt
   iretq

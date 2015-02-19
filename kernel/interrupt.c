@@ -15,6 +15,7 @@
 #include "interrupt_8259pic.h"
 #include "ps2_8042.h"
 #include "memory.h"
+#include "scheduler.h"
 #include "debug.h"
 
 // Static definitions & function prototypes
@@ -180,8 +181,9 @@ void interrupt_initialize()
   // Initialize the 8259 by remapping it.
   interrupt_8259pic_remap(INTERRUPT_INDEX_IRQ, INTERRUPT_INDEX_IRQ + 8);
 
-  // For now, mask every interrupt except the keyboard.
+  // For now, mask every interrupt except the timer and keyboard.
   interrupt_8259pic_set_all_irq_masks(true);
+  interrupt_8259pic_set_irq_mask(0, false);
   interrupt_8259pic_set_irq_mask(1, false);
 }
 
@@ -251,6 +253,11 @@ void interrupt_handler(interrupt_stack_t stack) {
         DEBUG_FORMAT("page fault, rip=%#lx, cr2=%#lx", stack.rip, cr2);
         while (true) hlt();
       }
+    case INTERRUPT_INDEX_IRQ + 0:
+      // Timer
+      interrupt_irq_done(0);
+      scheduler_tick();
+      break;
     case INTERRUPT_INDEX_IRQ + 1:
       // PS/2 device 1 IRQ
       ps2_8042_handle_irq1();
