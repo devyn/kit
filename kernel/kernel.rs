@@ -21,11 +21,14 @@
 #![feature(lang_items)]
 #![no_std]
 
+#[macro_use]
 extern crate core;
 
 use core::prelude::*;
+use core::fmt::Write;
 
 use terminal::color;
+use terminal::Terminal;
 
 mod terminal;
 
@@ -33,8 +36,9 @@ mod terminal;
 pub extern fn kernel_main() -> ! {
 
     terminal::initialize();
-    terminal::setcolor(color::RED, color::WHITE);
-    terminal::writestring("+ Hello. I'm Kit.\n\0");
+    terminal::set_color(color::RED, color::WHITE);
+
+    write!(&mut Terminal, "+ Hello. I'm {}.\n", "Kit").ok();
 
     loop {
         unsafe { asm!("hlt"); }

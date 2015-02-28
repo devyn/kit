@@ -13,6 +13,8 @@
 
 use core::prelude::*;
 
+use core::fmt;
+
 #[allow(dead_code)]
 pub mod color {
     pub static BLACK: u8 = 0;
@@ -38,7 +40,7 @@ mod internal {
         pub fn terminal_initialize();
         pub fn terminal_clear();
         pub fn terminal_setcolor(fg: u8, bg: u8);
-        pub fn terminal_writestring(string: *const u8);
+        pub fn terminal_writebuf(length: u64, buffer: *const u8);
     }
 }
 
@@ -50,10 +52,26 @@ pub fn clear() {
     unsafe { internal::terminal_clear() }
 }
 
-pub fn setcolor(fg: u8, bg: u8) {
+pub fn set_color(fg: u8, bg: u8) {
     unsafe { internal::terminal_setcolor(fg, bg) }
 }
 
-pub fn writestring(string: &str) {
-    unsafe { internal::terminal_writestring(string.as_ptr()) }
+pub fn write(string: &str) {
+    unsafe { internal::terminal_writebuf(string.len() as u64, string.as_ptr()) }
+}
+
+/// Represents the terminal as a writable object.
+///
+/// # Example
+///
+/// ```
+/// write!(&mut Terminal, "2 * 2 = {}", 2 * 2);
+/// ```
+pub struct Terminal;
+
+impl fmt::Write for Terminal {
+    fn write_str(&mut self, s: &str) -> fmt::Result {
+        write(s);
+        Ok(())
+    }
 }

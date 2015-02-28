@@ -20,15 +20,19 @@ KERNEL_ASFLAGS=-march=generic64
 KERNEL_RUSTFLAGS=--target x86_64-unknown-linux-gnu \
 								 -g -C target-cpu=generic \
 								 -C target-feature=-mmx,-sse3,-ssse3,-3dnow \
-								 -C no-redzone -C no-stack-check -C code-model=kernel
+								 -C no-redzone -C no-stack-check -C code-model=kernel \
+								 -C relocation-model=static
 
 ifeq ($(CC),clang)
 	KERNEL_CFLAGS+=-target x86_64-pc-none-elf
 endif
 
+RUST_LIBCORE:=$(wildcard $(shell rustc --print sysroot)/lib/rustlib/x86_64-unknown-linux-gnu/lib/libcore-*.rlib)
+
 KERNEL_OBJECTS:=$(addprefix build/,$(patsubst %.c,%.o,$(wildcard kernel/*.c)))
 KERNEL_OBJECTS+=$(addprefix build/,$(patsubst %.S,%.o,$(wildcard kernel/*.S)))
 KERNEL_OBJECTS+=build/kernel/kernel.o
+KERNEL_OBJECTS+=${RUST_LIBCORE}
 
 all-kernel: build/kernel.elf
 
@@ -44,7 +48,7 @@ build/kernel/.dir: build/.dir
 
 build/kernel.elf: ${KERNEL_OBJECTS} kernel/scripts/link.ld
 	@${ECHO_LD} $@
-	@${LD} ${LDFLAGS} ${KERNEL_LDFLAGS} -T kernel/scripts/link.ld -o $@ \
+	${LD} ${LDFLAGS} ${KERNEL_LDFLAGS} -T kernel/scripts/link.ld -o $@ \
 		${KERNEL_OBJECTS}
 
 build/kernel/%.o: kernel/%.S build/kernel/.dir
@@ -55,7 +59,8 @@ build/kernel/%.o: kernel/%.c build/kernel/.dir
 	@${ECHO_CC} $@
 	@${CC} ${CFLAGS} ${KERNEL_CFLAGS} -I kernel/include -c $< -o $@
 
-build/kernel/kernel.o: kernel/kernel.rs build/kernel/.dir
+build/kernel/kernel.o: kernel/kernel.rs $(wildcard kernel/*.rs) \
+		build/kernel/.dir
 	@${ECHO_RUSTC} $@
-	${RUSTC} ${RUSTFLAGS} ${KERNEL_RUSTFLAGS} --crate-type staticlib --emit obj \
+	${RUSTC} ${RUSTFLAGS} ${KERNEL_RUSTFLAGS} --crate-type lib --emit obj \
 		$< -o $@

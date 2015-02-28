@@ -41,12 +41,12 @@ void paging_initialize()
   paging_kernel_pageset.pml4 = (paging_pml4_entry_t *)
     (paging_kernel_pageset.pml4_physical + KERNEL_OFFSET);
 
-  // Remove our identity map at 0 - 2 MB. We don't need it anymore.
+  // Remove our identity map at 0 - 4 MB. We don't need it anymore.
   memory_set(&paging_kernel_pageset.pml4[0], 0, sizeof(paging_pml4_entry_t));
 
   // Invalidate the affected linear addresses.
   for (char *address = (char *) 0x0;
-       address < (char *) 0x200000;
+       address < (char *) 0x400000;
        address += 0x1000)
   {
     invlpg(address);

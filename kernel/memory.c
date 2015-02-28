@@ -50,8 +50,8 @@ static memory_free_region_tree_t memory_free_region_tree = {{NULL}, 0};
 
 void memory_initialize(const char *mmap_buffer, const uint32_t mmap_length)
 {
-  static const uint64_t PAGE_SIZE    = 0x1000   /* 4 kB */;
-  static const uint64_t PREALLOCATED = 0x200000 /* 2 MB */;
+  static const uint64_t PAGE_SIZE    = 0x1000   /* 4 KiB */;
+  static const uint64_t PREALLOCATED = 0x400000 /* 4 MiB */;
 
   const char *current_mmap = mmap_buffer;
 
