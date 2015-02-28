@@ -48,7 +48,7 @@ build/kernel/.dir: build/.dir
 
 build/kernel.elf: ${KERNEL_OBJECTS} kernel/scripts/link.ld
 	@${ECHO_LD} $@
-	${LD} ${LDFLAGS} ${KERNEL_LDFLAGS} -T kernel/scripts/link.ld -o $@ \
+	@${LD} ${LDFLAGS} ${KERNEL_LDFLAGS} -T kernel/scripts/link.ld -o $@ \
 		${KERNEL_OBJECTS}
 
 build/kernel/%.o: kernel/%.S build/kernel/.dir
@@ -62,5 +62,5 @@ build/kernel/%.o: kernel/%.c build/kernel/.dir
 build/kernel/kernel.o: kernel/kernel.rs $(wildcard kernel/*.rs) \
 		build/kernel/.dir
 	@${ECHO_RUSTC} $@
-	${RUSTC} ${RUSTFLAGS} ${KERNEL_RUSTFLAGS} --crate-type lib --emit obj \
+	@${RUSTC} ${RUSTFLAGS} ${KERNEL_RUSTFLAGS} --crate-type lib --emit obj \
 		$< -o $@
