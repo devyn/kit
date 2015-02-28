@@ -35,7 +35,7 @@ pub mod color {
     pub static WHITE: u8 = 15;
 }
 
-mod internal {
+mod ffi {
     extern {
         pub fn terminal_initialize();
         pub fn terminal_clear();
@@ -45,19 +45,19 @@ mod internal {
 }
 
 pub fn initialize() {
-    unsafe { internal::terminal_initialize() }
+    unsafe { ffi::terminal_initialize() }
 }
 
 pub fn clear() {
-    unsafe { internal::terminal_clear() }
+    unsafe { ffi::terminal_clear() }
 }
 
 pub fn set_color(fg: u8, bg: u8) {
-    unsafe { internal::terminal_setcolor(fg, bg) }
+    unsafe { ffi::terminal_setcolor(fg, bg) }
 }
 
 pub fn write(string: &str) {
-    unsafe { internal::terminal_writebuf(string.len() as u64, string.as_ptr()) }
+    unsafe { ffi::terminal_writebuf(string.len() as u64, string.as_ptr()) }
 }
 
 /// Represents the terminal as a writable object.
