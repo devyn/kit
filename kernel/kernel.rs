@@ -30,7 +30,7 @@ use core::fmt::Write;
 use terminal::color;
 use terminal::Terminal;
 
-mod terminal;
+pub mod terminal;
 
 #[no_mangle]
 pub extern fn kernel_main() -> ! {
