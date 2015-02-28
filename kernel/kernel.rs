@@ -38,11 +38,9 @@ pub extern fn kernel_main() -> ! {
     terminal::initialize();
     terminal::set_color(color::RED, color::WHITE);
 
-    write!(&mut Terminal, "+ Hello. I'm {}.\n", "Kit").ok();
+    terminal::write("+ Hello, I'm Kit.\n");
 
-    loop {
-        unsafe { asm!("hlt"); }
-    }
+    panic!("2 + 2 = {}", 2 + 2);
 }
 
 #[lang = "stack_exhausted"]
@@ -54,11 +52,20 @@ extern fn eh_personality() {
 }
 
 #[lang = "panic_fmt"]
-#[allow(unused_variables)]
-extern fn panic_fmt(args: &core::fmt::Arguments,
-                    file: &str,
-                    line: u32) -> ! {
-    loop {
-        unsafe { asm!("hlt"); }
+#[allow(unused_must_use)]
+extern fn panic_fmt(fmt: core::fmt::Arguments,
+                    file: &'static str,
+                    line: usize) -> ! {
+
+    terminal::set_color(color::WHITE, color::RED);
+
+    write!(&mut Terminal, "\nKernel panic in {}:{}:\n  {}\n\n", file, line, fmt);
+
+    unsafe {
+        asm!("cli");
+
+        loop {
+            asm!("hlt");
+        }
     }
 }
