@@ -40,7 +40,11 @@ pub extern fn kernel_main() -> ! {
 
     terminal::write("+ Hello, I'm Kit.\n");
 
-    panic!("2 + 2 = {}", 2 + 2);
+    let result: Result<(), &str> = Err("foo");
+    
+    result.unwrap();
+
+    unreachable!();
 }
 
 #[lang = "stack_exhausted"]
