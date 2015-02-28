@@ -17,13 +17,18 @@ KERNEL_CFLAGS=-O3 -g -std=c99 -pedantic -Wall -Wextra -Werror -ffreestanding \
               -mno-ssse3 -mno-3dnow
 KERNEL_LDFLAGS=-O1 -nostdlib -z max-page-size=0x1000
 KERNEL_ASFLAGS=-march=generic64
+KERNEL_RUSTFLAGS=--target x86_64-unknown-linux-gnu \
+								 -g -C target-cpu=generic \
+								 -C target-feature=-mmx,-sse3,-ssse3,-3dnow \
+								 -C no-redzone -C no-stack-check -C code-model=kernel
 
 ifeq ($(CC),clang)
 	KERNEL_CFLAGS+=-target x86_64-pc-none-elf
 endif
 
-KERNEL_OBJECTS:=$(addprefix build/, $(patsubst %.c,%.o,$(wildcard kernel/*.c)))
-KERNEL_OBJECTS+=$(addprefix build/, $(patsubst %.S,%.o,$(wildcard kernel/*.S)))
+KERNEL_OBJECTS:=$(addprefix build/,$(patsubst %.c,%.o,$(wildcard kernel/*.c)))
+KERNEL_OBJECTS+=$(addprefix build/,$(patsubst %.S,%.o,$(wildcard kernel/*.S)))
+KERNEL_OBJECTS+=build/kernel/kernel.o
 
 all-kernel: build/kernel.elf
 
@@ -49,3 +54,8 @@ build/kernel/%.o: kernel/%.S build/kernel/.dir
 build/kernel/%.o: kernel/%.c build/kernel/.dir
 	@${ECHO_CC} $@
 	@${CC} ${CFLAGS} ${KERNEL_CFLAGS} -I kernel/include -c $< -o $@
+
+build/kernel/kernel.o: kernel/kernel.rs build/kernel/.dir
+	@${ECHO_RUSTC} $@
+	${RUSTC} ${RUSTFLAGS} ${KERNEL_RUSTFLAGS} --crate-type staticlib --emit obj \
+		$< -o $@

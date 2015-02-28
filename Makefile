@@ -11,17 +11,19 @@
 #
 ################################################################################
 
-CC=clang
-AS=as
-LD=ld
+CC    = clang
+AS    = as
+RUSTC = rustc
+LD    = ld
 
 export CPATH=system/libc/include
 
 GRUB_LIB=/usr/lib/grub
 
-ECHO_CC=echo "[36m CC [0m"
-ECHO_AS=echo "[36m AS [0m"
-ECHO_LD=echo "[36m LD [0m"
+ECHO_CC    = echo "[36m    CC [0m"
+ECHO_AS    = echo "[36m    AS [0m"
+ECHO_RUSTC = echo "[36m RUSTC [0m"
+ECHO_LD    = echo "[36m    LD [0m"
 
 all: all-kernel all-system all-iso
 
