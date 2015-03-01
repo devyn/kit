@@ -1,7 +1,6 @@
 /*******************************************************************************
  *
  * kit/kernel/kernel.rs
- * - main kernel entry point and top level management
  *
  * vim:ft=rust:ts=4:sw=4:et:tw=80
  *
@@ -13,6 +12,8 @@
  * http://wiki.osdev.org/Bare_Bones
  *
  ******************************************************************************/
+
+//! The Kit kernel.
 
 #![crate_type="lib"]
 #![feature(core)]
@@ -34,7 +35,14 @@ use core::fmt::Write;
 use terminal::*;
 
 pub mod terminal;
+pub mod constants;
+pub mod multiboot;
+pub mod memory;
+pub mod interrupt;
+pub mod paging;
+pub mod keyboard;
 
+/// Main kernel entry point.
 #[no_mangle]
 pub extern fn kernel_main() -> ! {
 
@@ -43,9 +51,54 @@ pub extern fn kernel_main() -> ! {
 
     console().write_str("+ Hello, I'm Kit.\n").unwrap();
 
-    let result: Result<(), &str> = Err("foo");
+    console().set_color(Color::White, Color::Red).unwrap();
+    console().write_char('\n').unwrap();
 
-    result.unwrap();
+    let mb_info = unsafe { multiboot::get_info() };
+
+    match mb_info.mem_sizes() {
+        Some((lower, upper)) => {
+            write!(console(),
+                   concat!("{:<20} {:<10} KiB\n",
+                           "{:<20} {:<10} KiB\n"),
+                   "Lower memory:", lower,
+                   "Upper memory:", upper).unwrap();
+        },
+        None => {
+            write!(console(),
+                   "W: Bootloader did not provide valid memory information!")
+                .unwrap();
+        }
+    }
+
+    match unsafe { mb_info.cmdline() } {
+        Some(cmdline) => {
+            write!(console(), "{:<20} ", "Kernel command line:").unwrap();
+
+            console().write_raw_bytes(cmdline).unwrap();
+            console().write_char('\n').unwrap();
+        },
+        None => {
+            write!(console(), "Kernel command line:\n").unwrap();
+        }
+    }
+
+    if mb_info.flags & multiboot::info_flags::MEM_MAP != 0 {
+        unsafe {
+            let mmap = constants::translate_low_addr(mb_info.mmap_addr)
+                .expect("mmap pointer outside low region");
+
+            memory::initialize(mmap, mb_info.mmap_length);
+        }
+    } else {
+        panic!("Bootloader did not provide memory map!");
+    }
+
+    unsafe {
+        interrupt::initialize();
+        paging::initialize();
+        keyboard::initialize().unwrap();
+    }
 
     unreachable!();
 }

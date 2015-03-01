@@ -1,7 +1,6 @@
 /*******************************************************************************
  *
  * kit/kernel/terminal.rs
- * - early text mode 80x25 terminal handler
  *
  * vim:ft=rust:ts=4:sw=4:et:tw=80
  *
@@ -10,6 +9,8 @@
  * BSD license. See LICENSE for more information.
  *
  ******************************************************************************/
+
+//! Early text mode 80x25 terminal handler.
 
 use core::prelude::*;
 
@@ -70,9 +71,9 @@ pub trait Terminal: fmt::Write {
     fn write_char(&mut self, ch: char) -> fmt::Result {
         let mut buf = [0u8, 4];
 
-        try!(ch.encode_utf8(&mut buf).ok_or(fmt::Error));
+        let size = try!(ch.encode_utf8(&mut buf).ok_or(fmt::Error));
 
-        try!(self.write_raw_bytes(&buf));
+        try!(self.write_raw_bytes(&buf[0..size]));
         try!(self.flush());
         Ok(())
     }
