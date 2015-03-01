@@ -1,6 +1,6 @@
 /*******************************************************************************
  *
- * kit/kernel/include/terminal.rs
+ * kit/kernel/terminal.rs
  * - early text mode 80x25 terminal handler
  *
  * vim:ft=rust:ts=4:sw=4:et:tw=80
