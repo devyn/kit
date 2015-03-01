@@ -20,245 +20,31 @@ uint8_t terminal_make_color(enum vga_color fg, enum vga_color bg)
   return fg | bg << 4;
 }
 
-uint16_t terminal_make_vgaentry(char c, uint8_t color)
-{
-  uint16_t c16 = c;
-  uint16_t color16 = color;
-  return c16 | color16 << 8;
-}
+extern void terminal_initialize();
 
-size_t terminal_row;
-size_t terminal_column;
-uint8_t terminal_color;
-uint16_t* terminal_buffer;
+extern void terminal_clear();
 
-void terminal_initialize()
-{
-  terminal_color = terminal_make_color(COLOR_LIGHT_GREY, COLOR_BLACK);
-  terminal_buffer = (uint16_t*) (KERNEL_OFFSET + 0xb8000);
+extern void terminal_updatecursor();
 
-  terminal_clear();
-}
+extern void terminal_getcursor(size_t *row, size_t *column);
 
-void terminal_clear()
-{
-  terminal_row = 0;
-  terminal_column = 0;
+extern void terminal_setcursor(size_t row, size_t column);
 
-  for ( size_t y = 0; y < VGA_HEIGHT; y++ )
-  {
-    for ( size_t x = 0; x < VGA_WIDTH; x++ )
-    {
-      terminal_putentryat(' ', terminal_color, x, y);
-    }
-  }
-}
+extern void terminal_getcolor(enum vga_color *fg, enum vga_color *bg);
 
-void terminal_scroll()
-{
-  // Shift everything one line back.
-  for ( size_t y = 1; y < VGA_HEIGHT; y++ )
-  {
-    for ( size_t x = 0; x < VGA_WIDTH; x++ )
-    {
-      const size_t index = y * VGA_WIDTH + x;
-      terminal_buffer[index - VGA_WIDTH] = terminal_buffer[index];
-    }
-  }
+extern void terminal_setcolor(enum vga_color fg, enum vga_color bg);
 
-  // Clear last line.
-  for ( size_t x = 0; x < VGA_WIDTH; x++ )
-  {
-    terminal_putentryat(' ', terminal_color, x, VGA_HEIGHT - 1);
-  }
-}
+extern void terminal_putentryat(char c, uint8_t color, size_t x, size_t y);
 
-void terminal_updatecursor()
-{
-  uint16_t position = (terminal_row * VGA_WIDTH) + terminal_column;
+extern void terminal_newline();
 
-  outb(0x0F,                   0x3D4);
-  outb(position & 0xFF,        0x3D5);
+extern void terminal_writechar_internal(char c);
 
-  outb(0x0E,                   0x3D4);
-  outb((position >> 8) & 0xFF, 0x3D5);
-}
+extern void terminal_writechar(char c);
 
-void terminal_getcursor(size_t *row, size_t *column)
-{
-  *row    = terminal_row;
-  *column = terminal_column;
-}
+extern void terminal_writebuf(uint64_t length, const char *buffer);
 
-void terminal_setcursor(size_t row, size_t column)
-{
-  terminal_row    = row;
-  terminal_column = column;
-
-  terminal_updatecursor();
-}
-
-void terminal_getcolor(enum vga_color *fg, enum vga_color *bg)
-{
-  *fg =  terminal_color       & 0xff;
-  *bg = (terminal_color >> 4) & 0xff;
-}
-
-void terminal_setcolor(enum vga_color fg, enum vga_color bg)
-{
-  terminal_color = terminal_make_color(fg, bg);
-}
-
-void terminal_putentryat(char c, uint8_t color, size_t x, size_t y)
-{
-  const size_t index = y * VGA_WIDTH + x;
-  terminal_buffer[index] = terminal_make_vgaentry(c, color);
-}
-
-void terminal_newline()
-{
-  // Clear to end of line.
-  while (terminal_column < VGA_WIDTH)
-  {
-    terminal_putentryat(' ', terminal_color, terminal_column, terminal_row);
-    terminal_column++;
-  }
-
-  // Go to next line, scrolling if necessary.
-  terminal_column = 0;
-  if ( ++terminal_row == VGA_HEIGHT )
-  {
-    terminal_scroll();
-    terminal_row--;
-  }
-
-  terminal_updatecursor();
-
-#ifdef THROTTLE
-  for (int i = 0; i < 40000000; i++) __asm__ volatile("mfence");
-#endif
-}
-
-static bool    terminal_ansiattrib_read = false;
-static uint8_t terminal_ansiattrib_number;
-
-static enum vga_color terminal_ansiattrib_color[] = {
-  [0] = COLOR_BLACK,
-  [1] = COLOR_RED,
-  [2] = COLOR_GREEN,
-  [3] = COLOR_BROWN,
-  [4] = COLOR_BLUE,
-  [5] = COLOR_MAGENTA,
-  [6] = COLOR_CYAN,
-  [7] = COLOR_LIGHT_GREY
-};
-
-void terminal_writechar_internal(char c)
-{
-  if (!terminal_ansiattrib_read)
-  {
-    switch (c) {
-      case '\n': // newline
-        terminal_newline();
-        break;
-
-      case '\b': // backspace
-        if ( terminal_column > 0 ) terminal_column--;
-
-        terminal_putentryat(' ', terminal_color, terminal_column, terminal_row);
-        terminal_updatecursor();
-        break;
-
-      case '\033': // escape
-        terminal_ansiattrib_read = true;
-        terminal_ansiattrib_number = 0;
-        break;
-
-      default:
-        terminal_putentryat(c, terminal_color, terminal_column, terminal_row);
-        if ( ++terminal_column == VGA_WIDTH )
-        {
-          terminal_newline();
-        }
-    }
-  }
-  else
-  {
-    // XXX: the following is a total hack
-    if (c >= '0' && c <= '9')
-    {
-      terminal_ansiattrib_number *= 10;
-      terminal_ansiattrib_number += c - '0';
-    }
-    else if (c == ';' || c == 'm')
-    {
-      enum vga_color fg, bg;
-
-      terminal_getcolor(&fg, &bg);
-
-      if (terminal_ansiattrib_number == 0)
-      {
-        fg = COLOR_LIGHT_GREY;
-        bg = COLOR_BLACK;
-      }
-      else if (terminal_ansiattrib_number == 1)
-      {
-        if (fg < COLOR_DARK_GREY) fg += 8; // bright offset
-      }
-      else if (terminal_ansiattrib_number >= 30 &&
-               terminal_ansiattrib_number <= 37)
-      {
-        fg = terminal_ansiattrib_color[terminal_ansiattrib_number - 30];
-      }
-      else if (terminal_ansiattrib_number >= 40 &&
-               terminal_ansiattrib_number <= 47)
-      {
-        bg = terminal_ansiattrib_color[terminal_ansiattrib_number - 40];
-      }
-
-      terminal_setcolor(fg, bg);
-
-      if (c == ';')
-      {
-        terminal_ansiattrib_number = 0;
-      }
-      else
-      {
-        terminal_ansiattrib_read = false;
-      }
-    }
-    else if (c != '[')
-    {
-      terminal_ansiattrib_read = false;
-    }
-  }
-}
-
-void terminal_writechar(char c)
-{
-  terminal_writechar_internal(c);
-  terminal_updatecursor();
-}
-
-void terminal_writebuf(uint64_t length, const char *buffer)
-{
-  for (uint64_t i = 0; i < length; i++)
-  {
-    terminal_writechar_internal(buffer[i]);
-  }
-
-  terminal_updatecursor();
-}
-
-void terminal_writestring(const char *data)
-{
-  for (size_t i = 0; data[i] != '\0'; i++)
-  {
-    terminal_writechar_internal(data[i]);
-  }
-
-  terminal_updatecursor();
-}
+extern void terminal_writestring(const char *data);
 
 /**
  * Can handle any base from binary up to sexatrigesimal (36), encompassing all

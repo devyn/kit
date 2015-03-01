@@ -17,22 +17,22 @@ use core::fmt;
 
 #[derive(Copy)]
 pub enum Color {
-    Black,
-    Blue,
-    Green,
-    Cyan,
-    Red,
-    Magenta,
-    Brown,
-    LightGrey,
-    DarkGrey,
-    LightBlue,
-    LightGreen,
-    LightCyan,
-    LightRed,
-    LightMagenta,
-    LightBrown,
-    White,
+    Black        = 0,
+    Blue         = 1,
+    Green        = 2,
+    Cyan         = 3,
+    Red          = 4,
+    Magenta      = 5,
+    Brown        = 6,
+    LightGrey    = 7,
+    DarkGrey     = 8,
+    LightBlue    = 9,
+    LightGreen   = 10,
+    LightCyan    = 11,
+    LightRed     = 12,
+    LightMagenta = 13,
+    LightBrown   = 14,
+    White        = 15,
 }
 
 /// A terminal.
@@ -45,6 +45,13 @@ pub trait Terminal: fmt::Write {
 
     fn get_color(&self) -> (Color, Color);
     fn set_color(&mut self, fg: Color, bg: Color) -> fmt::Result;
+
+    fn put_raw_byte(&mut self,
+                    byte: u8,
+                    fg:   Color,
+                    bg:   Color,
+                    row:  usize,
+                    col:  usize) -> fmt::Result;
 
     /// Does not flush.
     fn write_raw_byte(&mut self, byte: u8) -> fmt::Result;
@@ -109,24 +116,7 @@ impl Vga {
     }
 
     pub fn color(c: Color) -> u8 {
-        match c {
-            Color::Black        => 0,
-            Color::Blue         => 1,
-            Color::Green        => 2,
-            Color::Cyan         => 3,
-            Color::Red          => 4,
-            Color::Magenta      => 5,
-            Color::Brown        => 6,
-            Color::LightGrey    => 7,
-            Color::DarkGrey     => 8,
-            Color::LightBlue    => 9,
-            Color::LightGreen   => 10,
-            Color::LightCyan    => 11,
-            Color::LightRed     => 12,
-            Color::LightMagenta => 13,
-            Color::LightBrown   => 14,
-            Color::White        => 15,
-        }
+        c as u8
     }
 
     pub fn attr(fg: Color, bg: Color) -> u8 {
@@ -262,6 +252,17 @@ impl Terminal for Vga {
         Ok(())
     }
 
+    fn put_raw_byte(&mut self,
+                    byte: u8,
+                    fg:   Color,
+                    bg:   Color,
+                    row:  usize,
+                    col:  usize) -> fmt::Result {
+
+        self.put(byte, Vga::attr(fg, bg), row, col);
+        Ok(())
+    }
+
     fn write_raw_byte(&mut self, byte: u8) -> fmt::Result {
         match byte {
             0x0A /* newline */ => {
@@ -306,6 +307,7 @@ impl fmt::Write for Vga {
 
 static mut CONSOLE: Option<Vga> = None;
 
+/// Get the current global console.
 pub fn console() -> &'static mut Terminal {
     unsafe {
         if CONSOLE.is_none() {
@@ -317,5 +319,145 @@ pub fn console() -> &'static mut Terminal {
     }
 }
 
+/// C (legacy) interface. See `kit/kernel/include/terminal.h`.
 pub mod ffi {
+    use super::*;
+    
+    use core::mem;
+    use core::slice;
+    use core::ptr::PtrExt;
+
+    use libc::{c_char, size_t};
+
+    #[no_mangle]
+    pub extern fn terminal_initialize() {
+        console().reset().unwrap();
+    }
+
+    #[no_mangle]
+    pub extern fn terminal_clear() {
+        console().clear().unwrap();
+    }
+
+    #[no_mangle]
+    pub extern fn terminal_updatecursor() {
+        console().flush().unwrap();
+    }
+
+    #[no_mangle]
+    pub unsafe extern fn terminal_getcursor(row: *mut size_t, column: *mut size_t) {
+        let (row_us, col_us) = console().get_cursor();
+
+        *row    = row_us as size_t;
+        *column = col_us as size_t;
+    }
+
+    #[no_mangle]
+    pub extern fn terminal_setcursor(row: size_t, column: size_t) {
+        console().set_cursor(row as usize, column as usize).unwrap();
+    }
+
+    #[repr(C)]
+    #[derive(Copy)]
+    pub enum VgaColor {
+        Black        = 0,
+        Blue         = 1,
+        Green        = 2,
+        Cyan         = 3,
+        Red          = 4,
+        Magenta      = 5,
+        Brown        = 6,
+        LightGrey    = 7,
+        DarkGrey     = 8,
+        LightBlue    = 9,
+        LightGreen   = 10,
+        LightCyan    = 11,
+        LightRed     = 12,
+        LightMagenta = 13,
+        LightBrown   = 14,
+        White        = 15,
+    }
+
+    impl VgaColor {
+        pub fn from_color(color: Color) -> VgaColor {
+            unsafe { mem::transmute(color as i32) }
+        }
+
+        pub fn to_color(self) -> Color {
+            unsafe { mem::transmute(self as u8) }
+        }
+    }
+
+    #[no_mangle]
+    pub unsafe extern fn terminal_getcolor(fg: *mut VgaColor,
+                                           bg: *mut VgaColor) {
+        let (fg_c, bg_c) = console().get_color();
+
+        *fg = VgaColor::from_color(fg_c);
+        *bg = VgaColor::from_color(bg_c);
+    }
+
+    #[no_mangle]
+    pub extern fn terminal_setcolor(fg: VgaColor, bg: VgaColor) {
+        console().set_color(fg.to_color(), bg.to_color()).unwrap();
+    }
+
+    #[no_mangle]
+    pub unsafe extern fn terminal_putentryat(c: c_char,
+                                      color: u8,
+                                      x: size_t,
+                                      y: size_t) {
+
+        let fg_v: VgaColor = mem::transmute((color & 0x0f) as i32);
+        let bg_v: VgaColor = mem::transmute((color >> 4)   as i32);
+
+        console()
+            .put_raw_byte(c as u8,
+                          fg_v.to_color(),
+                          bg_v.to_color(),
+                          y as usize,
+                          x as usize)
+            .unwrap();
+    }
+
+    #[no_mangle]
+    pub extern fn terminal_newline() {
+        console().write_raw_byte('\n' as u8).unwrap();
+        console().flush().unwrap();
+    }
+
+    #[no_mangle]
+    pub extern fn terminal_writechar_internal(c: c_char) {
+        console().write_raw_byte(c as u8).unwrap();
+    }
+
+    #[no_mangle]
+    pub extern fn terminal_writechar(c: c_char) {
+        console().write_raw_byte(c as u8).unwrap();
+        console().flush().unwrap();
+    }
+
+    #[no_mangle]
+    pub unsafe extern fn terminal_writebuf(length: u64, buffer: *const u8) {
+        let bytes = slice::from_raw_parts(buffer, length as usize);
+
+        console().write_raw_bytes(bytes).unwrap();
+        console().flush().unwrap();
+    }
+
+    #[no_mangle]
+    pub unsafe extern fn terminal_writestring(data: *const u8) {
+        let mut data_len = 0usize;
+        let mut data_end = data;
+
+        while *data_end != 0 {
+            data_len += 1;
+            data_end = data_end.offset(1);
+        }
+
+        let bytes = slice::from_raw_parts(data, data_len);
+
+        console().write_raw_bytes(bytes).unwrap();
+        console().flush().unwrap();
+    }
 }

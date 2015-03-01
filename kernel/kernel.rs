@@ -16,6 +16,7 @@
 
 #![crate_type="lib"]
 #![feature(core)]
+#![feature(libc)]
 #![feature(asm)]
 #![feature(no_std)]
 #![feature(lang_items)]
@@ -23,6 +24,9 @@
 
 #[macro_use]
 extern crate core;
+
+// No linkage. Mostly for types.
+extern crate libc;
 
 use core::prelude::*;
 use core::fmt::Write;
