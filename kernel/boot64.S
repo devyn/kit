@@ -27,6 +27,15 @@ SSE_INIT: .long 0x1d00
 # Virtual memory offset
 .set KERNEL_VMA, 0xffffffff80000000
 
+# FS.base MSR (required to set to ignore Rust stack checks)
+.set IA32_FS_BASE, 0xc0000100
+
+.section .data
+
+# Must be pointed to by %fs:0x70
+.global rust_stack_limit
+rust_stack_limit: .quad 0
+
 .section .text
 
 .global _bootstrap64
@@ -101,6 +110,13 @@ _bootstrap64:
   movq %rax, %cr4
 
   ldmxcsr (SSE_INIT)
+
+  # Initialize FS.base.
+  mov    $IA32_FS_BASE, %ecx
+  movabs $(rust_stack_limit - 0x70), %rdx
+  mov    %edx, %eax
+  shr    $32, %rdx
+  wrmsr
 
   # Align the stack to 16 bytes (calling convention).
   andq $-16, %rsp

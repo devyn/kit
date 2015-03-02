@@ -11,13 +11,21 @@
 #
 ################################################################################
 
-.section .text
+.section .rodata
 
 .set INTERRUPT_STACK_SIZE, 192
 
 # GDT-related constants
 .set KERNEL_CODE_SEL, 0x08
 .set KERNEL_DATA_SEL, 0x10
+
+# Virtual memory offset
+.set KERNEL_VMA, 0xffffffff80000000
+
+# FS.base MSR (required to set to ignore Rust stack checks)
+.set IA32_FS_BASE, 0xc0000100
+
+.section .text
 
 # Emulates pusha on x86_64
 .macro PUSHAQ
@@ -176,6 +184,13 @@ interrupt_isr_stub_common:
   mov %ax, %fs
   mov %ax, %gs
   mov %ax, %ss # to replace the hacky NULL selector one
+
+  # Initialize FS.base.
+  mov    $IA32_FS_BASE, %ecx
+  movabs $(rust_stack_limit - 0x70), %rdx
+  mov    %edx, %eax
+  shr    $32, %rdx
+  wrmsr
 
   # Align the stack
   mov %rsp, %rbp

@@ -16,6 +16,12 @@
 .set KERNEL_DATA_SEL, 0x10
 .set   USER_DATA_SEL, 0x23
 
+# Virtual memory offset
+.set KERNEL_VMA, 0xffffffff80000000
+
+# FS.base MSR (required to set to ignore Rust stack checks)
+.set IA32_FS_BASE, 0xc0000100
+
 rax_temp: .skip 8
 
 .section .text
@@ -84,6 +90,17 @@ syscall_handler:
 
   # Let's save RAX (process registers) because we'll want it after.
   push %rax
+
+  # Set FS.base (necessary for Rust).
+  push   %rcx
+  push   %rdx
+  mov    $IA32_FS_BASE, %ecx
+  movabs $(rust_stack_limit - 0x70), %rdx
+  mov    %edx, %eax
+  shr    $32, %rdx
+  wrmsr
+  pop    %rdx
+  pop    %rcx
 
   # Now, let's prepare the stack to call:
   mov %rsp, %rbp
