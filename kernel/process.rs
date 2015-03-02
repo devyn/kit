@@ -1,6 +1,6 @@
 /*******************************************************************************
  *
- * kit/kernel/interrupt.rs
+ * kit/kernel/process.rs
  *
  * vim:ft=rust:ts=4:sw=4:et:tw=80
  *
@@ -10,26 +10,15 @@
  *
  ******************************************************************************/
 
-//! High level interface to processor interrupts.
+//! Process management functions.
 
-/// Prepare the interrupt table and load it.
 pub unsafe fn initialize() {
-    ffi::interrupt_initialize()
+    ffi::process_initialize()
 }
 
-/// Enable interrupts.
-pub unsafe fn enable() {
-    asm!("sti" :::: "volatile");
-}
-
-/// Disable interrupts.
-pub unsafe fn disable() {
-    asm!("cli" :::: "volatile");
-}
-
-/// C interface. See `kit/kernel/include/interrupt.h`.
+/// C interface. See `kit/kernel/include/archive.h`.
 pub mod ffi {
     extern {
-        pub fn interrupt_initialize();
+        pub fn process_initialize();
     }
 }
