@@ -271,11 +271,10 @@ impl Terminal for Vga {
 
             _ => {
                 self.put_here(byte);
+                self.col += 1;
 
-                if self.col + 1 >= self.width {
+                if self.col >= self.width {
                     self.new_line();
-                } else {
-                    self.col += 1;
                 }
             }
         }
