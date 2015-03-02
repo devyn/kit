@@ -130,16 +130,7 @@ impl Vga {
 
     fn update_cursor(&mut self) {
         unsafe fn outb(byte: u8, port: u16) {
-            // FIXME: It seems like we have to do this due to a Rust bug where
-            // the "a" and "d" constraints cause nothing to be generated. I
-            // should file a bug report.
-            asm!(concat!("mov $0, %al;\n",
-                         "mov $1, %dx;\n",
-                         "out %al, %dx")
-                :
-                : "r" (byte), "r" (port)
-                : "rax", "rdx"
-                : "volatile");
+            asm!("out %al, %dx" :: "{ax}" (byte), "{dx}" (port) :: "volatile");
         }
 
         let pos: u16 = ((self.row * self.width) + self.col) as u16;
