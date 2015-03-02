@@ -35,10 +35,10 @@
 //! > DEALINGS IN THE SOFTWARE.
 
 use core::mem;
-use core::slice;
 
 use core::prelude::*;
 
+use c_ffi::CStr;
 use constants::translate_low_addr;
 
 /// How many bytes from the start of the file we search for the header.
@@ -175,18 +175,6 @@ impl AoutElfTableUnion {
     }
 }
 
-unsafe fn c_str_to_slice<'a>(c_str: *const u8) -> &'a [u8] {
-    let mut c_str_len = 0usize;
-    let mut c_str_end = c_str;
-
-    while *c_str_end != 0 {
-        c_str_len += 1;
-        c_str_end  = c_str_end.offset(1);
-    }
-
-    slice::from_raw_parts(c_str, c_str_len)
-}
-
 #[repr(C)]
 #[derive(Debug)]
 pub struct Info {
@@ -260,13 +248,13 @@ impl Info {
     /// The kernel command line, if present.
     ///
     /// There is no guarantee that the command line is valid UTF-8.
-    pub unsafe fn cmdline<'a>(&'a self) -> Option<&'a [u8]> {
+    pub unsafe fn cmdline<'a>(&'a self) -> Option<CStr<'a>> {
         if self.flags & info_flags::CMDLINE != 0 {
             let cmdline =
                 translate_low_addr(self.cmdline)
                     .expect("cmdline pointer outside low region");
 
-            Some(c_str_to_slice(cmdline))
+            Some(CStr::from_ptr(cmdline))
         } else {
             None
         }

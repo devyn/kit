@@ -30,11 +30,6 @@ extern crate core;
 extern crate libc;
 
 use core::prelude::*;
-use core::fmt::Write;
-
-use terminal::*;
-
-use shell::shell;
 
 pub mod terminal;
 pub mod constants;
@@ -45,7 +40,17 @@ pub mod paging;
 pub mod keyboard;
 pub mod archive;
 pub mod process;
+pub mod elf;
+pub mod scheduler;
 pub mod shell;
+pub mod c_ffi;
+
+use terminal::*;
+use elf::Elf;
+use process::Process;
+use shell::shell;
+
+use c_ffi::CStr;
 
 /// Main kernel entry point.
 #[no_mangle]
@@ -80,7 +85,7 @@ pub extern fn kernel_main() -> ! {
         Some(cmdline) => {
             write!(console(), "{:<20} ", "Kernel command line:").unwrap();
 
-            console().write_raw_bytes(cmdline).unwrap();
+            console().write_raw_bytes(cmdline.as_bytes()).unwrap();
             console().write_char('\n').unwrap();
         },
         None => {
@@ -131,7 +136,7 @@ pub extern fn kernel_main() -> ! {
         let cmdline = unsafe { mb_info.cmdline().unwrap() };
 
         if !cmdline.is_empty() {
-            unimplemented!();
+            spawn_init(cmdline).unwrap();
         } else {
             write!(console(), "W: No initial program specified on kernel \
                                command line; dropping into kernel\n   \
@@ -145,6 +150,50 @@ pub extern fn kernel_main() -> ! {
     }
 
     unreachable!();
+}
+
+#[derive(Debug)]
+enum SpawnInitError {
+    NoProgramSpecified,
+    FileNotFound,
+    ElfVerifyError,
+    ProcessCreateError,
+    ElfLoadError,
+    SetArgsError
+}
+use SpawnInitError::*;
+
+fn spawn_init<'a>(filename: CStr<'static>) -> Result<(), SpawnInitError> {
+
+    console().set_color(Color::White, Color::Magenta).unwrap();
+
+    if filename.is_empty() {
+        return Err(NoProgramSpecified);
+    }
+
+    let system = archive::system();
+
+    let data = try!(system.get(filename).ok_or(FileNotFound));
+
+    let elf = try!(Elf::new(data).ok_or(ElfVerifyError));
+
+    let mut process = try!(Process::new(filename).ok_or(ProcessCreateError));
+
+    if !process.load(&elf) {
+        return Err(ElfLoadError)
+    }
+
+    if !process.set_args(&[filename.as_ptr()]) {
+        return Err(SetArgsError)
+    }
+
+    console().set_color(Color::LightGrey, Color::Black).unwrap();
+
+    process.run();
+
+    unsafe { scheduler::enter(); }
+
+    Ok(())
 }
 
 #[lang = "stack_exhausted"]
