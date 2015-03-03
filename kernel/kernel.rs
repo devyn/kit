@@ -17,6 +17,7 @@
 
 #![crate_type="lib"]
 #![feature(core)]
+#![feature(unique)]
 #![feature(libc)]
 #![feature(asm)]
 #![feature(no_std)]

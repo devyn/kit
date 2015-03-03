@@ -16,11 +16,9 @@ use core::prelude::*;
 
 use core::fmt;
 use core::mem;
-use core::ptr;
+use core::ptr::{self, Unique};
 use core::ops::{Deref, DerefMut};
 use core::cmp::Ordering;
-use core::ptr::Unique;
-use core::intrinsics::copy_nonoverlapping_memory;
 
 use libc::size_t;
 
@@ -42,7 +40,7 @@ impl<T> Box<T> {
 
             let p: *mut T = mem::transmute(p);
 
-            copy_nonoverlapping_memory(
+            ptr::copy_nonoverlapping(
                 p.as_mut().expect("out of memory"), &x, 1);
 
             mem::forget(x);
