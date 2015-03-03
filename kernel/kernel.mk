@@ -36,15 +36,21 @@ KERNEL_OBJECTS+=${RUST_LIBCORE}
 
 all-kernel: build/kernel.elf
 
+doc-kernel: build/doc/kernel/.dir
+
 clean-kernel:
 	rm -rf build/kernel
 	rm -f build/kernel.elf
 
-.PHONY: all-kernel clean-kernel
+.PHONY: all-kernel doc-kernel clean-kernel
 
 build/kernel/.dir: build/.dir
 	mkdir -p build/kernel
 	touch build/kernel/.dir
+
+build/doc/kernel/.dir: build/doc/.dir ${KERNEL_OBJECTS}
+	rustdoc -w html -o build/doc kernel/kernel.rs
+	touch build/doc/kernel/.dir
 
 build/kernel.elf: ${KERNEL_OBJECTS} kernel/scripts/link.ld
 	@${ECHO_LD} $@
@@ -62,5 +68,4 @@ build/kernel/%.o: kernel/%.c build/kernel/.dir
 build/kernel/kernel.o: kernel/kernel.rs $(wildcard kernel/*.rs) \
 		build/kernel/.dir
 	@${ECHO_RUSTC} $@
-	@${RUSTC} ${RUSTFLAGS} ${KERNEL_RUSTFLAGS} --crate-type lib --emit obj \
-		$< -o $@
+	@${RUSTC} ${RUSTFLAGS} ${KERNEL_RUSTFLAGS} --emit obj $< -o $@

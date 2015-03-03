@@ -15,7 +15,9 @@
 
 //! The Kit kernel.
 
+#![crate_name="kernel"]
 #![crate_type="lib"]
+
 #![feature(core)]
 #![feature(unique)]
 #![feature(libc)]
@@ -23,6 +25,7 @@
 #![feature(no_std)]
 #![feature(lang_items)]
 #![feature(unsafe_destructor)]
+
 #![no_std]
 
 #[macro_use]

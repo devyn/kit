@@ -27,13 +27,22 @@ ECHO_LD    = echo "[36m    LD [0m"
 
 all: all-kernel all-system all-iso
 
-clean: clean-kernel clean-system clean-iso
+doc: doc-kernel
 
-.PHONY: all clean
+clean: clean-kernel clean-system clean-iso clean-doc
+
+clean-doc:
+	rm -rf build/doc
+
+.PHONY: all doc clean clean-doc
 
 build/.dir:
 	mkdir -p build
 	touch build/.dir
+
+build/doc/.dir: build/.dir
+	mkdir -p build/doc
+	touch build/doc/.dir
 
 include kernel/kernel.mk
 include system/system.mk

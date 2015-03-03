@@ -17,6 +17,9 @@ use core::prelude::*;
 use core::fmt;
 use core::mem;
 
+/// Colors common to most terminals.
+///
+/// Numeric values correspond to the VGA text mode palette.
 #[repr(u8)]
 #[derive(PartialEq, Eq, PartialOrd, Ord, Copy)]
 pub enum Color {
@@ -72,15 +75,38 @@ impl Color {
 
 /// A terminal.
 pub trait Terminal: fmt::Write {
+    /// Reset the terminal to its initial state.
     fn reset(&mut self) -> fmt::Result;
+
+    /// Clear the terminal buffer.
     fn clear(&mut self) -> fmt::Result;
 
+    /// Get the current `(row, col)` position of the cursor.
     fn get_cursor(&self) -> (usize, usize);
+
+    /// Set the cursor to a given `(row, col)` position.
     fn set_cursor(&mut self, row: usize, col: usize) -> fmt::Result;
 
+    /// Get the current color set of the terminal.
+    ///
+    /// These colors are used for every method that writes to the terminal except
+    /// `put_raw_byte()`, which specifies its own set of foreground and
+    /// background colors.
     fn get_color(&self) -> (Color, Color);
+
+    /// Set the current color set of the terminal.
+    ///
+    /// These colors must be used for any subsequent calls to any methods that
+    /// write to the terminal, with the exception of `put_raw_byte()`, which
+    /// specifies its own set of foreground and background colors.
     fn set_color(&mut self, fg: Color, bg: Color) -> fmt::Result;
 
+    /// Put a byte at the given `(row, col)` position with the given foreground
+    /// and background colors, without changing the cursor or the current color
+    /// set of the terminal.
+    ///
+    /// The results of `get_cursor()` and `get_color()` must not be changed by
+    /// this function.
     fn put_raw_byte(&mut self,
                     byte: u8,
                     fg:   Color,
@@ -88,10 +114,16 @@ pub trait Terminal: fmt::Write {
                     row:  usize,
                     col:  usize) -> fmt::Result;
 
-    /// Does not flush.
+    /// Write a raw byte at the current cursor position with the current color
+    /// set.
+    ///
+    /// May not `flush()`, if applicable.
     fn write_raw_byte(&mut self, byte: u8) -> fmt::Result;
 
-    /// Does not flush.
+    /// Write a byte slice at the current cursor position with the current color
+    /// set.
+    ///
+    /// May not `flush()`, if applicable.
     fn write_raw_bytes(&mut self, bytes: &[u8]) -> fmt::Result {
         for byte in bytes {
             try!(self.write_raw_byte(*byte));
@@ -100,8 +132,19 @@ pub trait Terminal: fmt::Write {
         Ok(())
     }
 
+    /// Flushes any internally deferred commands or buffers, if applicable.
+    ///
+    /// The `Write` implementation should automatically call this.
+    ///
+    /// For example, `Vga` uses this to update the cursor, since writing to IO
+    /// ports can be slow.
     fn flush(&mut self) -> fmt::Result;
 
+    /// Write a character encoded as UTF-8 to the Terminal.
+    ///
+    /// Should call `flush()`, if applicable.
+    ///
+    /// The default implementation is probably sufficient for most cases.
     fn write_char(&mut self, ch: char) -> fmt::Result {
         let mut buf = [0u8, 4];
 
@@ -127,6 +170,8 @@ pub struct Vga {
 }
 
 impl Vga {
+    /// Create a new VGA text-mode terminal controller with the given
+    /// dimensions, buffer, and port.
     pub unsafe fn new(width:  usize,
                       height: usize,
                       buffer: *mut u16,
@@ -330,6 +375,7 @@ impl fmt::Write for Vga {
     }
 }
 
+/// Wraps a Terminal to make it compatible with ANSI escape sequences.
 pub struct Ansi<T> {
     term:  T,
     state: AnsiState,
@@ -400,7 +446,7 @@ static ANSI_ATTR_TABLE: [Color; 8] = [
 ];
 
 impl<T: Terminal> Ansi<T> {
-    /// Wraps an existing Terminal to make it compatible with ANSI escape
+    /// Wrap an existing Terminal to make it compatible with ANSI escape
     /// sequences.
     pub fn new(term: T) -> Ansi<T> {
         Ansi { term: term, state: AnsiState::Normal, bold: false }
