@@ -169,7 +169,7 @@ process_t *process_create(const char *name)
   }
 
   // Set up the kernel stack
-  process->kernel_stack_base = memory_alloc_aligned(2048, 16);
+  process->kernel_stack_base = memory_alloc_aligned(8192, 16);
 
   if (process->kernel_stack_base == NULL)
   {
@@ -177,7 +177,7 @@ process_t *process_create(const char *name)
   }
 
   process->kernel_stack_pointer =
-    (void *) ((uintptr_t) process->kernel_stack_base + 2048);
+    (void *) ((uintptr_t) process->kernel_stack_base + 8192);
 
   process->kernel_stack_pointer =
     process_asm_prepare(process->kernel_stack_pointer);
