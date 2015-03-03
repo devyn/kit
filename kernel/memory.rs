@@ -12,15 +12,139 @@
 
 //! Kernel memory management.
 
+use core::prelude::*;
+
+use core::fmt;
+use core::mem;
+use core::ptr;
+use core::ops::{Deref, DerefMut};
+use core::cmp::Ordering;
+use core::ptr::Unique;
+use core::intrinsics::copy_nonoverlapping_memory;
+
+use libc::size_t;
+
 /// Loads the memory map information into the region tree in order to know where
 /// in physical memory it's safe to allocate fresh pages.
 pub unsafe fn initialize(mmap_buffer: *const u8, mmap_length: u32) {
     ffi::memory_initialize(mmap_buffer, mmap_length)
 }
 
+/// Similar to Rust std::boxed::Box, using our kernel memory allocator instead.
+pub struct Box<T>(Unique<T>);
+
+impl<T> Box<T> {
+    /// Allocates memory on the heap and then moves `x` into it.
+    pub fn new(x: T) -> Box<T> {
+        unsafe {
+            let p = ffi::memory_alloc_aligned(mem::size_of::<T>() as size_t,
+                                              mem::align_of::<T>() as size_t);
+
+            let p: *mut T = mem::transmute(p);
+
+            copy_nonoverlapping_memory(
+                p.as_mut().expect("out of memory"), &x, 1);
+
+            mem::forget(x);
+
+            Box(Unique::new(p))
+        }
+    }
+}
+
+impl<T> Deref for Box<T> {
+    type Target = T;
+
+    fn deref(&self) -> &T {
+        let &Box(ref u) = self;
+
+        unsafe { u.get() }
+    }
+}
+
+impl<T> DerefMut for Box<T> {
+    fn deref_mut(&mut self) -> &mut T {
+        let &mut Box(ref mut u) = self;
+
+        unsafe { u.get_mut() }
+    }
+}
+
+impl<T, U> PartialEq<Box<U>> for Box<T> where T: PartialEq<U> {
+    fn eq(&self, other: &Box<U>) -> bool {
+        PartialEq::eq(&**self, &**other)
+    }
+
+    fn ne(&self, other: &Box<U>) -> bool {
+        PartialEq::ne(&**self, &**other)
+    }
+}
+
+impl<T: Eq> Eq for Box<T> { }
+
+impl<T, U> PartialOrd<Box<U>> for Box<T> where T: PartialOrd<U> {
+    fn partial_cmp(&self, other: &Box<U>) -> Option<Ordering> {
+        PartialOrd::partial_cmp(&**self, &**other)
+    }
+
+    fn lt(&self, other: &Box<U>) -> bool {
+        PartialOrd::lt(&**self, &**other)
+    }
+
+    fn le(&self, other: &Box<U>) -> bool {
+        PartialOrd::le(&**self, &**other)
+    }
+
+    fn gt(&self, other: &Box<U>) -> bool {
+        PartialOrd::gt(&**self, &**other)
+    }
+
+    fn ge(&self, other: &Box<U>) -> bool {
+        PartialOrd::ge(&**self, &**other)
+    }
+}
+
+impl<T: Ord> Ord for Box<T> {
+    fn cmp(&self, other: &Box<T>) -> Ordering {
+        Ord::cmp(&**self, &**other)
+    }
+}
+
+impl<T: fmt::Display> fmt::Display for Box<T> {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        fmt::Display::fmt(&**self, f)
+    }
+}
+
+impl<T: fmt::Debug> fmt::Debug for Box<T> {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        fmt::Debug::fmt(&**self, f)
+    }
+}
+
+#[unsafe_destructor]
+impl<T> Drop for Box<T> {
+    fn drop(&mut self) {
+        unsafe {
+            let ptr: *mut T = &mut **self;
+
+            ptr::read(ptr); // Drop
+
+            ffi::memory_free(mem::transmute(ptr));
+        }
+    }
+}
+
 /// C interface. See `kit/kernel/include/memory.h`.
 pub mod ffi {
+    use libc::{size_t, c_void};
+
     extern {
         pub fn memory_initialize(mmap_buffer: *const u8, mmap_length: u32);
+
+        pub fn memory_alloc_aligned(size: size_t, alignment: size_t)
+                                    -> *mut c_void;
+
+        pub fn memory_free(pointer: *mut c_void);
     }
 }

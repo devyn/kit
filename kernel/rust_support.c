@@ -14,13 +14,6 @@
 #include "debug.h"
 #include "x86_64.h"
 
-void __morestack()
-{
-  DEBUG_MESSAGE("stack reached limit");
-  cli();
-  while (1) hlt();
-}
-
 void *memset(void *s, int c, size_t n)
 {
   unsigned char *ptr = (unsigned char *) s;
@@ -100,6 +93,18 @@ int memcmp(const void *s1, const void *s2, size_t n)
   return 0;
 }
 
+void __morestack()
+{
+  static const char morestack_msg[18] =
+    {'m',0xF0,'o',0xF0,'r',0xF0,'e',0xF0,'s',0xF0,
+     't',0xF0,'a',0xF0,'c',0xF0,'k',0xF0};
+
+  memcpy((void *) (0xffffffff800B8000L + (80 * 24 * 2)),
+         (const void *) morestack_msg, 18);
+  cli();
+  while (1) hlt();
+}
+
 void __stub(const char *fn)
 {
   DEBUG_FORMAT("%s", fn); cli(); while (1) hlt();
@@ -132,3 +137,6 @@ void fma()         { __stub(__func__); }
 void fmaf()        { __stub(__func__); }
 void __powisf2()   { __stub(__func__); }
 void __powidf2()   { __stub(__func__); }
+
+// XXX: What is this?
+void _Unwind_Resume() { __stub(__func__); }

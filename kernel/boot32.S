@@ -51,8 +51,13 @@
 # then allocating 16384 bytes for it, and finally creating a symbol at the top.
 .section .bootstrap_stack
 .align 16
+
+stack_buffer:
+.skip 1024
+
+.global stack_bottom
 stack_bottom:
-.skip 16384 # 16 KiB
+.skip 15 * 1024
 stack_top:
 
 .section .bootstrap_gdt64

@@ -21,6 +21,7 @@
 #![feature(asm)]
 #![feature(no_std)]
 #![feature(lang_items)]
+#![feature(unsafe_destructor)]
 #![no_std]
 
 #[macro_use]
@@ -49,6 +50,7 @@ use terminal::*;
 use elf::Elf;
 use process::Process;
 use shell::shell;
+use memory::Box;
 
 use c_ffi::CStr;
 
@@ -133,6 +135,11 @@ pub extern fn kernel_main() -> ! {
     }
 
     {
+        // TEST
+        let _b = Box::new(MyTest);
+    }
+
+    {
         let cmdline = unsafe { mb_info.cmdline().unwrap() };
 
         if !cmdline.is_empty() {
@@ -150,6 +157,14 @@ pub extern fn kernel_main() -> ! {
     }
 
     unreachable!();
+}
+
+struct MyTest;
+
+impl Drop for MyTest {
+    fn drop(&mut self) {
+        let _ = write!(console(), "Dropping\n");
+    }
 }
 
 #[derive(Debug)]
@@ -205,14 +220,14 @@ extern fn eh_personality() {
 }
 
 #[lang = "panic_fmt"]
-#[allow(unused_must_use)]
 extern fn panic_fmt(fmt: core::fmt::Arguments,
                     file: &'static str,
                     line: usize) -> ! {
 
-    console().set_color(Color::White, Color::Red);
+    let _ = console().set_color(Color::White, Color::Red);
 
-    write!(console(), "\nKernel panic in {}:{}:\n  {}\n\n", file, line, fmt);
+    let _ = write!(console(), "\nKernel panic in {}:{}:\n  {}\n\n",
+                   file, line, fmt);
 
     unsafe {
         asm!("cli" :::: "volatile");

@@ -34,7 +34,7 @@ SSE_INIT: .long 0x1d00
 
 # Must be pointed to by %fs:0x70
 .global rust_stack_limit
-rust_stack_limit: .quad 0
+rust_stack_limit: .quad (KERNEL_VMA + stack_bottom)
 
 .section .text
 

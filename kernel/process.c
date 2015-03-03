@@ -22,6 +22,9 @@
 #include "debug.h"
 
 static void *process_original_ksp;
+static void *process_original_kslimit;
+
+extern void *rust_stack_limit;
 
 extern void *process_asm_prepare(void *stack_pointer);
 
@@ -502,11 +505,16 @@ void process_switch(process_t *process)
 
     if (old_process != NULL)
     {
+			process_original_kslimit = rust_stack_limit;
+			rust_stack_limit         = process->kernel_stack_base;
+
       process_asm_switch(&old_process->kernel_stack_pointer,
           process->kernel_stack_pointer);
     }
     else
     {
+			rust_stack_limit = process->kernel_stack_base;
+
       process_asm_switch(&process_original_ksp,
           process->kernel_stack_pointer);
     }
@@ -522,6 +530,8 @@ void process_switch(process_t *process)
     process_current = NULL;
 
     paging_set_current_pageset(&paging_kernel_pageset);
+
+		rust_stack_limit = process_original_kslimit;
 
     process_asm_switch(&old_process->kernel_stack_pointer,
         process_original_ksp);

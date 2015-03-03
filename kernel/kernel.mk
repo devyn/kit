@@ -20,7 +20,7 @@ KERNEL_ASFLAGS=-march=generic64
 KERNEL_RUSTFLAGS=--target x86_64-unknown-linux-gnu \
 								 -g -C target-cpu=generic \
 								 -C target-feature=-mmx,-sse3,-ssse3,-3dnow \
-								 -C no-redzone -C no-stack-check -C code-model=kernel \
+								 -C no-redzone -C code-model=kernel \
 								 -C relocation-model=static
 
 ifeq ($(CC),clang)
