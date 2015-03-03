@@ -51,7 +51,6 @@ use terminal::*;
 use elf::Elf;
 use process::Process;
 use shell::shell;
-use memory::Box;
 
 use c_ffi::CStr;
 
@@ -136,11 +135,6 @@ pub extern fn kernel_main() -> ! {
     }
 
     {
-        // TEST
-        let _b = Box::new(MyTest);
-    }
-
-    {
         let cmdline = unsafe { mb_info.cmdline().unwrap() };
 
         if !cmdline.is_empty() {
@@ -158,14 +152,6 @@ pub extern fn kernel_main() -> ! {
     }
 
     unreachable!();
-}
-
-struct MyTest;
-
-impl Drop for MyTest {
-    fn drop(&mut self) {
-        let _ = write!(console(), "Dropping\n");
-    }
 }
 
 #[derive(Debug)]
