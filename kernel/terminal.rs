@@ -15,8 +15,10 @@
 use core::prelude::*;
 
 use core::fmt;
+use core::mem;
 
-#[derive(Copy)]
+#[repr(u8)]
+#[derive(PartialEq, Eq, PartialOrd, Ord, Copy)]
 pub enum Color {
     Black        = 0,
     Blue         = 1,
@@ -34,6 +36,38 @@ pub enum Color {
     LightMagenta = 13,
     LightBrown   = 14,
     White        = 15,
+}
+
+static LIGHT_COLORS: [Color; 8] = [
+    Color::DarkGrey,
+    Color::LightBlue,
+    Color::LightGreen,
+    Color::LightCyan,
+    Color::LightRed,
+    Color::LightMagenta,
+    Color::LightBrown,
+    Color::White,
+];
+
+static DARK_COLORS: [Color; 8] = [
+    Color::Black,
+    Color::Blue,
+    Color::Green,
+    Color::Cyan,
+    Color::Red,
+    Color::Magenta,
+    Color::Brown,
+    Color::LightGrey,
+];
+
+impl Color {
+    pub fn lighten(self) -> Color {
+        LIGHT_COLORS[self as usize % 8]
+    }
+
+    pub fn darken(self) -> Color {
+        DARK_COLORS[self as usize % 8]
+    }
 }
 
 /// A terminal.
@@ -257,7 +291,7 @@ impl Terminal for Vga {
 
     fn write_raw_byte(&mut self, byte: u8) -> fmt::Result {
         match byte {
-            0x0A /* newline */ => {
+            b'\n' => {
                 self.new_line();
             },
 
@@ -296,14 +330,226 @@ impl fmt::Write for Vga {
     }
 }
 
-static mut CONSOLE: Option<Vga> = None;
+pub struct Ansi<T> {
+    term:  T,
+    state: AnsiState,
+    bold:  bool,
+}
+
+#[derive(Debug, Copy)]
+enum AnsiState {
+    Normal,
+    StartSeq,
+    Csi(u8, bool, [u8; 16])
+}
+
+impl AnsiState {
+    fn csi_digit(&mut self, digit: u8) {
+        match *self {
+            AnsiState::Csi(ref mut size, ref mut new, ref mut buf) => {
+                if *new {
+                    if (*size as usize) >= buf.len() { return }
+
+                    *size += 1;
+                    *new   = false;
+                }
+
+                let index = (*size as usize) - 1;
+
+                buf[index] = buf[index] * 10 + digit;
+            },
+
+            _ => panic!("csi_digit() called on {:?}", self)
+        }
+    }
+
+    fn csi_push(&mut self) {
+        match *self {
+            AnsiState::Csi(ref mut size, ref mut new, ref mut buf) => {
+                if *new {
+                    if (*size as usize) < buf.len() {
+                        *size += 1;
+                    }
+                } else {
+                    *new = true;
+                }
+            },
+
+            _ => panic!("csi_push() called on {:?}", self)
+        }
+    }
+
+    fn csi_finish(&self) -> &[u8] {
+        match *self {
+            AnsiState::Csi(size, _, ref buf) => &buf[0..(size as usize)],
+
+            _ => panic!("csi_finish() called on {:?}", self)
+        }
+    }
+}
+
+static ANSI_ATTR_TABLE: [Color; 8] = [
+    Color::Black,
+    Color::Red,
+    Color::Green,
+    Color::Brown,
+    Color::Blue,
+    Color::Magenta,
+    Color::Cyan,
+    Color::LightGrey,
+];
+
+impl<T: Terminal> Ansi<T> {
+    /// Wraps an existing Terminal to make it compatible with ANSI escape
+    /// sequences.
+    pub fn new(term: T) -> Ansi<T> {
+        Ansi { term: term, state: AnsiState::Normal, bold: false }
+    }
+
+    fn csi_sgr(&mut self) -> fmt::Result {
+        let state = mem::replace(&mut self.state, AnsiState::Normal);
+
+        let (mut fg, mut bg) = self.term.get_color();
+
+        for attr in state.csi_finish() {
+            match *attr {
+                0 => {
+                    self.bold = false;
+
+                    fg = Color::LightGrey;
+                    bg = Color::Black;
+                },
+
+                1 => {
+                    self.bold = true;
+                },
+
+                22 => {
+                    self.bold = false;
+                },
+
+                30...37 => { fg = ANSI_ATTR_TABLE[(attr - 30) as usize]; },
+                40...47 => { bg = ANSI_ATTR_TABLE[(attr - 40) as usize]; },
+
+                _ => ()
+            }
+        }
+
+        if self.bold {
+            fg = fg.lighten();
+        } else {
+            fg = fg.darken();
+        }
+
+        self.term.set_color(fg, bg)
+    }
+}
+
+impl<T: Terminal> Terminal for Ansi<T> {
+    fn reset(&mut self) -> fmt::Result {
+        self.term.reset().and_then(|_| {
+            self.state = AnsiState::Normal;
+            self.bold  = false;
+            Ok(())
+        })
+    }
+
+    fn clear(&mut self) -> fmt::Result {
+        self.term.clear()
+    }
+
+    fn get_cursor(&self) -> (usize, usize) {
+        self.term.get_cursor()
+    }
+
+    fn set_cursor(&mut self, row: usize, col: usize) -> fmt::Result {
+        self.term.set_cursor(row, col)
+    }
+
+    fn get_color(&self) -> (Color, Color) {
+        self.term.get_color()
+    }
+
+    fn set_color(&mut self, fg: Color, bg: Color) -> fmt::Result {
+        self.term.set_color(fg, bg)
+    }
+
+    fn put_raw_byte(&mut self,
+                    byte: u8,
+                    fg:   Color,
+                    bg:   Color,
+                    row:  usize,
+                    col:  usize) -> fmt::Result {
+
+        self.term.put_raw_byte(byte, fg, bg, row, col)
+    }
+
+    fn write_raw_byte(&mut self, byte: u8) -> fmt::Result {
+        match self.state {
+            AnsiState::Normal if byte == 0x1b /* escape */ => {
+                self.state = AnsiState::StartSeq;
+                Ok(())
+            },
+
+            AnsiState::Normal =>
+                self.term.write_raw_byte(byte),
+
+            AnsiState::StartSeq => match byte {
+                b'[' => {
+                    self.state = AnsiState::Csi(1, false, [0; 16]);
+                    Ok(())
+                },
+
+                _ => {
+                    self.state = AnsiState::Normal;
+                    self.term.write_raw_byte(byte)
+                }
+            },
+
+            AnsiState::Csi(_,_,_) => match byte {
+                b'0'...b'9' => {
+                    self.state.csi_digit(byte - b'0');
+                    Ok(())
+                },
+
+                b';' => {
+                    self.state.csi_push();
+                    Ok(())
+                },
+
+                b'm' => {
+                    self.csi_sgr()
+                },
+
+                _ => {
+                    self.state = AnsiState::Normal;
+                    Ok(())
+                }
+            }
+        }
+    }
+
+    fn flush(&mut self) -> fmt::Result {
+        self.term.flush()
+    }
+}
+
+impl<T: Terminal> fmt::Write for Ansi<T> {
+    fn write_str(&mut self, s: &str) -> fmt::Result {
+        try!(self.write_raw_bytes(s.as_bytes()));
+        try!(self.flush());
+        Ok(())
+    }
+}
+
+static mut CONSOLE: Option<Ansi<Vga>> = None;
 
 /// Get the current global console.
 pub fn console() -> &'static mut Terminal {
     unsafe {
         if CONSOLE.is_none() {
-            CONSOLE = Some(Vga::new(80, 25,
-                                    0xffffffff800b8000 as *mut u16, 0x3d4));
+            CONSOLE = Some(Ansi::new(Vga::new(
+                        80, 25, 0xffffffff800b8000 as *mut u16, 0x3d4)));
         }
 
         CONSOLE.as_mut().unwrap()
