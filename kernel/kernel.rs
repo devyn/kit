@@ -35,11 +35,13 @@ extern crate core;
 extern crate libc;
 
 use core::prelude::*;
+use core::iter::range_inclusive;
 
 pub mod terminal;
 pub mod constants;
 pub mod multiboot;
 pub mod memory;
+pub mod collections;
 pub mod interrupt;
 pub mod paging;
 pub mod keyboard;
@@ -131,6 +133,19 @@ pub extern fn kernel_main() -> ! {
         }
     } else {
         panic!("Bootloader did not provide modules!");
+    }
+
+    {
+        let mut tree = collections::TreeMap::<i32,()>::new();
+
+        for n in range_inclusive(1, 16) {
+            tree.insert(n,());
+        }
+
+        for n in range_inclusive(1, 16) {
+            tree.delete(&n).unwrap();
+            write!(console(), "{} => {:?}\n", n, tree).unwrap();
+        }
     }
 
     unsafe {

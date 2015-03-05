@@ -187,7 +187,9 @@ void *memory_alloc(const size_t size)
 
 void memory_free(void *pointer) {
   // Do nothing.
-  DEBUG_FORMAT("stub, pointer=%p", pointer);
+#ifdef MEMORY_LOG_FREE
+  DEBUG_FORMAT("(%p)", pointer);
+#endif
   pointer = NULL;
 }
 

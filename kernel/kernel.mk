@@ -21,13 +21,15 @@ KERNEL_RUSTFLAGS=--target x86_64-unknown-linux-gnu \
 								 -g -C target-cpu=generic \
 								 -C target-feature=-mmx,-sse3,-ssse3,-3dnow \
 								 -C no-redzone -C code-model=kernel \
-								 -C relocation-model=static
+								 -C relocation-model=static -C opt-level=2 -Z no-landing-pads
 
 ifeq ($(CC),clang)
 	KERNEL_CFLAGS+=-target x86_64-pc-none-elf
 endif
 
 RUST_LIBCORE:=$(wildcard $(shell rustc --print sysroot)/lib/rustlib/x86_64-unknown-linux-gnu/lib/libcore-*.rlib)
+
+KERNEL_RUST_SRC:=$(shell find kernel/ -type f -name '*.rs')
 
 KERNEL_OBJECTS:=$(addprefix build/,$(patsubst %.c,%.o,$(wildcard kernel/*.c)))
 KERNEL_OBJECTS+=$(addprefix build/,$(patsubst %.S,%.o,$(wildcard kernel/*.S)))
@@ -65,7 +67,6 @@ build/kernel/%.o: kernel/%.c build/kernel/.dir
 	@${ECHO_CC} $@
 	@${CC} ${CFLAGS} ${KERNEL_CFLAGS} -I kernel/include -c $< -o $@
 
-build/kernel/kernel.o: kernel/kernel.rs $(wildcard kernel/*.rs) \
-		build/kernel/.dir
+build/kernel/kernel.o: kernel/kernel.rs ${KERNEL_RUST_SRC} build/kernel/.dir
 	@${ECHO_RUSTC} $@
 	@${RUSTC} ${RUSTFLAGS} ${KERNEL_RUSTFLAGS} --emit obj $< -o $@

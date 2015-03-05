@@ -40,12 +40,21 @@ impl<T> Box<T> {
 
             let p: *mut T = mem::transmute(p);
 
-            ptr::copy_nonoverlapping(
-                p.as_mut().expect("out of memory"), &x, 1);
-
-            mem::forget(x);
+            ptr::write(p.as_mut().expect("out of memory"), x);
 
             Box(Unique::new(p))
+        }
+    }
+
+    /// Consumes the `Box` and returns the stored value.
+    pub fn unwrap(self) -> T {
+        unsafe {
+            let ptr: *mut T = { let Box(ref u) = self; **u };
+            let x = ptr::read(ptr);
+
+            ffi::memory_free(mem::transmute(ptr));
+            mem::forget(self);
+            x
         }
     }
 }
