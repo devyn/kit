@@ -51,7 +51,7 @@ build/kernel/.dir: build/.dir
 	touch build/kernel/.dir
 
 build/doc/kernel/.dir: build/doc/.dir ${KERNEL_OBJECTS}
-	rustdoc -w html -o build/doc kernel/kernel.rs
+	rustdoc --cfg doc -w html -o build/doc kernel/kernel.rs
 	touch build/doc/kernel/.dir
 
 build/kernel.elf: ${KERNEL_OBJECTS} kernel/scripts/link.ld

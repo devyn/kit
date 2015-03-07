@@ -45,6 +45,30 @@ impl<T> Box<T> {
             Box(Unique::new(p))
         }
     }
+    /// Allocates memory on the heap aligned to the given alignment and then
+    /// moves `x` into it.
+    ///
+    /// # Panics
+    ///
+    /// Panics if the given alignment is not divisible by the type's alignment.
+    /// This ensures safety.
+    pub fn with_alignment(alignment: usize, x: T) -> Box<T> {
+        if alignment % mem::align_of::<T>() != 0 {
+            panic!("invalid alignment for type ({} into {})",
+                   mem::align_of::<T>(), alignment);
+        }
+
+        unsafe {
+            let p = ffi::memory_alloc_aligned(mem::size_of::<T>() as size_t,
+                                              alignment as size_t);
+
+            let p: *mut T = mem::transmute(p);
+
+            ptr::write(p.as_mut().expect("out of memory"), x);
+
+            Box(Unique::new(p))
+        }
+    }
 
     /// Consumes the `Box` and returns the stored value.
     pub fn unwrap(self) -> T {
