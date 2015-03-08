@@ -12,9 +12,7 @@
 
 //! Kernel page management.
 
-use core::prelude::*;
 use core::cell::*;
-use memory::Box;
 
 pub mod generic;
 
@@ -33,8 +31,12 @@ pub fn kernel_pageset<'a>() -> Ref<'a, Pageset> {
     unsafe { (*KERNEL_PAGESET).borrow() }
 }
 
-pub fn kernel_pageset_mut<'a>() -> RefMut<'a, Pageset> {
-    unsafe { (*KERNEL_PAGESET).borrow_mut() }
+/// # Unsafety
+///
+/// Modifying the kernel pageset can result in system instability, data loss,
+/// and/or pointer aliasing.
+pub unsafe fn kernel_pageset_mut<'a>() -> RefMut<'a, Pageset> {
+    (*KERNEL_PAGESET).borrow_mut()
 }
 
 
