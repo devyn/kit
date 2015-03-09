@@ -68,9 +68,12 @@ impl<'a> generic::Pageset<'a> for Pageset {
 
     fn page_size() -> usize { PAGE_SIZE }
 
+    fn is_kernel_pageset(&self) -> bool { self.kernel }
+
     fn from(&'a self, vaddr: usize) -> Iter<'a> {
         Iter {
             pageset: self,
+            first:   true,
             vaddr:   vaddr,
 
             pdpt:    ptr::null(),
@@ -79,17 +82,11 @@ impl<'a> generic::Pageset<'a> for Pageset {
         }
     }
 
-    fn modify_while<F>(&mut self, vaddr: usize, callback: F)
+    fn modify_while<F>(&mut self, vaddr: usize, mut callback: F)
                        -> Result<(), Error>
         where F: FnMut(Page<usize>) -> Option<Page<usize>> {
-    
-        unimplemented!()
-    }
 
-    fn modify<F>(&mut self, vaddr: usize, callback: F) -> Result<(), Error>
-        where F: FnOnce(Page<usize>) -> Page<usize> {
-    
-        unimplemented!()
+        Pml4::modify_while(&mut *self.pml4, vaddr, &mut callback).into_result()
     }
 }
 
@@ -121,6 +118,7 @@ impl fmt::Display for Error {
 
 pub struct Iter<'a> {
     pageset: &'a Pageset,
+    first:   bool,
     vaddr:   usize,
 
     // So we don't have to do a full page walk every time:
@@ -133,9 +131,9 @@ impl<'a> Iterator for Iter<'a> {
     type Item = Page<usize>;
 
     fn next(&mut self) -> Option<Page<usize>> {
-        let vaddr = self.vaddr + PAGE_SIZE;
+        let vaddr = if self.first { self.vaddr } else { self.vaddr + PAGE_SIZE };
 
-        if self.walk(vaddr + PAGE_SIZE).is_err() {
+        if self.walk(vaddr).is_err() {
             return None;
         }
 
@@ -148,7 +146,7 @@ impl<'a> Iterator for Iter<'a> {
 impl<'a> Iter<'a> {
     fn walk(&mut self, vaddr: usize) -> Result<(), ()> {
         if vaddr.pml4_index() != self.vaddr.pml4_index() {
-            if !self.pageset.pml4.index(vaddr).is_none() {
+            if !self.pageset.pml4.index_if_ok(vaddr).is_none() {
                 self.pdpt = ptr::null();
                 self.pd   = ptr::null();
                 self.pt   = ptr::null();
@@ -266,10 +264,200 @@ impl VAddrExt for usize {
     fn offset_4k(self)  -> usize { self.bits(0..12) }
 }
 
+#[must_use]
+#[derive(PartialEq, Eq, Debug)]
+enum ModifyWhileState {
+    Continue(usize),
+    Done,
+    Error(Error)
+}
+
+impl ModifyWhileState {
+    fn into_result(self) -> Result<(), Error> {
+        use self::ModifyWhileState::*;
+
+        match self {
+            Continue(_) =>
+                panic!("The final state of modify_while() was Continue!"),
+
+            Done => Ok(()),
+
+            Error(e) => Err(e)
+        }
+    }
+}
+
 trait PageDirectory {
-    type Next;
+    type Next: ModifyWhile<Hole=Option<Box<Self::Next>>>;
+
+    fn index(vaddr: usize) -> usize;
 
     fn get<'a>(&'a self, index: usize) -> Option<&'a Self::Next>;
+}
+
+trait InnerPageDirectory: PageDirectory {
+    fn within_same(vaddr1: usize, vaddr2: usize) -> bool;
+
+    fn alloc() -> Box<Self>;
+
+    fn get_mut_hole<'a>(&'a mut self, index: usize)
+                        -> &'a mut Option<Box<Self::Next>>;
+
+    fn update_entry(&mut self, index: usize);
+}
+
+trait ModifyWhile {
+    type Hole;
+
+    fn modify_while<F>(hole: &mut Self::Hole, vaddr: usize, callback: &mut F)
+                       -> ModifyWhileState
+        where F: FnMut(Page<usize>) -> Option<Page<usize>>;
+}
+
+impl ModifyWhile for Pml4 {
+    type Hole = Pml4;
+
+    fn modify_while<F>(pml4: &mut Pml4, vaddr: usize, callback: &mut F)
+                       -> ModifyWhileState
+        where F: FnMut(Page<usize>) -> Option<Page<usize>> {
+
+        use self::ModifyWhileState::*;
+        use self::Error::*;
+
+        // Verify that the address is in range.
+        match pml4.kind {
+            User if !User.vaddr_ok(vaddr) => {
+                return Error(OutOfUserRange(vaddr));
+            },
+
+            Kernel if !Kernel.vaddr_ok(vaddr) => {
+                return Error(OutOfKernelRange(vaddr));
+            },
+
+            _ => ()
+        }
+
+        let index = Pml4::index(vaddr);
+
+        let state = Pdpt::modify_while(&mut pml4.pdpts[index % 256],
+                                       vaddr,
+                                       callback);
+
+        pml4.update_entry(index);
+
+        match state {
+            Continue(next_vaddr) =>
+                Pml4::modify_while(pml4, next_vaddr, callback),
+
+            _ => state
+        }
+    }
+}
+
+impl<T: InnerPageDirectory> ModifyWhile for T {
+    type Hole = Option<Box<T>>;
+
+    fn modify_while<F>(hole: &mut Option<Box<T>>,
+                       vaddr: usize,
+                       callback: &mut F)
+                       -> ModifyWhileState
+        where F: FnMut(Page<usize>) -> Option<Page<usize>> {
+
+        use self::ModifyWhileState::*;
+
+        let index = T::index(vaddr);
+
+        let mut state;
+
+        if let Some(ref mut me) = *hole {
+            state = T::Next::modify_while(me.get_mut_hole(index),
+                                          vaddr,
+                                          callback);
+
+            me.update_entry(index)
+        } else {
+            let mut my_next = None;
+
+            state = T::Next::modify_while(&mut my_next, vaddr, callback);
+
+            if my_next.is_some() {
+                let mut me = T::alloc();
+
+                *me.get_mut_hole(index) = my_next;
+
+                me.update_entry(index);
+
+                *hole = Some(me);
+            }
+        }
+
+        match state {
+            Continue(next_vaddr) if T::within_same(vaddr, next_vaddr) =>
+                T::modify_while(hole, next_vaddr, callback),
+
+            _ => state
+        }
+    }
+}
+
+impl ModifyWhile for Pt {
+    type Hole = Option<Box<Pt>>;
+
+    fn modify_while<F>(hole: &mut Option<Box<Pt>>,
+                       vaddr: usize,
+                       callback: &mut F)
+                       -> ModifyWhileState
+        where F: FnMut(Page<usize>) -> Option<Page<usize>> {
+
+        use self::ModifyWhileState::*;
+
+        fn invlpg(vaddr: usize) {
+            unsafe {
+                asm!("invlpg ($0)"
+                     :
+                     : "r" (vaddr)
+                     : "memory"
+                     : "volatile");
+            }
+        }
+
+        let index = vaddr.pt_index();
+
+        if let Some(ref mut pt) = *hole {
+            if let Some(page) = callback(pt.get(index)) {
+                pt.set(index, page);
+
+                // FIXME: not necessary if this is neither the current nor
+                // kernel pageset
+                invlpg(vaddr);
+
+            } else {
+                return Done;
+            }
+        } else {
+            if let Some(page) = callback(None) {
+                let mut pt = Pt::alloc();
+
+                pt.set(index, page);
+
+                // FIXME: not necessary if this is neither the current nor
+                // kernel pageset
+                invlpg(vaddr);
+
+                *hole = Some(pt);
+            } else {
+                return Done;
+            }
+        }
+
+        let next_vaddr = vaddr + 4096;
+
+        if index == 511 {
+            Continue(next_vaddr)
+        } else {
+            Pt::modify_while(hole, next_vaddr, callback)
+        }
+    }
 }
 
 #[derive(PartialEq, Eq, Debug, Copy)]
@@ -279,8 +467,20 @@ pub enum Pml4Kind {
 }
 use self::Pml4Kind::*;
 
+impl Pml4Kind {
+    fn vaddr_ok(self, vaddr: usize) -> bool {
+        let index  = vaddr.pml4_index();
+        let prefix = vaddr.prefix();
+
+        match self {
+            User   => prefix == 0      && index <  256,
+            Kernel => prefix == 0xffff && index >= 256 && index < 512
+        }
+    }
+}
+
 #[repr(packed)]
-pub struct Pml4 {
+struct Pml4 {
     entries: [u64; 512],
     pdpts:   [Option<Box<Pdpt>>; 256],
     kind:    Pml4Kind,
@@ -291,31 +491,32 @@ impl Pml4 {
         Pml4 { entries: [0; 512], pdpts: unsafe { mem::zeroed() }, kind: kind }
     }
 
-    pub fn alloc(kind: Pml4Kind) -> Box<Pml4> {
+    fn alloc(kind: Pml4Kind) -> Box<Pml4> {
         Box::with_alignment(4096, Pml4::new(kind))
     }
 
     /// Returns the PML4 index for the given virtual address if and only if the
     /// address is canonical and within the allowed range for this PML4.
-    fn index(&self, vaddr: usize) -> Option<usize> {
-        let index = vaddr.pml4_index();
-
-        match self.kind {
-            User if vaddr.prefix() == 0 && index < 256 =>
-                Some(index),
-            Kernel if vaddr.prefix() == 0xffff && index >= 256 && index < 512 =>
-                Some(index),
-            _ =>
-                None
+    fn index_if_ok(&self, vaddr: usize) -> Option<usize> {
+        if self.kind.vaddr_ok(vaddr) {
+            Some(vaddr.pml4_index())
+        } else {
+            None
         }
+    }
+
+    fn update_entry(&mut self, index: usize) {
+        unimplemented!()
     }
 }
 
 impl PageDirectory for Pml4 {
     type Next = Pdpt;
 
+    fn index(vaddr: usize) -> usize { vaddr.pml4_index() }
+
     fn get<'a>(&'a self, index: usize) -> Option<&'a Pdpt> {
-        self.index(index).and_then(|index|
+        self.index_if_ok(index).and_then(|index|
             self.pdpts[index % 256].as_ref().map(|pdpt| &**pdpt))
     }
 }
@@ -339,8 +540,29 @@ impl Pdpt {
 impl PageDirectory for Pdpt {
     type Next = Pd;
 
+    fn index(vaddr: usize) -> usize { vaddr.pdpt_index() }
+
     fn get<'a>(&'a self, index: usize) -> Option<&'a Pd> {
         self.pds.get(index).and_then(|pd| pd.as_ref()).map(|pd| &**pd)
+    }
+}
+
+impl InnerPageDirectory for Pdpt {
+    fn alloc() -> Box<Pdpt> {
+        Box::with_alignment(4096, Pdpt::new())
+    }
+
+    fn within_same(vaddr1: usize, vaddr2: usize) -> bool {
+        vaddr1.pml4_index() == vaddr2.pml4_index()
+    }
+
+    fn get_mut_hole<'a>(&'a mut self, index: usize)
+                        -> &'a mut Option<Box<Pd>> {
+        &mut self.pds[index]
+    }
+
+    fn update_entry(&mut self, index: usize) {
+        unimplemented!()
     }
 }
 
@@ -354,17 +576,34 @@ impl Pd {
     fn new() -> Pd {
         Pd { entries: [0; 512], pts: unsafe { mem::zeroed() } }
     }
-
-    fn alloc() -> Box<Pd> {
-        Box::with_alignment(4096, Pd::new())
-    }
 }
 
 impl PageDirectory for Pd {
     type Next = Pt;
 
+    fn index(vaddr: usize) -> usize { vaddr.pd_index() }
+
     fn get<'a>(&'a self, index: usize) -> Option<&'a Pt> {
         self.pts.get(index).and_then(|pt| pt.as_ref()).map(|pt| &**pt)
+    }
+}
+
+impl InnerPageDirectory for Pd {
+    fn alloc() -> Box<Pd> {
+        Box::with_alignment(4096, Pd::new())
+    }
+
+    fn within_same(vaddr1: usize, vaddr2: usize) -> bool {
+        vaddr1.pdpt_index() == vaddr2.pdpt_index()
+    }
+
+    fn get_mut_hole<'a>(&'a mut self, index: usize)
+                        -> &'a mut Option<Box<Pt>> {
+        &mut self.pts[index]
+    }
+
+    fn update_entry(&mut self, index: usize) {
+        unimplemented!()
     }
 }
 
@@ -399,5 +638,24 @@ impl Pt {
                 None
             }
         })
+    }
+
+    fn set(&mut self, index: usize, page: Page<usize>) {
+        self.entries[index] =
+            if let Some((paddr, page_type)) = page {
+                let writable = 1;
+                let user     = 2;
+
+                let mut entry: u64 = 1;
+
+                entry.set_bits(12..48, (paddr >> 12) as u64);
+
+                if page_type.is_writable() { entry.set_bit(writable, true); }
+                if page_type.is_user()     { entry.set_bit(user,     true); }
+
+                entry
+            } else {
+                0
+            };
     }
 }

@@ -59,6 +59,8 @@ pub trait Pageset<'a> {
 
     fn page_size() -> usize;
 
+    fn is_kernel_pageset(&self) -> bool;
+
     fn from(&'a self, vaddr: usize) -> Self::Iter;
 
     fn get(&'a self, vaddr: usize) -> Page<Self::Paddr> {
@@ -70,7 +72,12 @@ pub trait Pageset<'a> {
         where F: FnMut(Page<Self::Paddr>) -> Option<Page<Self::Paddr>>;
 
     fn modify<F>(&'a mut self, vaddr: usize, callback: F) -> Result<(), Self::E>
-        where F: FnOnce(Page<Self::Paddr>) -> Page<Self::Paddr>;
+        where F: FnOnce(Page<Self::Paddr>) -> Page<Self::Paddr> {
+
+        let mut callback = Some(callback);
+
+        self.modify_while(vaddr, |page| callback.take().map(|c| c(page)))
+    }
 }
 
 pub trait PagesetExt<'a>: Pageset<'a> {
