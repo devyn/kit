@@ -20,12 +20,41 @@ use core::mem;
 use core::fmt;
 use core::error;
 use core::ptr;
+
 use memory::Box;
 
+use constants::{KERNEL_OFFSET, KERNEL_LOW_START, KERNEL_LOW_END};
+
 use super::generic::{self, Page, PagesetExt, PageType};
-use super::kernel_pageset;
 
 static PAGE_SIZE: usize = 4096;
+
+/// This is the only safe way to get the physical address of a kernel pointer
+/// during paging operations.
+///
+/// It's not safe outside of paging operations however, because it assumes that
+/// if paging is not initialized yet then the initial identity mapping is in
+/// place, and `kernel_pageset_unsafe()` is used so that we can still do lookups
+/// while modifying the kernel pageset. This in itself is technically unsafe,
+/// but there's really no other option within this module.
+fn safe_lookup<T>(ptr: *const T) -> Option<usize> {
+
+    if super::initialized() {
+        unsafe {
+            super::kernel_pageset_unsafe().lookup(ptr as usize)
+        }
+    } else {
+        let map_start = KERNEL_OFFSET + KERNEL_LOW_START as usize;
+        let map_end   = KERNEL_OFFSET + KERNEL_LOW_END as usize;
+        let vaddr     = ptr as usize;
+
+        if vaddr >= map_start && vaddr > map_end {
+            Some(vaddr - KERNEL_OFFSET)
+        } else {
+            None
+        }
+    }
+}
 
 pub struct Pageset {
     cr3:    u64,
@@ -40,22 +69,28 @@ impl<'a> generic::Pageset<'a> for Pageset {
 
     fn new() -> Pageset {
         let pml4 = Pml4::alloc(User);
-
-        let cr3 = kernel_pageset()
-            .lookup(&*pml4 as *const Pml4 as usize)
-            .unwrap() as u64;
+        let cr3  = safe_lookup(&*pml4).unwrap() as u64;
 
         Pageset { cr3: cr3, pml4: pml4, kernel: false }
     }
 
     fn new_kernel() -> Pageset {
         let pml4 = Pml4::alloc(Kernel);
+        let cr3  = safe_lookup(&*pml4).unwrap() as u64;
 
-        let cr3 = kernel_pageset()
-            .lookup(&*pml4 as *const Pml4 as usize)
-            .unwrap() as u64;
+        let mut pageset = Pageset { cr3: cr3, pml4: pml4, kernel: true };
 
-        Pageset { cr3: cr3, pml4: pml4, kernel: true }
+        // Insert the identity map.
+        let identity_map_insert_result =
+            pageset.map_pages_with_type(
+                KERNEL_OFFSET,
+                Pageset::range(KERNEL_LOW_START as usize,
+                               KERNEL_LOW_END as usize),
+                PageType::default().writable().executable().not_user());
+
+        assert!(identity_map_insert_result.is_ok());
+
+        pageset
     }
 
     unsafe fn load(&mut self) {
@@ -450,7 +485,7 @@ impl ModifyWhile for Pt {
             }
         }
 
-        let next_vaddr = vaddr + 4096;
+        let next_vaddr = vaddr + PAGE_SIZE;
 
         if index == 511 {
             Continue(next_vaddr)
@@ -492,7 +527,7 @@ impl Pml4 {
     }
 
     fn alloc(kind: Pml4Kind) -> Box<Pml4> {
-        Box::with_alignment(4096, Pml4::new(kind))
+        Box::with_alignment(PAGE_SIZE, Pml4::new(kind))
     }
 
     /// Returns the PML4 index for the given virtual address if and only if the
@@ -506,7 +541,22 @@ impl Pml4 {
     }
 
     fn update_entry(&mut self, index: usize) {
-        unimplemented!()
+        // We have to use kernel_pageset_unsafe() because this could be the
+        // kernel pageset we're updating, and we have no other way to grab the
+        // physical address.
+        
+        if let Some(ref pdpt) = self.pdpts[index] {
+            let mut entry: u64 = 0x7; // present, writable, user
+
+            let paddr = safe_lookup(&**pdpt)
+                .expect("failed to find pdpt's physical address");
+
+            entry.set_bits(12..48, (paddr << 12) as u64);
+
+            self.entries[index] = entry;
+        } else {
+            self.entries[index] = 0;
+        }
     }
 }
 
@@ -531,10 +581,6 @@ impl Pdpt {
     fn new() -> Pdpt {
         Pdpt { entries: [0; 512], pds: unsafe { mem::zeroed() } }
     }
-
-    fn alloc() -> Box<Pdpt> {
-        Box::with_alignment(4096, Pdpt::new())
-    }
 }
 
 impl PageDirectory for Pdpt {
@@ -549,7 +595,7 @@ impl PageDirectory for Pdpt {
 
 impl InnerPageDirectory for Pdpt {
     fn alloc() -> Box<Pdpt> {
-        Box::with_alignment(4096, Pdpt::new())
+        Box::with_alignment(PAGE_SIZE, Pdpt::new())
     }
 
     fn within_same(vaddr1: usize, vaddr2: usize) -> bool {
@@ -562,7 +608,22 @@ impl InnerPageDirectory for Pdpt {
     }
 
     fn update_entry(&mut self, index: usize) {
-        unimplemented!()
+        // We have to use kernel_pageset_unsafe() because this could be the
+        // kernel pageset we're updating, and we have no other way to grab the
+        // physical address.
+        
+        if let Some(ref pd) = self.pds[index] {
+            let mut entry: u64 = 0x7; // present, writable, user
+
+            let paddr = safe_lookup(&**pd)
+                .expect("failed to find pd's physical address");
+
+            entry.set_bits(12..48, (paddr << 12) as u64);
+
+            self.entries[index] = entry;
+        } else {
+            self.entries[index] = 0;
+        }
     }
 }
 
@@ -590,7 +651,7 @@ impl PageDirectory for Pd {
 
 impl InnerPageDirectory for Pd {
     fn alloc() -> Box<Pd> {
-        Box::with_alignment(4096, Pd::new())
+        Box::with_alignment(PAGE_SIZE, Pd::new())
     }
 
     fn within_same(vaddr1: usize, vaddr2: usize) -> bool {
@@ -603,7 +664,22 @@ impl InnerPageDirectory for Pd {
     }
 
     fn update_entry(&mut self, index: usize) {
-        unimplemented!()
+        // We have to use kernel_pageset_unsafe() because this could be the
+        // kernel pageset we're updating, and we have no other way to grab the
+        // physical address.
+        
+        if let Some(ref pt) = self.pts[index] {
+            let mut entry: u64 = 0x7; // present, writable, user
+
+            let paddr = safe_lookup(&**pt)
+                .expect("failed to find pt's physical address");
+
+            entry.set_bits(12..48, (paddr << 12) as u64);
+
+            self.entries[index] = entry;
+        } else {
+            self.entries[index] = 0;
+        }
     }
 }
 
@@ -618,7 +694,7 @@ impl Pt {
     }
 
     fn alloc() -> Box<Pt> {
-        Box::with_alignment(4096, Pt::new())
+        Box::with_alignment(PAGE_SIZE, Pt::new())
     }
 
     fn get(&self, index: usize) -> Page<usize> {

@@ -13,7 +13,7 @@
 //! Page management functions and traits applicable to all targets.
 
 use core::prelude::*;
-use core::iter::repeat;
+use core::iter::{RangeStep, range_step, repeat};
 use core::default::Default;
 use core::error::Error;
 use core::ops;
@@ -81,6 +81,10 @@ pub trait Pageset<'a> {
 }
 
 pub trait PagesetExt<'a>: Pageset<'a> {
+    fn range(vaddr_start: usize, vaddr_end: usize) -> RangeStep<usize> {
+        range_step(vaddr_start, vaddr_end, Self::page_size())
+    }
+
     fn lookup(&'a self, vaddr: usize) -> Option<Self::Paddr> {
         self.get(vaddr).map(|(paddr, _)|
             paddr.page_offset(vaddr % Self::page_size()))
@@ -112,10 +116,27 @@ pub trait PagesetExt<'a>: Pageset<'a> {
         self.modify_while(vaddr, |_| pages.next())
     }
 
+    fn set_page_types<I>(&'a mut self, vaddr: usize, mut page_types: I)
+                        -> Result<(), Self::E>
+        where I: Iterator<Item=PageType> {
+
+        self.modify_while(vaddr, |page| {
+            page_types.next().map(|page_type| {
+                page.map(|(paddr, _)| (paddr, page_type))
+            })
+        })
+    }
+
     fn set(&'a mut self, vaddr: usize, page: Page<Self::Paddr>)
            -> Result<(), Self::E> {
 
         self.modify(vaddr, |_| page)
+    }
+
+    fn set_page_type(&'a mut self, vaddr: usize, page_type: PageType)
+                     -> Result<(), Self::E> {
+
+        self.modify(vaddr, |page| page.map(|(paddr, _)| (paddr, page_type)))
     }
 
     fn map_pages<I>(&'a mut self, vaddr: usize, pages: I)
