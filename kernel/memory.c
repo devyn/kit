@@ -19,8 +19,8 @@
 #include "rbtree.h"
 #include "debug.h"
 
-/* reserve space for an initial heap (64 KiB) */
-static uint8_t memory_initial_heap[64 * 1024];
+/* reserve space for an initial heap (128 KiB) */
+static uint8_t memory_initial_heap[128 * 1024];
 
 /* uint8_t in order to operate byte-by-byte. */
 uint8_t *memory_heap_start = memory_initial_heap;
@@ -98,6 +98,8 @@ void memory_initialize(const char *mmap_buffer, const uint32_t mmap_length)
       memory_free_region_release(physical_base, pages);
     }
   }
+
+  memory_heap_length = 0;
 }
 
 #define MEMORY_LARGE_HEAP_START 0xffffffff81000000
@@ -169,7 +171,8 @@ void *memory_alloc(const size_t size)
       {
         // We don't have the large heap enabled yet, so we can't try to allocate
         // more.
-        DEBUG_MESSAGE("ran out of initial heap");
+        DEBUG_FORMAT("ran out of initial heap (%lu + %lu)",
+            memory_heap_length, size);
         return NULL;
       }
       else
@@ -180,6 +183,10 @@ void *memory_alloc(const size_t size)
       }
     }
   }
+
+#ifdef MEMORY_LOG_ALLOC
+  DEBUG_FORMAT("(%lu) => %p", size, result);
+#endif
 
   // All okay.
   return result;

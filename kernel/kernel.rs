@@ -146,6 +146,7 @@ pub extern fn kernel_main() -> ! {
             tree.delete(&n).unwrap();
             write!(console(), "{} => {:?}\n", n, tree).unwrap();
         }
+
     }
 
     unsafe {

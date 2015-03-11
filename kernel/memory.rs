@@ -19,6 +19,7 @@ use core::mem;
 use core::ptr::{self, Unique};
 use core::ops::{Deref, DerefMut};
 use core::cmp::Ordering;
+use core::intrinsics;
 
 use libc::size_t;
 
@@ -34,17 +35,9 @@ pub struct Box<T>(Unique<T>);
 impl<T> Box<T> {
     /// Allocates memory on the heap and then moves `x` into it.
     pub fn new(x: T) -> Box<T> {
-        unsafe {
-            let p = ffi::memory_alloc_aligned(mem::size_of::<T>() as size_t,
-                                              mem::align_of::<T>() as size_t);
-
-            let p: *mut T = mem::transmute(p);
-
-            ptr::write(p.as_mut().expect("out of memory"), x);
-
-            Box(Unique::new(p))
-        }
+        Box::with_alignment(mem::align_of::<T>(), x)
     }
+
     /// Allocates memory on the heap aligned to the given alignment and then
     /// moves `x` into it.
     ///
@@ -68,6 +61,35 @@ impl<T> Box<T> {
 
             Box(Unique::new(p))
         }
+    }
+
+    /// Allocates zeroed memory on the heap aligned to the given alignment.
+    ///
+    /// # Safety
+    ///
+    /// The box must be properly initialized before returning to safe code, if
+    /// zeroes are not an appropriate representation for the type.
+    ///
+    /// In particular, the box must be properly initialized such that it is safe
+    /// to run any applicable destructors for the type.
+    ///
+    /// # Panics
+    ///
+    /// Panics if the given alignment is not divisible by the type's alignment.
+    pub unsafe fn zeroed_with_alignment(alignment: usize) -> Box<T> {
+        if alignment % mem::align_of::<T>() != 0 {
+            panic!("invalid alignment for type ({} into {})",
+                   mem::align_of::<T>(), alignment);
+        }
+
+        let p = ffi::memory_alloc_aligned(mem::size_of::<T>() as size_t,
+                                          alignment as size_t);
+
+        let p: *mut T = mem::transmute(p);
+
+        intrinsics::set_memory(p, 0, 1);
+
+        Box(Unique::new(p))
     }
 
     /// Consumes the `Box` and returns the stored value.
@@ -159,7 +181,8 @@ impl<T> Drop for Box<T> {
         unsafe {
             let ptr: *mut T = &mut **self;
 
-            ptr::read(ptr); // Drop
+            // XXX HACK, ew.
+            ((*intrinsics::get_tydesc::<T>()).drop_glue)(mem::transmute(ptr));
 
             ffi::memory_free(mem::transmute(ptr));
         }
