@@ -91,9 +91,9 @@ bool elf_load(elf_header_64_t *elf, process_t *process)
   if (!elf_verify(elf)) return false;
 
   // Then load the process's pageset.
-  paging_pageset_t *old_pageset = paging_get_current_pageset();
+  paging_pageset_t old_pageset = paging_get_current_pageset();
 
-  paging_set_current_pageset(&process->pageset);
+  paging_set_current_pageset(process->pageset);
 
   // Iterate through the program headers, following all LOAD instructions.
   bool exit_status = true;

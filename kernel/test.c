@@ -478,12 +478,12 @@ bool test_paging_c()
 {
   HEADING("resolve linear address of the kernel pageset in the kernel pageset\n");
 
-  void     *f_linear_address   = (void *) &paging_kernel_pageset;
+  void     *f_linear_address   = (void *) paging_kernel_pageset;
   uint64_t  f_physical_address = 0;
 
   terminal_printf("  - linear address: %p\n", f_linear_address);
 
-  if (paging_resolve_linear_address(&paging_kernel_pageset, f_linear_address,
+  if (paging_resolve_linear_address(paging_kernel_pageset, f_linear_address,
         &f_physical_address))
   {
     terminal_printf("  - physical address: %#lx\n", f_physical_address);
@@ -525,7 +525,7 @@ bool test_paging_c()
 
   terminal_printf("  - linear base: %p\n", pointer_1);
 
-  uint64_t mapped_1 = paging_map(&pageset, pointer_1, physical_base, 1, 0);
+  uint64_t mapped_1 = paging_map(pageset, pointer_1, physical_base, 1, 0);
 
   if (mapped_1 == 1)
   {
@@ -541,7 +541,7 @@ bool test_paging_c()
 
   uint64_t physical_1;
 
-  if (paging_resolve_linear_address(&pageset, pointer_1, &physical_1))
+  if (paging_resolve_linear_address(pageset, pointer_1, &physical_1))
   {
     terminal_printf("  - physical address: %#lx\n", physical_1);
 
@@ -559,13 +559,13 @@ bool test_paging_c()
 
   HEADING("switch to the created pageset\n");
 
-  paging_set_current_pageset(&pageset);
+  paging_set_current_pageset(pageset);
 
-  if (paging_get_current_pageset() == &pageset)
+  if (paging_get_current_pageset() == pageset)
   {
     terminal_writestring("  - ok\n");
   }
-  else if (paging_get_current_pageset() == &paging_kernel_pageset)
+  else if (paging_get_current_pageset() == paging_kernel_pageset)
   {
     terminal_writestring("  E: current pageset is still kernel pageset\n");
     return false;
@@ -587,7 +587,7 @@ bool test_paging_c()
 
   HEADING("unmap the page\n");
 
-  uint64_t unmapped_1 = paging_unmap(&pageset, pointer_1, 1);
+  uint64_t unmapped_1 = paging_unmap(pageset, pointer_1, 1);
 
   if (unmapped_1 == 1)
   {
@@ -602,9 +602,9 @@ bool test_paging_c()
 
   HEADING("switch back to the kernel pageset and then destroy this one\n");
 
-  paging_set_current_pageset(&paging_kernel_pageset);
+  paging_set_current_pageset(paging_kernel_pageset);
 
-  DEBUG_ASSERT(paging_get_current_pageset() == &paging_kernel_pageset);
+  DEBUG_ASSERT(paging_get_current_pageset() == paging_kernel_pageset);
 
   if (paging_destroy_pageset(&pageset))
   {

@@ -115,7 +115,7 @@ void memory_enable_large_heap()
           MEMORY_BUFZONE_SIZE/4096, &physical_base) ==
         MEMORY_BUFZONE_SIZE/4096);
 
-    paging_map(&paging_kernel_pageset, (void *) MEMORY_LARGE_HEAP_START,
+    paging_map(paging_kernel_pageset, (void *) MEMORY_LARGE_HEAP_START,
         physical_base, MEMORY_BUFZONE_SIZE/4096, 0);
 
     memory_heap_start  = (uint8_t *) MEMORY_LARGE_HEAP_START;
@@ -158,7 +158,7 @@ void *memory_alloc(const size_t size)
 
       // Map the pages we just got, being careful to avoid ending up in a loop.
       memory_grow_enabled = false;
-      paging_map(&paging_kernel_pageset, (void *) memory_heap_end,
+      paging_map(paging_kernel_pageset, (void *) memory_heap_end,
           physical_base, pages, 0);
       memory_grow_enabled = true;
 

@@ -146,18 +146,14 @@ static int shell_command_mem(UNUSED int argc, UNUSED char **argv)
 {
   uint64_t pages = memory_get_total_free();
 
-  paging_pageset_t *pageset = paging_get_current_pageset();
+  paging_pageset_t pageset = paging_get_current_pageset();
 
   terminal_printf(
       " free:      %lu pages (%lu MiB)\n"
-      " pageset:   %p\n"
-      " PML4:      %p (phy %#lx)\n"
-      " table_map: %lu entries (root %p)\n",
+      " pageset:   %p\n",
 
       pages, pages / 256,
-      (void *) pageset,
-      (void *) pageset->pml4, pageset->pml4_physical,
-      pageset->table_map.entries, (void *) pageset->table_map.tree.root);
+      (void *) pageset);
 
   return 0;
 }

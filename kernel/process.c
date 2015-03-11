@@ -234,7 +234,7 @@ void *process_alloc(process_t *process, void *address, uint64_t length,
     if (mapped > 0)
     {
       // FIXME: handle any errors here
-      paging_map(&process->pageset, current_address.pointer,
+      paging_map(process->pageset, current_address.pointer,
           physical_base, mapped, flags);
 
       current_address.linear += mapped << 12;
@@ -284,11 +284,11 @@ bool process_alloc_with_kernel(process_t *process, void *user_address,
     if (mapped > 0)
     {
       uint64_t mapped_user =
-        paging_map(&process->pageset, current_user.pointer,
+        paging_map(process->pageset, current_user.pointer,
             physical_base, mapped, flags | PAGING_USER);
 
       uint64_t mapped_kernel =
-        paging_map(&paging_kernel_pageset, current_kernel.pointer,
+        paging_map(paging_kernel_pageset, current_kernel.pointer,
             physical_base, mapped, flags & ~PAGING_USER);
 
       DEBUG_ASSERT(mapped_user   == mapped);
@@ -332,7 +332,7 @@ void process_free(process_t *process, void *address, uint64_t length)
   {
     uint64_t physical_base;
 
-    if (paging_resolve_linear_address(&process->pageset,
+    if (paging_resolve_linear_address(process->pageset,
           current_address.pointer, &physical_base))
     {
       // Page is present.
@@ -344,7 +344,7 @@ void process_free(process_t *process, void *address, uint64_t length)
       {
         uint64_t this_physical_base;
 
-        if (paging_resolve_linear_address(&process->pageset,
+        if (paging_resolve_linear_address(process->pageset,
               current_address.pointer, &this_physical_base))
         {
           if (this_physical_base == physical_base + unmap * 4096)
@@ -471,7 +471,7 @@ bool process_set_args(process_t *process, int argc, const char *const *argv)
 
   if (total_bytes % 4096 != 0) pages++;
 
-  paging_unmap(&paging_kernel_pageset, kernel_base, pages);
+  paging_unmap(paging_kernel_pageset, kernel_base, pages);
 
   // Set argc, argv.
   process->registers.rdi = argc;
@@ -501,7 +501,7 @@ void process_switch(process_t *process)
 
     process_current = process;
 
-    paging_set_current_pageset(&process->pageset);
+    paging_set_current_pageset(process->pageset);
 
     if (old_process != NULL)
     {
@@ -529,7 +529,7 @@ void process_switch(process_t *process)
 
     process_current = NULL;
 
-    paging_set_current_pageset(&paging_kernel_pageset);
+    paging_set_current_pageset(paging_kernel_pageset);
 
 		rust_stack_limit = process_original_kslimit;
 

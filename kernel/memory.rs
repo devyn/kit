@@ -103,6 +103,28 @@ impl<T> Box<T> {
             x
         }
     }
+
+    /// Creates a `Box` from a raw pointer.
+    ///
+    /// # Safety
+    ///
+    /// The only safe way to use this function is to pass a pointer that was
+    /// previously returned by `Box::into_raw()`. Anything else is unsafe.
+    pub unsafe fn from_raw(ptr: *mut T) -> Box<T> {
+        Box(Unique::new(ptr))
+    }
+
+    /// Consumes the `Box`, returning the raw pointer.
+    ///
+    /// # Safety
+    ///
+    /// Box is no longer managed and may be leaked. Use `Box::from_raw()` to
+    /// release.
+    pub unsafe fn into_raw(self) -> *mut T {
+        let ptr: *mut T = { let Box(ref u) = self; **u };
+        mem::forget(self);
+        ptr
+    }
 }
 
 impl<T> Deref for Box<T> {

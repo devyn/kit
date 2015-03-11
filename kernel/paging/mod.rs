@@ -79,15 +79,41 @@ pub unsafe fn initialize() {
 
     mem::forget(pageset);
 
+    kernel_pageset_mut().load();
+
     INITIALIZED = true;
-
-    ffi::paging_initialize();
-
 }
 
 /// C interface. See `kit/kernel/include/paging.h`.
 pub mod ffi {
-    extern {
-        pub fn paging_initialize();
+    use core::prelude::*;
+    use core::ptr;
+
+    use memory::Box;
+
+    use super::*;
+
+    #[repr(C)]
+    pub struct PagesetWrapper {
+        ptr: *mut Pageset
     }
+
+    #[no_mangle]
+    pub unsafe extern fn paging_create_pageset(pageset: *mut *mut Pageset) {
+        assert!(!pageset.is_null());
+
+        *pageset = Box::new(Pageset::new()).into_raw();
+    }
+
+    #[no_mangle]
+    pub unsafe extern fn paging_destroy_pageset(pageset: *mut *mut Pageset) {
+        assert!(!pageset.is_null());
+        assert!(!(*pageset).is_null());
+
+        drop(Box::from_raw(*pageset));
+
+        *pageset = ptr::null::<Pageset>() as *mut Pageset;
+    }
+
+
 }
