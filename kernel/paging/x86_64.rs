@@ -272,7 +272,7 @@ impl<T: Int> Bits<usize> for T {
     fn set_bits(&mut self, range: Range<usize>, value: Self) {
         let mask = !(!T::zero() << (range.end - range.start));
 
-        *self = *self & (mask << range.start);
+        *self = *self & !(mask << range.start);
         *self = *self | ((value & mask) << range.start);
     }
 }
@@ -567,7 +567,7 @@ impl Pml4 {
             let paddr = safe_lookup(&**pdpt)
                 .expect("failed to find pdpt's physical address");
 
-            entry.set_bits(12..48, (paddr << 12) as u64);
+            entry.set_bits(12..48, (paddr >> 12) as u64);
 
             self.entries[index % 256] = entry;
         } else {
@@ -640,7 +640,7 @@ impl InnerPageDirectory for Pdpt {
             let paddr = safe_lookup(&**pd)
                 .expect("failed to find pd's physical address");
 
-            entry.set_bits(12..48, (paddr << 12) as u64);
+            entry.set_bits(12..48, (paddr >> 12) as u64);
 
             self.entries[index] = entry;
         } else {
@@ -702,7 +702,7 @@ impl InnerPageDirectory for Pd {
             let paddr = safe_lookup(&**pt)
                 .expect("failed to find pt's physical address");
 
-            entry.set_bits(12..48, (paddr << 12) as u64);
+            entry.set_bits(12..48, (paddr >> 12) as u64);
 
             self.entries[index] = entry;
         } else {

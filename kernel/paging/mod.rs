@@ -107,6 +107,8 @@ pub unsafe fn initialize() {
 
     let pageset = Pageset::alloc_kernel();
 
+    assert!(pageset.borrow().lookup(initialized as usize).is_some());
+
     pageset.borrow_mut().load_into_hw();
 
     KERNEL_PAGESET  = Some(pageset.into_raw());
