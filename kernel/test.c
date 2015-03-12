@@ -606,15 +606,7 @@ bool test_paging_c()
 
   DEBUG_ASSERT(paging_get_current_pageset() == paging_kernel_pageset);
 
-  if (paging_destroy_pageset(&pageset))
-  {
-    terminal_writestring("  - ok\n");
-  }
-  else
-  {
-    terminal_writestring("  E: destruction failed\n");
-    return false;
-  }
+  paging_drop_ref(&pageset);
 
   // Don't forget this!
   memory_free_region_release(physical_base, 1);

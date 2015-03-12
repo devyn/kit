@@ -16,7 +16,10 @@ use core::prelude::*;
 use core::iter::{RangeStep, range_step, repeat};
 use core::default::Default;
 use core::error::Error;
+use core::cell::RefCell;
 use core::ops;
+
+use memory::Rc;
 
 pub type Page<Paddr> = Option<(Paddr, PageType)>;
 
@@ -38,7 +41,7 @@ impl<T> PhysicalAddress for T
     }
 }
 
-pub trait Pageset<'a> {
+pub trait Pageset<'a>: Sized {
     type Paddr: PhysicalAddress;
     type Iter:  Iterator<Item=Option<(Self::Paddr, PageType)>>;
     type E:     Error;
@@ -49,13 +52,18 @@ pub trait Pageset<'a> {
     /// Create a new kernel pageset.
     fn new_kernel() -> Self;
 
-    /// Set the current system pageset to this one.
+    /// Load the pageset's page tables into the appropriate control registers.
     ///
     /// # Safety
     ///
-    /// Changing the pageset can result in system instability, data loss,
-    /// and/or information leaks. Use with care.
-    unsafe fn load(&'a mut self);
+    /// This method does not take measures to ensure that the pageset outlives
+    /// the duration of which the hardware control registers point to its page
+    /// tables.
+    ///
+    /// Changing the page tables can result in system instability, data loss,
+    /// and/or information leaks. Use with care. Doing so with this method may
+    /// also conflict with `paging::current_pageset()`.
+    unsafe fn load_into_hw(&'a mut self);
 
     fn page_size() -> usize;
 
@@ -81,6 +89,14 @@ pub trait Pageset<'a> {
 }
 
 pub trait PagesetExt<'a>: Pageset<'a> {
+    fn alloc() -> Rc<RefCell<Self>> {
+        Rc::new(RefCell::new(Self::new()))
+    }
+
+    fn alloc_kernel() -> Rc<RefCell<Self>> {
+        Rc::new(RefCell::new(Self::new_kernel()))
+    }
+
     fn range(vaddr_start: usize, vaddr_end: usize) -> RangeStep<usize> {
         range_step(vaddr_start, vaddr_end, Self::page_size())
     }

@@ -97,7 +97,7 @@ impl<'a> generic::Pageset<'a> for Pageset {
         pageset
     }
 
-    unsafe fn load(&mut self) {
+    unsafe fn load_into_hw(&mut self) {
         asm!("mov $0, %cr3"
              :
              : "r" (self.cr3)

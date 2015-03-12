@@ -12,11 +12,11 @@
 
 //! Kernel page management.
 
-use core::ptr::PtrExt;
+use core::prelude::*;
 use core::cell::*;
-use core::mem;
 
-use memory::Box;
+use memory::Rc;
+use memory::rc::Contents as RcContents;
 
 pub mod generic;
 
@@ -33,37 +33,65 @@ pub use self::target::Pageset;
 
 static mut INITIALIZED: bool = false;
 
-static mut KERNEL_PAGESET: *const RefCell<Pageset> =
-    0 as *const RefCell<Pageset>;
+static mut KERNEL_PAGESET:  Option<*mut RcContents<RefCell<Pageset>>> = None;
+static mut CURRENT_PAGESET: Option<*mut RcContents<RefCell<Pageset>>> = None;
 
-pub fn kernel_pageset<'a>() -> Ref<'a, Pageset> {
-    unsafe {
-        if KERNEL_PAGESET.is_null() {
-            panic!("paging not initialized");
-        }
-
-        (*KERNEL_PAGESET).borrow()
-    }
-}
-
-pub unsafe fn kernel_pageset_unsafe<'a>() -> &'a Pageset {
-    if KERNEL_PAGESET.is_null() {
-        panic!("paging not initialized");
-    }
-
-    (*KERNEL_PAGESET).as_unsafe_cell().get().as_ref().unwrap()
-}
-
-/// # Unsafety
+/// # Safety
 ///
-/// Modifying the kernel pageset can result in system instability, data loss,
-/// and/or pointer aliasing.
-pub unsafe fn kernel_pageset_mut<'a>() -> RefMut<'a, Pageset> {
-    if KERNEL_PAGESET.is_null() {
-        panic!("paging not initialized");
+/// Modifying or making assumptions about the kernel pageset can result in
+/// system instability, data loss, and/or pointer aliasing.
+pub unsafe fn kernel_pageset() -> Rc<RefCell<Pageset>> {
+    let rc1 = Rc::from_raw(KERNEL_PAGESET.expect("paging not initialized"));
+    let rc2 = rc1.clone();
+    let _   = rc1.into_raw();
+
+    rc2
+}
+
+/// Get the kernel pageset without borrowing.
+unsafe fn kernel_pageset_unsafe<'a>() -> &'a Pageset {
+    let rc   = Rc::from_raw(KERNEL_PAGESET.expect("paging not initialized"));
+    let refr = rc.as_unsafe_cell().get().as_ref().unwrap();
+    let _    = rc.into_raw();
+
+    refr
+}
+
+/// # Safety
+///
+/// Modifying or making assumptions about the current pageset without checking
+/// what the current pageset belongs to (i.e., the current process) is
+/// dangerous.
+pub unsafe fn current_pageset() -> Option<Rc<RefCell<Pageset>>> {
+    CURRENT_PAGESET.map(|ptr| {
+        let rc1 = Rc::from_raw(ptr);
+        let rc2 = rc1.clone();
+        let _   = rc1.into_raw();
+
+        rc2
+    })
+}
+
+/// # Safety
+///
+/// `process` assumes that the current pageset is the current process's pageset,
+/// and that if there is no current process, the kernel pageset is active.
+pub unsafe fn set_current_pageset(pageset: Option<Rc<RefCell<Pageset>>>) {
+    let old = CURRENT_PAGESET.map(|ptr| Rc::from_raw(ptr));
+
+    if let Some(pageset) = pageset {
+        pageset.borrow_mut().load_into_hw();
+
+        CURRENT_PAGESET = Some(pageset.into_raw());
+    } else {
+        let kernel_pageset = kernel_pageset();
+        
+        kernel_pageset.borrow_mut().load_into_hw();
+
+        CURRENT_PAGESET = None;
     }
 
-    (*KERNEL_PAGESET).borrow_mut()
+    drop(old); // explicitly drop it here
 }
 
 pub fn initialized() -> bool {
@@ -73,47 +101,104 @@ pub fn initialized() -> bool {
 
 /// Call this on system initialization.
 pub unsafe fn initialize() {
-    let pageset = Box::new(RefCell::new(Pageset::new_kernel()));
+    if INITIALIZED {
+        panic!("paging already initialized");
+    }
 
-    KERNEL_PAGESET = &*pageset;
+    let pageset = Pageset::alloc_kernel();
 
-    mem::forget(pageset);
+    pageset.borrow_mut().load_into_hw();
 
-    kernel_pageset_mut().load();
-
-    INITIALIZED = true;
+    KERNEL_PAGESET  = Some(pageset.into_raw());
+    CURRENT_PAGESET = None;
+    INITIALIZED     = true;
 }
 
 /// C interface. See `kit/kernel/include/paging.h`.
 pub mod ffi {
     use core::prelude::*;
+    use core::cell::*;
     use core::ptr;
 
-    use memory::Box;
+    use libc::c_void;
+
+    use memory::Rc;
+    use memory::rc::Contents as RcContents;
 
     use super::*;
 
-    #[repr(C)]
-    pub struct PagesetWrapper {
-        ptr: *mut Pageset
+    pub type PagesetCRef = *mut RcContents<RefCell<Pageset>>;
+
+    #[no_mangle]
+    pub unsafe extern fn paging_create_pageset(pageset: *mut PagesetCRef) {
+        *pageset = Pageset::alloc().into_raw();
     }
 
     #[no_mangle]
-    pub unsafe extern fn paging_create_pageset(pageset: *mut *mut Pageset) {
-        assert!(!pageset.is_null());
+    pub unsafe extern fn paging_clone_ref(pageset: PagesetCRef) -> PagesetCRef {
+        let rc1 = Rc::from_raw(pageset);
+        let rc2 = rc1.clone();
+        let _   = rc1.into_raw();
 
-        *pageset = Box::new(Pageset::new()).into_raw();
+        rc2.into_raw()
     }
 
     #[no_mangle]
-    pub unsafe extern fn paging_destroy_pageset(pageset: *mut *mut Pageset) {
-        assert!(!pageset.is_null());
-        assert!(!(*pageset).is_null());
+    pub unsafe extern fn paging_drop_ref(pageset: *mut PagesetCRef) {
+        if !(*pageset).is_null() {
+            drop(Rc::from_raw(*pageset));
 
-        drop(Box::from_raw(*pageset));
-
-        *pageset = ptr::null::<Pageset>() as *mut Pageset;
+            *pageset = ptr::null::<RcContents<RefCell<Pageset>>>()
+                           as PagesetCRef;
+        }
     }
 
+    #[no_mangle]
+    pub unsafe extern fn
+        paging_resolve_linear_address(pageset: PagesetCRef,
+                                      linear_address: *const c_void,
+                                      physical_address: *mut u64) {
+        unimplemented!()
+    }
 
+    #[no_mangle]
+    pub unsafe extern fn paging_map(pageset: PagesetCRef,
+                                    linear_address: *const c_void,
+                                    physical_address: u64,
+                                    pages: u64,
+                                    flags: u8) -> u64 {
+        unimplemented!()
+    }
+
+    #[no_mangle]
+    pub unsafe extern fn paging_unmap(pageset: PagesetCRef,
+                                      linear_address: *const c_void,
+                                      pages: u64) -> u64 {
+        unimplemented!()
+    }
+
+    #[no_mangle]
+    pub unsafe extern fn paging_get_flags(pageset: PagesetCRef,
+                                          linear_address: *const c_void,
+                                          flags: *mut u8) -> i8 {
+        unimplemented!()
+    }
+
+    #[no_mangle]
+    pub unsafe extern fn paging_set_flags(pageset: PagesetCRef,
+                                          linear_address: *const c_void,
+                                          pages: u64,
+                                          flags: u8) -> u64 {
+        unimplemented!()
+    }
+
+    #[no_mangle]
+    pub unsafe extern fn paging_get_current_pageset() -> PagesetCRef {
+        unimplemented!()
+    }
+
+    #[no_mangle]
+    pub unsafe extern fn paging_set_current_pageset(pageset: PagesetCRef) {
+        unimplemented!()
+    }
 }

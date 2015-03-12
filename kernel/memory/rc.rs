@@ -16,12 +16,13 @@ use core::prelude::*;
 use core::ops::Deref;
 use core::cmp::Ordering;
 use core::fmt;
+use core::mem;
 
 use memory::Box;
 
 pub struct Rc<T>(*mut Contents<T>);
 
-struct Contents<T> {
+pub struct Contents<T> {
     refs: isize, // signed in order to be able to detect errors
     data: T,
 }
@@ -30,6 +31,28 @@ impl<T> Rc<T> {
     /// Constructs a new reference-counted box.
     pub fn new(value: T) -> Rc<T> {
         unsafe { Rc(Box::new(Contents { refs: 1, data: value }).into_raw()) }
+    }
+
+    /// Creates a `Rc` from a raw pointer.
+    ///
+    /// # Safety
+    ///
+    /// The only safe way to use this function is to pass a pointer that was
+    /// previously returned by `Rc::into_raw()`. Anything else is unsafe.
+    pub unsafe fn from_raw(ptr: *mut Contents<T>) -> Rc<T> {
+        Rc(ptr)
+    }
+
+    /// Consumes the `Rc`, returning the raw pointer.
+    ///
+    /// # Safety
+    ///
+    /// Rc is no longer managed and may be leaked. Use `Rc::from_raw()` to
+    /// release.
+    pub unsafe fn into_raw(self) -> *mut Contents<T> {
+        let Rc(ptr) = self;
+        mem::forget(self);
+        ptr
     }
 }
 

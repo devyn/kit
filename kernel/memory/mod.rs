@@ -12,8 +12,8 @@
 
 //! Kernel memory management.
 
-mod boxed;
-mod rc;
+pub mod boxed;
+pub mod rc;
 
 pub use self::boxed::Box;
 pub use self::rc::Rc;

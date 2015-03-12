@@ -90,4 +90,8 @@ uint64_t memory_free_region_acquire(const uint64_t pages,
 void memory_free_region_release(const uint64_t physical_base,
                                 const uint64_t pages);
 
+typedef struct {
+  int dummy; // do not use
+} *memory_rc_t;
+
 #endif
