@@ -207,7 +207,8 @@ interrupt_isr_stub_common:
 
   # If the data selector was not the kernel data selector, then we got here from
   # user code, which means we should save the stack as it will be once we return
-  # to the TSS and to the current process.
+  # to the TSS and to the current process. Additionally, we only need to reset
+  # the data selectors to what they were originally in the user case.
   #
   # Otherwise, skip the following.
   mov $KERNEL_DATA_SEL, %bx
@@ -226,13 +227,13 @@ interrupt_isr_stub_common:
 
   mov %rbx, (%rdi)
 
-1:
   # Restore the data selector
   mov %ax, %ds
   mov %ax, %es
   mov %ax, %fs
   mov %ax, %gs
 
+1:
   # Restore general purpose registers
   POPAQ
 
