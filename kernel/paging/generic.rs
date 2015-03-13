@@ -181,8 +181,8 @@ pub trait PagesetExt<'a>: Pageset<'a> {
         self.set(vaddr, Some((paddr, page_type)))
     }
 
-    fn unmap_pages<I>(&'a mut self, vaddr: usize, pages: usize)
-                      -> Result<(), Self::E> {
+    fn unmap_pages(&'a mut self, vaddr: usize, pages: usize)
+                   -> Result<(), Self::E> {
 
         self.set_pages(vaddr, repeat(None).take(pages))
     }
