@@ -172,5 +172,6 @@ error:
 
 exit:
   paging_set_current_pageset(old_pageset);
+  paging_drop_ref(&old_pageset);
   return exit_status;
 }

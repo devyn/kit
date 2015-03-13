@@ -155,6 +155,8 @@ static int shell_command_mem(UNUSED int argc, UNUSED char **argv)
       pages, pages / 256,
       (void *) pageset);
 
+  paging_drop_ref(&pageset);
+
   return 0;
 }
 
