@@ -37,6 +37,13 @@ static mut KERNEL_PAGESET: Option<*mut Pageset> = None;
 
 static mut CURRENT_PAGESET: Option<*mut RcContents<RefCell<Pageset>>> = None;
 
+/// A reference-counted, shared pageset.
+///
+/// This is required in order to be able to set a pageset as the current
+/// pageset, because we need to be able to guarantee that it will still be valid
+/// while the hardware is using it.
+pub type RcPageset = Rc<RefCell<Pageset>>;
+
 /// # Safety
 ///
 /// Modifying or making assumptions about the kernel pageset can result in
@@ -53,7 +60,7 @@ pub unsafe fn kernel_pageset() -> &'static mut Pageset {
 /// Modifying or making assumptions about the current pageset without checking
 /// what the current pageset belongs to (i.e., the current process) is
 /// dangerous.
-pub unsafe fn current_pageset() -> Option<Rc<RefCell<Pageset>>> {
+pub unsafe fn current_pageset() -> Option<RcPageset> {
     CURRENT_PAGESET.map(|ptr| {
         let rc1 = Rc::from_raw(ptr);
         let rc2 = rc1.clone();
@@ -67,7 +74,7 @@ pub unsafe fn current_pageset() -> Option<Rc<RefCell<Pageset>>> {
 ///
 /// `process` assumes that the current pageset is the current process's pageset,
 /// and that if there is no current process, the kernel pageset is active.
-pub unsafe fn set_current_pageset(pageset: Option<Rc<RefCell<Pageset>>>) {
+pub unsafe fn set_current_pageset(pageset: Option<RcPageset>) {
     let old = CURRENT_PAGESET.map(|ptr| Rc::from_raw(ptr));
 
     if let Some(pageset) = pageset {
@@ -165,7 +172,7 @@ pub mod ffi {
         }) as u64
     }
 
-    unsafe fn unpack(pageset: PagesetCRef) -> Option<Rc<RefCell<Pageset>>> {
+    unsafe fn unpack(pageset: PagesetCRef) -> Option<RcPageset> {
         if pageset.is_null() {
             None
         } else {
