@@ -15,7 +15,7 @@
 use core::prelude::*;
 use core::cell::*;
 
-use memory::Rc;
+use memory::{Box, Rc};
 use memory::rc::Contents as RcContents;
 
 pub mod generic;
@@ -33,28 +33,19 @@ pub use self::target::{Pageset, Error};
 
 static mut INITIALIZED: bool = false;
 
-static mut KERNEL_PAGESET:  Option<*mut RcContents<RefCell<Pageset>>> = None;
+static mut KERNEL_PAGESET: Option<*mut Pageset> = None;
+
 static mut CURRENT_PAGESET: Option<*mut RcContents<RefCell<Pageset>>> = None;
 
 /// # Safety
 ///
 /// Modifying or making assumptions about the kernel pageset can result in
 /// system instability, data loss, and/or pointer aliasing.
-pub unsafe fn kernel_pageset() -> Rc<RefCell<Pageset>> {
-    let rc1 = Rc::from_raw(KERNEL_PAGESET.expect("paging not initialized"));
-    let rc2 = rc1.clone();
-    let _   = rc1.into_raw();
-
-    rc2
-}
-
-/// Get the kernel pageset without borrowing.
-unsafe fn kernel_pageset_unsafe<'a>() -> &'a Pageset {
-    let rc   = Rc::from_raw(KERNEL_PAGESET.expect("paging not initialized"));
-    let refr = rc.as_unsafe_cell().get().as_ref().unwrap();
-    let _    = rc.into_raw();
-
-    refr
+///
+/// Simultaneous (aliased) access to the kernel pageset is allowed, because it's
+/// necessary. As such, it isn't wrapped in a RefCell.
+pub unsafe fn kernel_pageset() -> &'static mut Pageset {
+    &mut *KERNEL_PAGESET.expect("paging not initialized")
 }
 
 /// # Safety
@@ -84,9 +75,7 @@ pub unsafe fn set_current_pageset(pageset: Option<Rc<RefCell<Pageset>>>) {
 
         CURRENT_PAGESET = Some(pageset.into_raw());
     } else {
-        let kernel_pageset = kernel_pageset();
-        
-        kernel_pageset.borrow_mut().load_into_hw();
+        kernel_pageset().load_into_hw();
 
         CURRENT_PAGESET = None;
     }
@@ -105,14 +94,12 @@ pub unsafe fn initialize() {
         panic!("paging already initialized");
     }
 
-    let pageset = Pageset::alloc_kernel();
+    KERNEL_PAGESET = Some(Box::new(Pageset::new_kernel()).into_raw());
 
-    assert!(pageset.borrow().lookup(initialized as usize).is_some());
+    assert!(kernel_pageset().lookup(initialized as usize).is_some());
 
-    pageset.borrow_mut().load_into_hw();
+    kernel_pageset().load_into_hw();
 
-    KERNEL_PAGESET  = Some(pageset.into_raw());
-    CURRENT_PAGESET = None;
     INITIALIZED     = true;
 }
 
@@ -178,15 +165,15 @@ pub mod ffi {
         }) as u64
     }
 
-    unsafe fn unpack(pageset: PagesetCRef) -> Rc<RefCell<Pageset>> {
+    unsafe fn unpack(pageset: PagesetCRef) -> Option<Rc<RefCell<Pageset>>> {
         if pageset.is_null() {
-            kernel_pageset()
+            None
         } else {
             let rc1 = Rc::from_raw(pageset);
             let rc2 = rc1.clone();
             let _   = rc1.into_raw();
 
-            rc2
+            Some(rc2)
         }
     }
 
@@ -223,7 +210,9 @@ pub mod ffi {
                                       linear_address: *const c_void,
                                       physical_address: *mut u64) -> i8 {
         let pageset = unpack(pageset);
-        let pageset = pageset.borrow();
+        let pageset = pageset.as_ref().map(|x| x.borrow());
+        let pageset = pageset.as_ref().map(|x| &**x)
+                                      .unwrap_or(kernel_pageset());
         let vaddr   = linear_address as usize;
 
         if let Some(paddr) = pageset.lookup(vaddr) {
@@ -241,7 +230,9 @@ pub mod ffi {
                                     pages: u64,
                                     flags: u8) -> u64 {
         let pageset     = unpack(pageset);
-        let mut pageset = pageset.borrow_mut();
+        let mut pageset = pageset.as_ref().map(|x| x.borrow_mut());
+        let pageset     = pageset.as_mut().map(|x| &mut **x)
+                                          .unwrap_or(kernel_pageset());
 
         let vaddr       = linear_address as usize;
         let paddr       = physical_address as usize;
@@ -261,7 +252,10 @@ pub mod ffi {
                                       linear_address: *const c_void,
                                       pages: u64) -> u64 {
         let pageset     = unpack(pageset);
-        let mut pageset = pageset.borrow_mut();
+        let mut pageset = pageset.as_ref().map(|x| x.borrow_mut());
+        let pageset     = pageset.as_mut().map(|x| &mut **x)
+                                          .unwrap_or(kernel_pageset());
+
         let vaddr       = linear_address as usize;
         let pages       = pages as usize;
 
@@ -273,7 +267,10 @@ pub mod ffi {
                                           linear_address: *const c_void,
                                           flags: *mut u8) -> i8 {
         let pageset = unpack(pageset);
-        let pageset = pageset.borrow();
+        let pageset = pageset.as_ref().map(|x| x.borrow());
+        let pageset = pageset.as_ref().map(|x| &**x)
+                                      .unwrap_or(kernel_pageset());
+
         let vaddr   = linear_address as usize;
 
         if let Some((_, page_type)) = pageset.get(vaddr) {
@@ -290,7 +287,10 @@ pub mod ffi {
                                           pages: u64,
                                           flags: u8) -> u64 {
         let pageset     = unpack(pageset);
-        let mut pageset = pageset.borrow_mut();
+        let mut pageset = pageset.as_ref().map(|x| x.borrow_mut());
+        let pageset     = pageset.as_mut().map(|x| &mut **x)
+                                          .unwrap_or(kernel_pageset());
+
         let vaddr       = linear_address as usize;
         let pages       = pages as usize;
 
@@ -310,10 +310,6 @@ pub mod ffi {
 
     #[no_mangle]
     pub unsafe extern fn paging_set_current_pageset(pageset: PagesetCRef) {
-        if !pageset.is_null() {
-            set_current_pageset(Some(unpack(pageset)));
-        } else {
-            set_current_pageset(None);
-        }
+        set_current_pageset(unpack(pageset));
     }
 }

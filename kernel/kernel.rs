@@ -118,6 +118,7 @@ pub extern fn kernel_main() -> ! {
     unsafe {
         interrupt::initialize();
         paging::initialize();
+        memory::enable_large_heap();
         keyboard::initialize().unwrap();
     }
 
@@ -236,10 +237,6 @@ extern fn panic_fmt(fmt: core::fmt::Arguments,
                    file, line, fmt);
 
     unsafe {
-        asm!("cli" :::: "volatile");
-
-        loop {
-            asm!("hlt" :::: "volatile");
-        }
+        loop { asm!("cli; hlt" :::: "volatile"); }
     }
 }

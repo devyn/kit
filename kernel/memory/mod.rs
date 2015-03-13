@@ -12,6 +12,8 @@
 
 //! Kernel memory management.
 
+use paging;
+
 pub mod boxed;
 pub mod rc;
 
@@ -24,6 +26,13 @@ pub unsafe fn initialize(mmap_buffer: *const u8, mmap_length: u32) {
     ffi::memory_initialize(mmap_buffer, mmap_length)
 }
 
+/// Enables the 'large' (non-static) heap. Requires paging to have been
+/// initialized first.
+pub fn enable_large_heap() {
+    assert!(paging::initialized());
+
+    unsafe { ffi::memory_enable_large_heap(); }
+}
 
 /// C interface. See `kit/kernel/include/memory.h`.
 pub mod ffi {
@@ -31,6 +40,8 @@ pub mod ffi {
 
     extern {
         pub fn memory_initialize(mmap_buffer: *const u8, mmap_length: u32);
+
+        pub fn memory_enable_large_heap();
 
         pub fn memory_alloc_aligned(size: size_t, alignment: size_t)
                                     -> *mut c_void;

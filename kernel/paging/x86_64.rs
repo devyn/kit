@@ -41,7 +41,7 @@ fn safe_lookup<T>(ptr: *const T) -> Option<usize> {
 
     if super::initialized() {
         unsafe {
-            super::kernel_pageset_unsafe().lookup(ptr as usize)
+            super::kernel_pageset().lookup(ptr as usize)
         }
     } else {
         let map_start = KERNEL_OFFSET + KERNEL_LOW_START as usize;
@@ -98,6 +98,10 @@ impl<'a> generic::Pageset<'a> for Pageset {
     }
 
     unsafe fn load_into_hw(&mut self) {
+        if !self.is_kernel_pageset() {
+            self.pml4.copy_latest_from_kernel();
+        }
+
         asm!("mov $0, %cr3"
              :
              : "r" (self.cr3)
@@ -522,15 +526,21 @@ impl Pml4Kind {
 
 #[repr(packed)]
 struct Pml4 {
-    entries: [u64; 512],
-    pdpts:   [Option<Box<Pdpt>>; 256],
-    kind:    Pml4Kind,
+    entries:  [u64; 512],
+    pdpts:    [Option<Box<Pdpt>>; 256],
+    kind:     Pml4Kind,
+    kversion: usize,
 }
 
 impl Pml4 {
     #![allow(dead_code)]
     fn new(kind: Pml4Kind) -> Pml4 {
-        Pml4 { entries: [0; 512], pdpts: unsafe { mem::zeroed() }, kind: kind }
+        Pml4 {
+            entries:  [0; 512],
+            pdpts:    unsafe { mem::zeroed() },
+            kind:     kind,
+            kversion: match kind { Kernel => 1, User => 0 },
+        }
     }
 
     fn alloc(kind: Pml4Kind) -> Box<Pml4> {
@@ -540,6 +550,7 @@ impl Pml4 {
         unsafe {
             let mut pml4: Box<Pml4> = Box::zeroed_with_alignment(PAGE_SIZE);
             pml4.kind = kind;
+            pml4.kversion = match kind { Kernel => 1, User => 0 };
             pml4
         }
     }
@@ -558,7 +569,15 @@ impl Pml4 {
         // We have to use kernel_pageset_unsafe() because this could be the
         // kernel pageset we're updating, and we have no other way to grab the
         // physical address.
-        
+
+        if index >= 256 {
+            assert!(self.kind == Kernel && index < 512);
+        } else {
+            assert!(self.kind == User);
+        }
+
+        let original = self.entries[index];
+
         if let Some(ref pdpt) = self.pdpts[index % 256] {
             let mut entry: u64 = if index >= 256 {
                 0x3 // present, writable
@@ -574,6 +593,24 @@ impl Pml4 {
             self.entries[index] = entry;
         } else {
             self.entries[index] = 0;
+        }
+
+        if self.kind == Kernel && original != self.entries[index] {
+            self.kversion += 1;
+        }
+    }
+
+    fn copy_latest_from_kernel(&mut self) {
+        assert_eq!(self.kind, User);
+
+        let kernel = unsafe { super::kernel_pageset() };
+
+        if self.kversion != kernel.pml4.kversion {
+            for index in 256..512 {
+                self.entries[index] = kernel.pml4.entries[index];
+            }
+
+            self.kversion = kernel.pml4.kversion;
         }
     }
 }

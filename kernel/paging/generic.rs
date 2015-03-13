@@ -93,10 +93,6 @@ pub trait PagesetExt<'a>: Pageset<'a> {
         Rc::new(RefCell::new(Self::new()))
     }
 
-    fn alloc_kernel() -> Rc<RefCell<Self>> {
-        Rc::new(RefCell::new(Self::new_kernel()))
-    }
-
     fn range(vaddr_start: usize, vaddr_end: usize) -> RangeStep<usize> {
         range_step(vaddr_start, vaddr_end, Self::page_size())
     }
