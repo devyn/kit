@@ -23,12 +23,13 @@ use memory::Box;
 
 pub struct TreeMap<K, V> {
     root: Option<Box<Node<K, V>>>,
+    len:  usize,
 }
 
 impl<K: Ord, V> TreeMap<K, V> {
     /// Create a new empty `TreeMap`.
     pub fn new() -> TreeMap<K, V> {
-        TreeMap { root: None }
+        TreeMap { root: None, len: 0 }
     }
 
     /// Get a reference to the value corresponding to the given key, if found.
@@ -47,12 +48,29 @@ impl<K: Ord, V> TreeMap<K, V> {
     /// Replaces any pre-existing value and returns the original value, if
     /// present.
     pub fn insert(&mut self, key: K, val: V) -> Option<V> {
-        insert(&mut self.root, key, val)
+        let r = insert(&mut self.root, key, val);
+
+        if r.is_none() {
+            self.len += 1;
+        }
+
+        r
     }
 
     /// Delete a key from a `TreeMap`. If found, returns the removed value.
     pub fn delete(&mut self, key: &K) -> Option<V> {
-        delete(&mut self.root, key)
+        let r = delete(&mut self.root, key);
+
+        if r.is_some() {
+            self.len -= 1;
+        }
+
+        r
+    }
+
+    /// The number of nodes in the `TreeMap`.
+    pub fn len(&self) -> usize {
+        self.len
     }
 }
 
