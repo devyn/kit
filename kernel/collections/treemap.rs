@@ -164,7 +164,7 @@ fn insert<K: Ord, V>(t: &mut Option<Box<Node<K, V>>>, key: K, val: V)
         },
 
         None => {
-            *t = Some(Box::new(Node::new(key, val)));
+            *t = Some(box Node::new(key, val));
             None
         }
     }

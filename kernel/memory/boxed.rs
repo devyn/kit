@@ -21,18 +21,15 @@ use core::ops::{Deref, DerefMut};
 use core::cmp::Ordering;
 use core::intrinsics;
 
-use libc::size_t;
-
-use super::ffi;
-
 /// Similar to Rust `std::boxed::Box`, using our kernel memory allocator
 /// instead.
+#[lang = "owned_box"]
 pub struct Box<T>(Unique<T>);
 
 impl<T> Box<T> {
     /// Allocates memory on the heap and then moves `x` into it.
     pub fn new(x: T) -> Box<T> {
-        Box::with_alignment(mem::align_of::<T>(), x)
+        box x
     }
 
     /// Allocates memory on the heap aligned to the given alignment and then
@@ -49,14 +46,11 @@ impl<T> Box<T> {
         }
 
         unsafe {
-            let p = ffi::memory_alloc_aligned(mem::size_of::<T>() as size_t,
-                                              alignment as size_t);
+            let p = super::allocate(mem::size_of::<T>(), alignment) as *mut T;
 
-            let p: *mut T = mem::transmute(p);
+            ptr::write(&mut *p, x);
 
-            ptr::write(p.as_mut().expect("out of memory"), x);
-
-            Box(Unique::new(p))
+            mem::transmute(p)
         }
     }
 
@@ -79,26 +73,16 @@ impl<T> Box<T> {
                    mem::align_of::<T>(), alignment);
         }
 
-        let p = ffi::memory_alloc_aligned(mem::size_of::<T>() as size_t,
-                                          alignment as size_t);
-
-        let p: *mut T = mem::transmute(p);
+        let p = super::allocate(mem::size_of::<T>(), alignment) as *mut T;
 
         intrinsics::set_memory(p, 0, 1);
 
-        Box(Unique::new(p))
+        mem::transmute(p)
     }
 
     /// Consumes the `Box` and returns the stored value.
     pub fn unwrap(self) -> T {
-        unsafe {
-            let ptr: *mut T = { let Box(ref u) = self; **u };
-            let x = ptr::read(ptr);
-
-            ffi::memory_free(mem::transmute(ptr));
-            mem::forget(self);
-            x
-        }
+        *self
     }
 
     /// Creates a `Box` from a raw pointer.
@@ -108,7 +92,7 @@ impl<T> Box<T> {
     /// The only safe way to use this function is to pass a pointer that was
     /// previously returned by `Box::into_raw()`. Anything else is unsafe.
     pub unsafe fn from_raw(ptr: *mut T) -> Box<T> {
-        Box(Unique::new(ptr))
+        mem::transmute(ptr)
     }
 
     /// Consumes the `Box`, returning the raw pointer.
@@ -118,9 +102,7 @@ impl<T> Box<T> {
     /// Box is no longer managed and may be leaked. Use `Box::from_raw()` to
     /// release.
     pub unsafe fn into_raw(self) -> *mut T {
-        let ptr: *mut T = { let Box(ref u) = self; **u };
-        mem::forget(self);
-        ptr
+        mem::transmute(self)
     }
 }
 
@@ -128,31 +110,13 @@ impl<T> Deref for Box<T> {
     type Target = T;
 
     fn deref(&self) -> &T {
-        let &Box(ref u) = self;
-
-        unsafe { u.get() }
+        &**self
     }
 }
 
 impl<T> DerefMut for Box<T> {
     fn deref_mut(&mut self) -> &mut T {
-        let &mut Box(ref mut u) = self;
-
-        unsafe { u.get_mut() }
-    }
-}
-
-#[unsafe_destructor]
-impl<T> Drop for Box<T> {
-    fn drop(&mut self) {
-        unsafe {
-            let ptr: *mut T = &mut **self;
-
-            // XXX HACK, ew.
-            ((*intrinsics::get_tydesc::<T>()).drop_glue)(mem::transmute(ptr));
-
-            ffi::memory_free(mem::transmute(ptr));
-        }
+        &mut **self
     }
 }
 

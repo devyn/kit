@@ -23,6 +23,7 @@
 #![feature(libc)]
 #![feature(asm)]
 #![feature(no_std)]
+#![feature(box_syntax, box_patterns)]
 #![feature(lang_items)]
 #![feature(unsafe_destructor)]
 

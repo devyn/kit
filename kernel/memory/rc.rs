@@ -30,7 +30,7 @@ pub struct Contents<T> {
 impl<T> Rc<T> {
     /// Constructs a new reference-counted box.
     pub fn new(value: T) -> Rc<T> {
-        unsafe { Rc(Box::new(Contents { refs: 1, data: value }).into_raw()) }
+        unsafe { Rc((box Contents { refs: 1, data: value }).into_raw()) }
     }
 
     /// Creates a `Rc` from a raw pointer.

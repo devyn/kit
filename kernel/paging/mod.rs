@@ -15,7 +15,7 @@
 use core::prelude::*;
 use core::cell::*;
 
-use memory::{Box, Rc};
+use memory::Rc;
 use memory::rc::Contents as RcContents;
 
 pub mod generic;
@@ -101,7 +101,7 @@ pub unsafe fn initialize() {
         panic!("paging already initialized");
     }
 
-    KERNEL_PAGESET = Some(Box::new(Pageset::new_kernel()).into_raw());
+    KERNEL_PAGESET = Some((box Pageset::new_kernel()).into_raw());
 
     assert!(kernel_pageset().lookup(initialized as usize).is_some());
 
