@@ -12,9 +12,9 @@
 
 //! Generic keyboard input handler.
 
-use core::prelude::*;
-use core::error::Error;
 use core::fmt;
+
+use error::Error;
 
 pub mod ps2;
 

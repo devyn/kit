@@ -12,13 +12,11 @@
 
 //! Executable and Linkable Format loader.
 
-use core::prelude::*;
-
 use core::mem;
 
 use process::{Process, Image};
 
-#[derive(Copy)]
+#[derive(Clone, Copy)]
 pub struct Elf<'a> {
     header: &'a ffi::ElfHeader64,
 }

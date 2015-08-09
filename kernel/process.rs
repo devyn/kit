@@ -12,17 +12,64 @@
 
 //! Process management functions.
 
-use core::prelude::*;
-
 use libc::{c_int, c_char};
+
 use c_ffi::CStr;
 
-pub unsafe fn initialize() {
-    ffi::process_initialize()
+pub mod x86_64 {
+    #[repr(C)]
+    #[derive(Debug)]
+    pub struct Registers {
+        rax:     usize,
+        rcx:     usize,
+        rdx:     usize,
+        rbx:     usize,
+        rsp:     usize,
+        rbp:     usize,
+        rsi:     usize,
+        rdi:     usize,
+        r8:      usize,
+        r9:      usize,
+        r10:     usize,
+        r11:     usize,
+        r12:     usize,
+        r13:     usize,
+        r14:     usize,
+        r15:     usize,
+        rip:     usize,
+        eflags:  u32,
+    }
+}
+
+pub use self::x86_64 as target;
+
+type Id = u16;
+
+#[derive(PartialEq, Eq, PartialOrd, Ord, Copy, Clone, Debug)]
+pub enum State {
+    Loading,
+    Running,
+    Sleeping,
+    Dead,
 }
 
 pub struct Process {
     pub internal: *mut ffi::Process,
+/*
+    id:            Id,
+    name:          Box<str>,
+    state:         State,
+    pageset:       RcPageset,
+    registers:     target::Registers,
+    kernel_stack:  (usize, usize),
+    heap_length:   usize,
+    exit_status:   i32,
+    waiting:       Vec<Id>, // ideal?
+*/
+}
+
+pub unsafe fn initialize() {
+    ffi::process_initialize();
 }
 
 impl Process {
@@ -57,7 +104,7 @@ pub trait Image {
     fn load_into(&self, &mut Process) -> bool;
 }
 
-/// C interface. See `kit/kernel/include/archive.h`.
+/// C interface. See `kit/kernel/include/process.h`.
 pub mod ffi {
     use libc::{c_int, c_char};
 

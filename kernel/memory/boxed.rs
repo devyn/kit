@@ -12,14 +12,13 @@
 
 //! Owned boxes.
 
-use core::prelude::*;
-
 use core::fmt;
 use core::mem;
+use core::slice;
+use core::slice::bytes::MutableByteVector;
 use core::ptr::{self, Unique};
 use core::ops::{Deref, DerefMut};
 use core::cmp::Ordering;
-use core::intrinsics;
 
 /// Similar to Rust `std::boxed::Box`, using our kernel memory allocator
 /// instead.
@@ -73,9 +72,9 @@ impl<T> Box<T> {
                    mem::align_of::<T>(), alignment);
         }
 
-        let p = super::allocate(mem::size_of::<T>(), alignment) as *mut T;
+        let p = super::allocate(mem::size_of::<T>(), alignment);
 
-        intrinsics::set_memory(p, 0, 1);
+        slice::from_raw_parts_mut(p, mem::size_of::<T>()).set_memory(0);
 
         mem::transmute(p)
     }

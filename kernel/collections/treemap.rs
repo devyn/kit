@@ -13,7 +13,6 @@
 //! A TreeMap implementation based on [AA
 //! trees](http://en.wikipedia.org/wiki/AA_tree).
 
-use core::prelude::*;
 use core::mem::{swap, replace};
 use core::cmp;
 use core::cmp::Ordering::*;

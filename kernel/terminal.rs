@@ -12,8 +12,6 @@
 
 //! Early text mode 80x25 terminal handler.
 
-use core::prelude::*;
-
 use core::fmt;
 use core::mem;
 
@@ -21,7 +19,7 @@ use core::mem;
 ///
 /// Numeric values correspond to the VGA text mode palette.
 #[repr(u8)]
-#[derive(PartialEq, Eq, PartialOrd, Ord, Copy)]
+#[derive(PartialEq, Eq, PartialOrd, Ord, Clone, Copy)]
 pub enum Color {
     Black        = 0,
     Blue         = 1,
@@ -139,21 +137,6 @@ pub trait Terminal: fmt::Write {
     /// For example, `Vga` uses this to update the cursor, since writing to IO
     /// ports can be slow.
     fn flush(&mut self) -> fmt::Result;
-
-    /// Write a character encoded as UTF-8 to the Terminal.
-    ///
-    /// Should call `flush()`, if applicable.
-    ///
-    /// The default implementation is probably sufficient for most cases.
-    fn write_char(&mut self, ch: char) -> fmt::Result {
-        let mut buf = [0u8, 4];
-
-        let size = try!(ch.encode_utf8(&mut buf).ok_or(fmt::Error));
-
-        try!(self.write_raw_bytes(&buf[0..size]));
-        try!(self.flush());
-        Ok(())
-    }
 }
 
 /// Controls a VGA text-mode terminal.
@@ -368,6 +351,16 @@ impl Terminal for Vga {
 }
 
 impl fmt::Write for Vga {
+    fn write_char(&mut self, ch: char) -> fmt::Result {
+        let mut buf = [0u8, 4];
+
+        let size = try!(ch.encode_utf8(&mut buf).ok_or(fmt::Error));
+
+        try!(self.write_raw_bytes(&buf[0..size]));
+        try!(self.flush());
+        Ok(())
+    }
+
     fn write_str(&mut self, s: &str) -> fmt::Result {
         try!(self.write_raw_bytes(s.as_bytes()));
         try!(self.flush());
@@ -382,7 +375,7 @@ pub struct Ansi<T> {
     bold:  bool,
 }
 
-#[derive(Debug, Copy)]
+#[derive(Debug, Clone, Copy)]
 enum AnsiState {
     Normal,
     StartSeq,
@@ -581,6 +574,16 @@ impl<T: Terminal> Terminal for Ansi<T> {
 }
 
 impl<T: Terminal> fmt::Write for Ansi<T> {
+    fn write_char(&mut self, ch: char) -> fmt::Result {
+        let mut buf = [0u8, 4];
+
+        let size = try!(ch.encode_utf8(&mut buf).ok_or(fmt::Error));
+
+        try!(self.write_raw_bytes(&buf[0..size]));
+        try!(self.flush());
+        Ok(())
+    }
+
     fn write_str(&mut self, s: &str) -> fmt::Result {
         try!(self.write_raw_bytes(s.as_bytes()));
         try!(self.flush());
@@ -608,7 +611,6 @@ pub mod ffi {
     
     use core::mem;
     use core::slice;
-    use core::ptr::PtrExt;
 
     use libc::{c_char, size_t};
 
@@ -641,7 +643,7 @@ pub mod ffi {
     }
 
     #[repr(C)]
-    #[derive(Copy)]
+    #[derive(Clone, Copy)]
     pub enum VgaColor {
         Black        = 0,
         Blue         = 1,

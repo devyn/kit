@@ -12,7 +12,6 @@
 
 //! Reference-counted, automatically releasing boxes.
 
-use core::prelude::*;
 use core::ops::Deref;
 use core::cmp::Ordering;
 use core::fmt;
@@ -80,7 +79,6 @@ impl<T> Clone for Rc<T> {
     }
 }
 
-#[unsafe_destructor]
 impl<T> Drop for Rc<T> {
     fn drop(&mut self) {
         let Rc(ptr) = *self;

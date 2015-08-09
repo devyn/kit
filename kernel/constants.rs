@@ -12,8 +12,6 @@
 
 //! Target constants and related utility functions.
 
-use core::prelude::*;
-
 /// The offset of the identity map from zero, which contains the initial kernel
 /// image.
 pub static KERNEL_OFFSET: usize = 0xffffffff80000000;

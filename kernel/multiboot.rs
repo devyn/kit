@@ -36,8 +36,6 @@
 
 use core::mem;
 
-use core::prelude::*;
-
 use c_ffi::CStr;
 use constants::translate_low_addr;
 

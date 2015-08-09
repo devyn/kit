@@ -15,7 +15,6 @@
 use paging;
 
 use libc::{size_t, c_void};
-use core::ptr::PtrExt;
 
 pub mod boxed;
 pub mod rc;

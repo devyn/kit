@@ -18,24 +18,16 @@
 #![crate_name="kernel"]
 #![crate_type="lib"]
 
-#![feature(core)]
-#![feature(unique)]
-#![feature(libc)]
-#![feature(asm)]
-#![feature(no_std)]
-#![feature(box_syntax, box_patterns)]
-#![feature(lang_items)]
-#![feature(unsafe_destructor)]
+#![feature(lang_items, asm, no_std, box_syntax, libc, unique, step_by)]
+#![feature(core_slice_ext, ptr_as_ref, core_str_ext, core_char_ext)]
+#![feature(slice_bytes)]
+
+#![allow(improper_ctypes)]
 
 #![no_std]
 
-#[macro_use]
-extern crate core;
-
 // No linkage. Mostly for types.
 extern crate libc;
-
-use core::prelude::*;
 
 pub mod terminal;
 pub mod constants;
@@ -51,6 +43,7 @@ pub mod elf;
 pub mod scheduler;
 pub mod shell;
 pub mod c_ffi;
+pub mod error;
 
 use terminal::*;
 use elf::Elf;

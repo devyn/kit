@@ -12,7 +12,6 @@
 
 //! Kernel page management.
 
-use core::prelude::*;
 use core::cell::*;
 
 use memory::Rc;
@@ -112,10 +111,8 @@ pub unsafe fn initialize() {
 
 /// C interface. See `kit/kernel/include/paging.h`.
 pub mod ffi {
-    use core::prelude::*;
     use core::cell::*;
-    use core::iter::{iterate, repeat};
-    use core::default::Default;
+    use core::iter::repeat;
     use core::ptr;
 
     use libc::c_void;
@@ -249,7 +246,7 @@ pub mod ffi {
         to_page_count(
             pageset.map_pages_with_type(
                 vaddr,
-                iterate(paddr, |paddr| paddr + page_size).take(pages),
+                (paddr..).step_by(page_size).take(pages),
                 from_flags(flags)),
             vaddr, pages)
     }

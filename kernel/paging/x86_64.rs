@@ -12,14 +12,12 @@
 
 //! x86-64 architecture-specific page tables.
 
-use core::prelude::*;
 use core::ops::Range;
-use core::num::Int;
-use core::default::Default;
 use core::mem;
 use core::fmt;
-use core::error;
 use core::ptr;
+
+use error;
 
 use memory::Box;
 
@@ -252,28 +250,56 @@ trait Bits<Idx> {
     fn set_bits(&mut self, range: Range<Idx>, value: Self);
 }
 
-impl<T: Int> Bits<usize> for T {
+impl Bits<usize> for u64 {
     #[inline]
     fn bit(self, index: usize) -> bool {
-        (self >> index) & T::one() == T::one()
+        (self >> index) & 1 == 1
     }
 
     #[inline]
     fn set_bit(&mut self, index: usize, value: bool) {
-        let value_i = if value { T::one() } else { T::zero() };
+        let value_i = if value { 1 } else { 0 };
 
-        *self = *self & !(T::one() << index);
+        *self = *self & !(1 << index);
         *self = *self | (value_i << index);
     }
 
     #[inline]
     fn bits(self, range: Range<usize>) -> Self {
-        (self >> range.start) & !(!T::zero() << (range.end - range.start))
+        (self >> range.start) & !(!0 << (range.end - range.start))
     }
 
     #[inline]
     fn set_bits(&mut self, range: Range<usize>, value: Self) {
-        let mask = !(!T::zero() << (range.end - range.start));
+        let mask = !(!0 << (range.end - range.start));
+
+        *self = *self & !(mask << range.start);
+        *self = *self | ((value & mask) << range.start);
+    }
+}
+
+impl Bits<usize> for usize {
+    #[inline]
+    fn bit(self, index: usize) -> bool {
+        (self >> index) & 1 == 1
+    }
+
+    #[inline]
+    fn set_bit(&mut self, index: usize, value: bool) {
+        let value_i = if value { 1 } else { 0 };
+
+        *self = *self & !(1 << index);
+        *self = *self | (value_i << index);
+    }
+
+    #[inline]
+    fn bits(self, range: Range<usize>) -> Self {
+        (self >> range.start) & !(!0 << (range.end - range.start))
+    }
+
+    #[inline]
+    fn set_bits(&mut self, range: Range<usize>, value: Self) {
+        let mask = !(!0 << (range.end - range.start));
 
         *self = *self & !(mask << range.start);
         *self = *self | ((value & mask) << range.start);
@@ -412,7 +438,7 @@ impl<T: InnerPageDirectory> ModifyWhile for T {
         loop {
             let index = T::index(vaddr);
 
-            let mut state;
+            let state;
 
             if let Some(ref mut me) = *hole {
                 state = T::Next::modify_while(me.get_mut_hole(index),
@@ -505,7 +531,7 @@ impl ModifyWhile for Pt {
     }
 }
 
-#[derive(PartialEq, Eq, Debug, Copy)]
+#[derive(PartialEq, Eq, Debug, Clone, Copy)]
 pub enum Pml4Kind {
     User,
     Kernel

@@ -12,12 +12,11 @@
 
 //! Page management functions and traits applicable to all targets.
 
-use core::prelude::*;
-use core::iter::{RangeStep, range_step, repeat};
-use core::default::Default;
-use core::error::Error;
+use core::iter::{repeat, StepBy};
 use core::cell::RefCell;
 use core::ops;
+
+use error::Error;
 
 use memory::Rc;
 
@@ -93,8 +92,9 @@ pub trait PagesetExt<'a>: Pageset<'a> {
         Rc::new(RefCell::new(Self::new()))
     }
 
-    fn range(vaddr_start: usize, vaddr_end: usize) -> RangeStep<usize> {
-        range_step(vaddr_start, vaddr_end, Self::page_size())
+    fn range(vaddr_start: usize, vaddr_end: usize)
+             -> StepBy<usize, ops::Range<usize>> {
+        (vaddr_start..vaddr_end).step_by(Self::page_size())
     }
 
     fn lookup(&'a self, vaddr: usize) -> Option<Self::Paddr> {

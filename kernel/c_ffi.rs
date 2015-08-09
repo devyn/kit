@@ -13,7 +13,6 @@
 //! C FFI helpers.
 
 use libc::c_char;
-use core::prelude::*;
 use core::mem;
 use core::slice;
 use core::marker::PhantomData;
@@ -24,6 +23,15 @@ use core::str;
 pub struct CStr<'a> {
     ptr:    *const c_char,
     marker: PhantomData<&'a c_char>,
+}
+
+impl<'a> Clone for CStr<'a> {
+    fn clone(&self) -> CStr<'a> {
+        CStr {
+            ptr: self.ptr,
+            marker: PhantomData
+        }
+    }
 }
 
 impl<'a> Copy for CStr<'a> { }

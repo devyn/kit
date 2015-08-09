@@ -12,7 +12,6 @@
 
 //! Kit archive (init files) loader.
 
-use core::prelude::*;
 use core::slice;
 use core::ptr;
 
