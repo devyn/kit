@@ -18,9 +18,8 @@
 #![crate_name="kernel"]
 #![crate_type="lib"]
 
-#![feature(lang_items, asm, no_std, box_syntax, step_by)]
-#![feature(core_slice_ext, ptr_as_ref, core_str_ext, core_char_ext)]
-#![feature(slice_bytes, box_patterns, alloc, box_raw)]
+#![feature(lang_items, asm, no_std, box_syntax, step_by, ptr_as_ref)]
+#![feature(unicode, slice_bytes, box_patterns, alloc, box_raw, collections)]
 
 #![allow(improper_ctypes)]
 
@@ -28,12 +27,13 @@
 
 // These rust libs are specifically configured for Kit.
 extern crate alloc;
+extern crate rustc_unicode;
+#[macro_use] extern crate collections;
 
 pub mod terminal;
 pub mod constants;
 pub mod multiboot;
 pub mod memory;
-pub mod collections;
 pub mod interrupt;
 pub mod paging;
 pub mod keyboard;
