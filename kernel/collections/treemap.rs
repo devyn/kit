@@ -18,7 +18,7 @@ use core::cmp;
 use core::cmp::Ordering::*;
 use core::fmt;
 
-use memory::Box;
+use alloc::boxed::Box;
 
 pub struct TreeMap<K, V> {
     root: Option<Box<Node<K, V>>>,
@@ -237,12 +237,11 @@ fn delete<K: Ord, V>(t: &mut Option<Box<Node<K, V>>>, key: &K) -> Option<V> {
             Less    => delete(&mut node.left, key),
             Greater => delete(&mut node.right, key),
             Equal   => match take_closest(&mut node) {
-                Some(c) => {
-                    let Node { key: k, val: v, .. } = c.unwrap();
-                    node.key = k;
-                    Some(replace(&mut node.val, v))
+                Some(box c) => {
+                    node.key = c.key;
+                    Some(replace(&mut node.val, c.val))
                 },
-                None => return Some(node.unwrap().val) // Leaf
+                None => return Some(node.val) // Leaf
             }
         };
 

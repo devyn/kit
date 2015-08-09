@@ -1,7 +1,7 @@
 /*******************************************************************************
  *
  * kit/kernel/rust_support.c
- * - support functions for rust libcore (most are stubs)
+ * - support functions for rust libcore, liballoc, etc. (most are stubs)
  *
  * vim:ts=2:sw=2:et:tw=80:ft=c
  *
@@ -11,8 +11,11 @@
  *
  ******************************************************************************/
 
+#include "config.h"
 #include "debug.h"
 #include "x86_64.h"
+#include "memory.h"
+#include "terminal.h"
 
 void *memset(void *s, int c, size_t n)
 {
@@ -108,6 +111,60 @@ void __morestack()
 void __stub(const char *fn)
 {
   DEBUG_FORMAT("%s", fn); cli(); while (1) hlt();
+}
+
+void *rust_allocate(size_t size, size_t align) {
+  return memory_alloc_aligned(size, align);
+}
+
+void rust_deallocate(void *pointer, UNUSED size_t old_size,
+    UNUSED size_t align) {
+  memory_free(pointer);
+}
+
+void *rust_reallocate(void *pointer, size_t old_size, size_t size,
+    size_t align) {
+  // No reallocation yet, so just allocate a new buffer and copy
+  void *new_pointer = memory_alloc_aligned(size, align);
+
+  if (new_pointer == NULL) {
+    return NULL;
+  }
+
+  size_t copy_size;
+
+  if (size < old_size) {
+    copy_size = size;
+  } else {
+    copy_size = old_size;
+  }
+
+  memcpy(new_pointer, pointer, copy_size);
+
+  memory_free(pointer);
+
+  return new_pointer;
+}
+
+size_t rust_reallocate_inplace(UNUSED void *pointer, UNUSED size_t old_size,
+    size_t size, UNUSED size_t align) {
+  return size;
+}
+
+size_t rust_usable_size(size_t size, UNUSED size_t align) {
+  return size;
+}
+
+void rust_stats_print() {
+  uint64_t pages = memory_get_total_free();
+
+  terminal_printf(
+    "--- MEMORY STATS ---\n"
+    " free:      %lu pages (%lu MiB)\n"
+    "--- END MEMORY STATS ---\n",
+
+    pages, pages / 256
+  );
 }
 
 // Floating point stuff

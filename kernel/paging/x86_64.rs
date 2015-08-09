@@ -16,10 +16,13 @@ use core::ops::Range;
 use core::mem;
 use core::fmt;
 use core::ptr;
+use core::slice;
+use core::slice::bytes::MutableByteVector;
 
 use error;
 
-use memory::Box;
+use alloc::boxed::Box;
+use memory;
 
 use constants::{KERNEL_OFFSET, KERNEL_LOW_START, KERNEL_LOW_END};
 
@@ -574,7 +577,7 @@ impl Pml4 {
         // Box::with_alignment(PAGE_SIZE, Pml4::new(kind))
 
         unsafe {
-            let mut pml4: Box<Pml4> = Box::zeroed_with_alignment(PAGE_SIZE);
+            let mut pml4: Box<Pml4> = zeroed_aligned_box(PAGE_SIZE);
             pml4.kind = kind;
             pml4.kversion = match kind { Kernel => 1, User => 0 };
             pml4
@@ -686,7 +689,7 @@ impl InnerPageDirectory for Pdpt {
         // Box::with_alignment(PAGE_SIZE, Pdpt::new())
 
         unsafe {
-            Box::zeroed_with_alignment(PAGE_SIZE)
+            zeroed_aligned_box(PAGE_SIZE)
         }
     }
 
@@ -748,7 +751,7 @@ impl InnerPageDirectory for Pd {
         // Box::with_alignment(PAGE_SIZE, Pd::new())
 
         unsafe {
-            Box::zeroed_with_alignment(PAGE_SIZE)
+            zeroed_aligned_box(PAGE_SIZE)
         }
     }
 
@@ -797,7 +800,7 @@ impl Pt {
         // Box::with_alignment(PAGE_SIZE, Pt::new())
 
         unsafe {
-            Box::zeroed_with_alignment(PAGE_SIZE)
+            zeroed_aligned_box(PAGE_SIZE)
         }
     }
 
@@ -838,4 +841,16 @@ impl Pt {
                 0
             };
     }
+}
+
+unsafe fn zeroed_aligned_box<T>(alignment: usize) -> Box<T> {
+    if alignment % 16 != 0 {
+        panic!("Bad alignment: {}", alignment);
+    }
+
+    let ptr = memory::allocate(mem::size_of::<T>(), alignment);
+
+    slice::from_raw_parts_mut(ptr, mem::size_of::<T>()).set_memory(0);
+
+    Box::from_raw(ptr as *mut T)
 }

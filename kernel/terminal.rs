@@ -612,7 +612,7 @@ pub mod ffi {
     use core::mem;
     use core::slice;
 
-    use libc::{c_char, size_t};
+    use c_ffi::{c_char, size_t};
 
     #[no_mangle]
     pub extern fn terminal_initialize() {

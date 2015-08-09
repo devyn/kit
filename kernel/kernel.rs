@@ -18,16 +18,16 @@
 #![crate_name="kernel"]
 #![crate_type="lib"]
 
-#![feature(lang_items, asm, no_std, box_syntax, libc, unique, step_by)]
+#![feature(lang_items, asm, no_std, box_syntax, step_by)]
 #![feature(core_slice_ext, ptr_as_ref, core_str_ext, core_char_ext)]
-#![feature(slice_bytes)]
+#![feature(slice_bytes, box_patterns, alloc, box_raw)]
 
 #![allow(improper_ctypes)]
 
 #![no_std]
 
-// No linkage. Mostly for types.
-extern crate libc;
+// These rust libs are specifically configured for Kit.
+extern crate alloc;
 
 pub mod terminal;
 pub mod constants;

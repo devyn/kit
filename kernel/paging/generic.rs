@@ -18,7 +18,7 @@ use core::ops;
 
 use error::Error;
 
-use memory::Rc;
+use alloc::rc::Rc;
 
 pub type Page<Paddr> = Option<(Paddr, PageType)>;
 

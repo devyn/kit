@@ -19,15 +19,18 @@ KERNEL_LDFLAGS=-O1 -nostdlib -z max-page-size=0x1000
 KERNEL_ASFLAGS=-march=generic64
 KERNEL_RUSTFLAGS=--target x86_64-unknown-linux-gnu \
 								 -C debuginfo=2 -C target-cpu=generic \
-								 -C target-feature=-mmx,-sse3,-ssse3,-3dnow \
+								 -C target-feature=-sse3,-ssse3,-3dnow \
 								 -C no-redzone -C code-model=kernel \
-								 -C relocation-model=static -C opt-level=2 -Z no-landing-pads
+								 -C relocation-model=static -C opt-level=2 -Z no-landing-pads \
+								 -L build/deps/kernel -L build/deps/kernel/nolink --sysroot ""
 
 ifeq ($(CC),clang)
 	KERNEL_CFLAGS+=-target x86_64-pc-none-elf
 endif
 
-RUST_LIBCORE:=$(wildcard $(shell rustc --print sysroot)/lib/rustlib/x86_64-unknown-linux-gnu/lib/libcore-*.rlib)
+# We use the system libc only for its type definitions and such. It doesn't
+# actually get linked in.
+RUST_LIBC:=$(wildcard $(shell rustc --print sysroot)/lib/rustlib/x86_64-unknown-linux-gnu/lib/liblibc-*.rlib)
 
 KERNEL_RUST_SRC:=$(shell find kernel/ -type f -name '*.rs')
 
@@ -35,6 +38,7 @@ KERNEL_OBJECTS:=$(addprefix build/,$(patsubst %.c,%.o,$(wildcard kernel/*.c)))
 KERNEL_OBJECTS+=$(addprefix build/,$(patsubst %.S,%.o,$(wildcard kernel/*.S)))
 KERNEL_OBJECTS+=build/kernel/kernel.o
 KERNEL_OBJECTS+=${RUST_LIBCORE}
+KERNEL_OBJECTS+=${KERNEL_RLIB_DEPS}
 
 all-kernel: build/kernel.elf
 
@@ -67,6 +71,6 @@ build/kernel/%.o: kernel/%.c build/kernel/.dir
 	@${ECHO_CC} $@
 	@${CC} ${CFLAGS} ${KERNEL_CFLAGS} -I kernel/include -c $< -o $@
 
-build/kernel/kernel.o: kernel/kernel.rs ${KERNEL_RUST_SRC} build/kernel/.dir
+build/kernel/kernel.o: kernel/kernel.rs ${KERNEL_RUST_SRC} ${KERNEL_RLIB_DEPS} build/kernel/.dir
 	@${ECHO_RUSTC} $@
 	@${RUSTC} ${RUSTFLAGS} ${KERNEL_RUSTFLAGS} --emit obj $< -o $@

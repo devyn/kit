@@ -25,11 +25,11 @@ ECHO_AS    = echo "[36m    AS [0m"
 ECHO_RUSTC = echo "[36m RUSTC [0m"
 ECHO_LD    = echo "[36m    LD [0m"
 
-all: all-kernel all-system all-iso
+all: all-deps all-kernel all-system all-iso
 
 doc: doc-kernel
 
-clean: clean-kernel clean-system clean-iso clean-doc
+clean: clean-deps clean-kernel clean-system clean-iso clean-doc
 
 clean-doc:
 	rm -rf build/doc
@@ -44,6 +44,7 @@ build/doc/.dir: build/.dir
 	mkdir -p build/doc
 	touch build/doc/.dir
 
+include deps/deps.mk
 include kernel/kernel.mk
 include system/system.mk
 

@@ -1,6 +1,6 @@
 /*******************************************************************************
  *
- * kit/kernel/memory/mod.rs
+ * kit/kernel/memory.rs
  *
  * vim:ft=rust:ts=4:sw=4:et:tw=80
  *
@@ -14,13 +14,7 @@
 
 use paging;
 
-use libc::{size_t, c_void};
-
-pub mod boxed;
-pub mod rc;
-
-pub use self::boxed::Box;
-pub use self::rc::Rc;
+use c_ffi::{size_t, c_void};
 
 /// Loads the memory map information into the region tree in order to know where
 /// in physical memory it's safe to allocate fresh pages.
@@ -37,7 +31,6 @@ pub fn enable_large_heap() {
 }
 
 /// Allocate from the heap.
-#[lang = "exchange_malloc"]
 pub unsafe fn allocate(size: usize, align: usize) -> *mut u8 {
     let ptr = ffi::memory_alloc_aligned(size as size_t, align as size_t);
 
@@ -49,14 +42,13 @@ pub unsafe fn allocate(size: usize, align: usize) -> *mut u8 {
 }
 
 /// Deallocate to the heap.
-#[lang = "exchange_free"]
 pub unsafe fn deallocate(ptr: *mut u8, _size: usize, _align: usize) {
     ffi::memory_free(ptr as *mut c_void);
 }
 
 /// C interface. See `kit/kernel/include/memory.h`.
 pub mod ffi {
-    use libc::{size_t, c_void};
+    use c_ffi::{size_t, c_void};
 
     extern {
         pub fn memory_initialize(mmap_buffer: *const u8, mmap_length: u32);

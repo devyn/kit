@@ -9,4 +9,5 @@ tools/*
 *.img
 
 build/
+deps/rust/
 tags

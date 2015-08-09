@@ -12,9 +12,7 @@
 
 //! Process management functions.
 
-use libc::{c_int, c_char};
-
-use c_ffi::CStr;
+use c_ffi::{c_int, c_char, CStr};
 
 pub mod x86_64 {
     #[repr(C)]
@@ -106,7 +104,7 @@ pub trait Image {
 
 /// C interface. See `kit/kernel/include/process.h`.
 pub mod ffi {
-    use libc::{c_int, c_char};
+    use c_ffi::{c_int, c_char};
 
     #[repr(C)]
     pub struct Process;

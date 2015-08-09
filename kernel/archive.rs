@@ -52,7 +52,7 @@ pub fn system() -> Archive {
 pub mod ffi {
     use multiboot;
 
-    use libc::c_char;
+    use c_ffi::c_char;
 
     #[repr(C)]
     pub struct ArchiveHeader;
