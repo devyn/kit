@@ -169,12 +169,8 @@ tss64:
 pml4:     .skip 4096
 pdpt_lo:  .skip 4096
 pd_lo:    .skip 4096
-pt_lo1:   .skip 4096
-pt_lo2:   .skip 4096
 pdpt_hi:  .skip 4096
 pd_hi:    .skip 4096
-pt_hi1:   .skip 4096
-pt_hi2:   .skip 4096
 
 # This is where we will store the multiboot information structure.
 .global kernel_multiboot_info
@@ -259,8 +255,8 @@ _bootstrap:
 
 .initializePaging:
   # Set up (temporary) paging the way x86_64 long mode likes it.
-  # The result of this is a page table in which the first four megabytes of physical
-  # memory are identity mapped (0-4MB virtual -> 0-4MB physical), as well as mapped
+  # The result of this is a page table in which the first eight megabytes of physical
+  # memory are identity mapped (0-8MB virtual -> 0-8MB physical), as well as mapped
   # at 0xffffffff80000000 which is accessible via the kernel code model.
 
   # Disable paging (though it probably isn't enabled at the moment anyway)
@@ -274,51 +270,42 @@ _bootstrap:
   movl $pml4,   %edi           # Destination: (pml4)
   movl %edi,    %cr3           # Set control register 3 (PML4T location) to destination
   xorl %eax,    %eax           # Set output to zero
-  movl $7168,   %ecx           # Set count to 7168 (size of all of the tables)
+  movl $5120,   %ecx           # Set count to 5120 (x4 = bytes of tables)
   rep  stosl                   # Execute clear
 
   movl %cr3,    %edi           # Set destination to control register 3 again
 
-  # Set up PML4T, PDPT, and PDT, eventually pointing to pt_lo1 and pt_lo2 as the low PT locations
+  # Set up PML4T and PDPT, eventually pointing to pd_lo as the low PD
   # Note the 3 at the end of each address - we need to set the least two bits which
   # indicate Present (bit 0) and Read/Write (bit 1) respectively
 
   movl $(pdpt_lo + 0x3), (pml4)          # Set pml4[0] to (pdpt_lo + P,R)
   movl $(pd_lo   + 0x3), (pdpt_lo)       # Set pdpt_lo[0] to (pd_lo + P,R)
-  movl $(pt_lo1  + 0x3), (pd_lo)         # Set pd_lo[0] to (pt_lo1 + P,R)
-  movl $(pt_lo2  + 0x3), (pd_lo + 0x8)   # Set pd_lo[1] to (pt_lo2 + P,R)
 
-  # Also map the first two physical megabytes of memory at 0xffffffff80000000,
+  # Also map the first 8 physical megabytes of memory at 0xffffffff80000000,
   # which is the start of kernel space. This is a bit more complicated.
 
   movl $(pdpt_hi + 0x3), (pml4 + 0xff8)    # Set pml4[511] to (pdpt_hi + P,R)
   movl $(pd_hi   + 0x3), (pdpt_hi + 0xff0) # Set pdpt_hi[510] to (pd_hi + P,R)
-  movl $(pt_hi1  + 0x3), (pd_hi)           # Set pd_hi[0] to (pt_hi1 + P,R)
-  movl $(pt_hi2  + 0x3), (pd_hi + 0x8)     # Set pd_hi[1] to (pt_hi2 + P,R)
 
-  # Set up PTs to identity map the first 4 MB of memory as promised,
-  # and also set the high PTs to the same.
+  # Set up PDs to identity map 8 megabytes of memory in both low and high
+  # memory.
 
-  movl $0x00000003,   %eax      # Initial value is address 0 with the Present and Read/Write bits set
-  movl $pt_lo1,       %esi      # pt_lo1 table
-  movl $512,          %ecx      # 512 entries * 4096 bytes mapped per entry = 2 megabytes
-  movl $pt_hi1,       %edi      # pt_hi1 table
-  call .setPageTableEntries
-
-  movl $pt_lo2,       %esi      # pt_lo2 table
-  movl $512,          %ecx      # 512 entries * 4096 bytes mapped per entry = 2 megabytes
-  movl $pt_hi2,       %edi      # pt_hi2 table
-  call .setPageTableEntries
+  movl $0x00000083,   %eax      # Initial value is address 0 with Present, Read/Write, Page size
+  movl $pd_lo,        %esi      # pd_lo table
+  movl $4,            %ecx      # 4 entries * 2 megabytes mapped per entry = 8 megabytes
+  movl $pd_hi,        %edi      # pd_hi table
+  call .setPageDirectoryEntries
 
   jmp  .enablePAE
 
-.setPageTableEntries:
+.setPageDirectoryEntries:
   movl %eax,        (%esi)     # Set current table entry on pt_lo to value (normally quad)
   movl %eax,        (%edi)     # Set current table entry on pt_hi to value
-  addl $0x1000,      %eax      # Advance value (each entry maps 4 KB)
+  addl $0x200000,    %eax      # Advance value (each entry maps 2 MB)
   addl $8,           %esi      # Advance entry offset (8 bytes per quad)
   addl $8,           %edi
-  loop .setPageTableEntries    # Loop until ECX runs out
+  loop .setPageDirectoryEntries # Loop until ECX runs out
   ret
 
 .enablePAE:

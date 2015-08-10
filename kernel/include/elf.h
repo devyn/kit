@@ -48,6 +48,8 @@ typedef struct PACKED elf_header_ident
 
 typedef struct PACKED elf_header_64
 {
+  /* 16 bytes + 48 bytes = 64 bytes */
+
   elf_header_ident_t e_ident;
 
 # define ELF_E_TYPE_NONE   0

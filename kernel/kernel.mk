@@ -28,17 +28,11 @@ ifeq ($(CC),clang)
 	KERNEL_CFLAGS+=-target x86_64-pc-none-elf
 endif
 
-# We use the system libc only for its type definitions and such. It doesn't
-# actually get linked in.
-RUST_LIBC:=$(wildcard $(shell rustc --print sysroot)/lib/rustlib/x86_64-unknown-linux-gnu/lib/liblibc-*.rlib)
-
 KERNEL_RUST_SRC:=$(shell find kernel/ -type f -name '*.rs')
 
 KERNEL_OBJECTS:=$(addprefix build/,$(patsubst %.c,%.o,$(wildcard kernel/*.c)))
 KERNEL_OBJECTS+=$(addprefix build/,$(patsubst %.S,%.o,$(wildcard kernel/*.S)))
 KERNEL_OBJECTS+=build/kernel/kernel.o
-KERNEL_OBJECTS+=${RUST_LIBCORE}
-KERNEL_OBJECTS+=${KERNEL_RLIB_DEPS}
 
 all-kernel: build/kernel.elf
 
@@ -61,7 +55,7 @@ build/doc/kernel/.dir: build/doc/.dir ${KERNEL_OBJECTS}
 build/kernel.elf: ${KERNEL_OBJECTS} kernel/scripts/link.ld
 	@${ECHO_LD} $@
 	@${LD} ${LDFLAGS} ${KERNEL_LDFLAGS} -T kernel/scripts/link.ld -o $@ \
-		${KERNEL_OBJECTS}
+		${KERNEL_OBJECTS} --start-group ${KERNEL_RLIB_DEPS} --end-group
 
 build/kernel/%.o: kernel/%.S build/kernel/.dir
 	@${ECHO_AS} $@

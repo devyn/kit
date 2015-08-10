@@ -24,18 +24,13 @@ pub type Page<Paddr> = Option<(Paddr, PageType)>;
 
 pub trait PhysicalAddress: Copy + Clone {
     /// Offset the physical address by the given amount.
-    ///
-    /// # Panics
-    ///
-    /// Only required to be able to offset within a single page. Any
-    /// unacceptable offsets may panic.
-    fn page_offset(self, amount: usize) -> Self;
+    fn offset(self, amount: usize) -> Self;
 }
 
 impl<T> PhysicalAddress for T
     where T: Copy + Clone + ops::Add<usize, Output=T> {
 
-    fn page_offset(self, amount: usize) -> Self {
+    fn offset(self, amount: usize) -> Self {
         self + amount
     }
 }
@@ -99,7 +94,7 @@ pub trait PagesetExt<'a>: Pageset<'a> {
 
     fn lookup(&'a self, vaddr: usize) -> Option<Self::Paddr> {
         self.get(vaddr).map(|(paddr, _)|
-            paddr.page_offset(vaddr % Self::page_size()))
+            paddr.offset(vaddr % Self::page_size()))
     }
 
     fn modify_pages<F>(&'a mut self,

@@ -22,6 +22,10 @@
 # FS.base MSR (required to set to ignore Rust stack checks)
 .set IA32_FS_BASE, 0xc0000100
 
+# HwState offsets
+.set HWSTATE_KSTACK_POINTER, 0x08
+.set HWSTATE_REGISTERS,      0x10
+
 rax_temp: .skip 8
 
 .section .text
@@ -39,8 +43,7 @@ syscall_handler:
   mov %ax, %gs
 
   # Load the current process's registers' base address into RAX.
-  mov process_current,          %rax
-  add PROCESS_OFFSET_REGISTERS, %rax
+  mov $(process_hwstate + HWSTATE_REGISTERS), %r15
 
   # Save the process's register set.
   # Clear RCX and R11 (they are clobbered by syscalls).
@@ -119,10 +122,7 @@ syscall_handler:
   # Now we can return to the system. The result should be in RAX, so don't touch
   # that. First, let's save the stack:
   mov %rsp, tss_stack
-
-  mov process_current, %rdi
-  add PROCESS_OFFSET_KERNEL_STACK_POINTER, %rdi
-  mov %rsp, (%rdi)
+  mov %rsp, process_hwstate + HWSTATE_KSTACK_POINTER
 
   # Set up the segment registers.
   mov $USER_DATA_SEL, %bx

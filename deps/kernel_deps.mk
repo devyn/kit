@@ -31,13 +31,19 @@ build/deps/kernel/liballoc.rlib: deps/rust/.dir build/deps/kernel/libcore.rlib \
 		--crate-type lib --crate-name alloc --cfg feature=\"external_funcs\" \
 		--out-dir build/deps/kernel deps/rust/src/liballoc/lib.rs
 
-build/deps/kernel/librustc_unicode.rlib: deps/rust/.dir build/deps/kernel/.dir
+build/deps/kernel/librustc_unicode.rlib: deps/rust/.dir \
+                                         build/deps/kernel/libcore.rlib \
+                                         build/deps/kernel/.dir
 	@${ECHO_RUSTC} $@
 	@${RUSTC} ${RUSTFLAGS} ${KERNEL_RUSTFLAGS} \
 		--crate-type lib --crate-name rustc_unicode \
 		--out-dir build/deps/kernel deps/rust/src/librustc_unicode/lib.rs
 
-build/deps/kernel/libcollections.rlib: deps/rust/.dir build/deps/kernel/.dir
+build/deps/kernel/libcollections.rlib: deps/rust/.dir \
+																			 build/deps/kernel/libcore.rlib \
+																			 build/deps/kernel/liballoc.rlib \
+	                                     build/deps/kernel/librustc_unicode.rlib \
+																			 build/deps/kernel/.dir
 	@${ECHO_RUSTC} $@
 	@${RUSTC} ${RUSTFLAGS} ${KERNEL_RUSTFLAGS} \
 		--crate-type lib --crate-name collections \

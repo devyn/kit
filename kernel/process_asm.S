@@ -18,6 +18,14 @@
 .set USER_DATA_SEL, 0x23
 .set USER_CD64_SEL, 0x2b
 
+# Current process HwState pointer
+.global process_hwstate
+process_hwstate: .quad 0
+
+# HwState offsets
+.set HWSTATE_KSTACK_POINTER, 0x08
+.set HWSTATE_REGISTERS,      0x10
+
 .section .text
 
 # C: (void *stack_pointer) -> void *stack_pointer
@@ -40,8 +48,7 @@ process_asm_prepare:
   mov %rsp, tss_stack
 
   # Load the current process's registers' base address into R15.
-  mov process_current,          %r15
-  add PROCESS_OFFSET_REGISTERS, %r15
+  mov $(process_hwstate + HWSTATE_REGISTERS), %r15
 
   # Put SS, RSP, EFLAGS, CS, RIP on the stack
   pushq $USER_DATA_SEL # SS

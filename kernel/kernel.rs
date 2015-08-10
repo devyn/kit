@@ -20,6 +20,7 @@
 
 #![feature(lang_items, asm, no_std, box_syntax, step_by, ptr_as_ref)]
 #![feature(unicode, slice_bytes, box_patterns, alloc, box_raw, collections)]
+#![feature(iter_arith)]
 
 #![allow(improper_ctypes)]
 
@@ -158,8 +159,8 @@ enum SpawnInitError {
     NoProgramSpecified,
     FileNotFound,
     ElfVerifyError,
-    ProcessCreateError,
-    ElfLoadError,
+    ElfNotExecutable,
+    ExecLoadError,
     SetArgsError
 }
 use SpawnInitError::*;
@@ -178,19 +179,24 @@ fn spawn_init<'a>(filename: CStr<'static>) -> Result<(), SpawnInitError> {
 
     let elf = try!(Elf::new(data).ok_or(ElfVerifyError));
 
-    let mut process = try!(Process::new(filename).ok_or(ProcessCreateError));
+    let elf64le = try!(elf.as_elf64_le().ok_or(ElfNotExecutable));
 
-    if !process.load(&elf) {
-        return Err(ElfLoadError)
+    let exec = try!(elf64le.as_executable().ok_or(ElfNotExecutable));
+
+    let process = Process::create(filename);
+
+    {
+        let mut process = process.borrow_mut();
+
+        try!(process.load(&exec).map_err(|_| ExecLoadError));
+
+        try!(process.set_args(&[filename.as_bytes()])
+             .map_err(|_| SetArgsError));
+
+        console().set_color(Color::LightGrey, Color::Black).unwrap();
+
+        process.run();
     }
-
-    if !process.set_args(&[filename.as_ptr()]) {
-        return Err(SetArgsError)
-    }
-
-    console().set_color(Color::LightGrey, Color::Black).unwrap();
-
-    process.run();
 
     unsafe { scheduler::enter(); }
 

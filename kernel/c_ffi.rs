@@ -20,6 +20,8 @@ use core::marker::PhantomData;
 use core::fmt::{self, Display, Debug};
 use core::str;
 
+use collections::String;
+
 pub type size_t = usize;
 
 pub type c_char  = i8;
@@ -101,6 +103,13 @@ impl<'a> CStr<'a> {
         unsafe {
             slice::from_raw_parts(mem::transmute(self.ptr), self.len())
         }
+    }
+}
+
+/// Warning: lossy implementation
+impl<'a> Into<String> for CStr<'a> {
+    fn into(self) -> String {
+        String::from_utf8_lossy(self.as_bytes()).into_owned()
     }
 }
 

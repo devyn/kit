@@ -20,7 +20,7 @@ pub static KERNEL_OFFSET: usize = 0xffffffff80000000;
 pub static KERNEL_LOW_START: u32 = 0x00000000;
 
 /// End of the initial ('low') identity mapped region.
-pub static KERNEL_LOW_END:   u32 = 0x00400000;
+pub static KERNEL_LOW_END:   u32 = 0x00800000;
 
 /// Get a usable constant pointer in kernel space from a low address.
 ///
