@@ -38,12 +38,24 @@ impl<'a> Elf<'a> {
         })
     }
 
+    pub fn os_abi(&self) -> u8 {
+        self.buffer[7]
+    }
+
+    pub fn abi_version(&self) -> u8 {
+        self.buffer[8]
+    }
+
     pub fn as_elf64_le(&'a self) -> Option<Elf64Le<'a>> {
         Elf64Le::new(self.buffer)
     }
+
+    pub fn as_executable(&'a self) -> Option<Executable<'a>> {
+        Executable::new(self)
+    }
 }
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ElfType {
     None,
     Relocatable,
@@ -53,7 +65,7 @@ pub enum ElfType {
     Unknown,
 }
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Machine {
     None,
     Intel386,
@@ -112,20 +124,40 @@ impl<'a> Elf64Le<'a> {
         u16::from_le((self.buffer[offset] as u16) +
                      ((self.buffer[offset + 1] as u16) << 8))
     }
-
-    pub fn as_executable(&'a self) -> Option<Executable<'a>> {
-        Executable::new(self)
-    }
 }
 
 #[derive(Clone, Copy)]
 pub struct Executable<'a> {
-    elf: &'a Elf64Le<'a>
+    elf: &'a Elf<'a>,
+    elf64_le: Elf64Le<'a>,
 }
 
 impl<'a> Executable<'a> {
-    pub fn new(elf: &'a Elf64Le<'a>) -> Option<Executable<'a>> {
-        unimplemented!()
+    pub fn new(elf: &'a Elf<'a>) -> Option<Executable<'a>> {
+        if elf.os_abi() != 0 {
+            return None;
+        }
+
+        if elf.abi_version() != 0 {
+            return None;
+        }
+
+        if let Some(elf64_le) = Elf64Le::new(elf.buffer) {
+            if elf64_le.elf_type() != ElfType::Executable {
+                return None;
+            }
+
+            if elf64_le.machine() != Machine::Amd64 /* FIXME */ {
+                return None;
+            }
+
+            Some(Executable {
+                elf: elf,
+                elf64_le: elf64_le,
+            })
+        } else {
+            None
+        }
     }
 }
 

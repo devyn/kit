@@ -179,9 +179,7 @@ fn spawn_init<'a>(filename: CStr<'static>) -> Result<(), SpawnInitError> {
 
     let elf = try!(Elf::new(data).ok_or(ElfVerifyError));
 
-    let elf64le = try!(elf.as_elf64_le().ok_or(ElfNotExecutable));
-
-    let exec = try!(elf64le.as_executable().ok_or(ElfNotExecutable));
+    let exec = try!(elf.as_executable().ok_or(ElfNotExecutable));
 
     let process = Process::create(filename);
 
