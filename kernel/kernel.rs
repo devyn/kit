@@ -47,10 +47,6 @@ pub mod c_ffi;
 pub mod error;
 
 use terminal::*;
-use elf::Elf;
-use process::Process;
-
-use c_ffi::CStr;
 
 /// Main kernel entry point.
 #[no_mangle]
@@ -137,62 +133,14 @@ pub extern fn kernel_main() -> ! {
         let cmdline = unsafe { mb_info.cmdline().unwrap() };
 
         if !cmdline.is_empty() {
-            spawn_init(cmdline).unwrap();
+            archive::utils::spawn(cmdline, &[cmdline.as_bytes()]).unwrap();
+            unsafe { scheduler::enter(); }
         } else {
             panic!("No initial program specified on kernel command line!");
         }
     }
 
     unreachable!();
-}
-
-#[derive(Debug)]
-enum SpawnInitError {
-    NoProgramSpecified,
-    FileNotFound,
-    ElfVerifyError,
-    ElfNotExecutable,
-    ExecLoadError,
-    SetArgsError
-}
-use SpawnInitError::*;
-
-fn spawn_init<'a>(filename: CStr<'static>) -> Result<(), SpawnInitError> {
-
-    console().set_color(Color::White, Color::Magenta).unwrap();
-
-    if filename.is_empty() {
-        return Err(NoProgramSpecified);
-    }
-
-    let system = archive::system();
-
-    let data = try!(system.get(filename).ok_or(FileNotFound));
-
-    let elf = try!(Elf::new(data).ok_or(ElfVerifyError));
-
-    let exec = try!(elf.as_executable().ok_or(ElfNotExecutable));
-
-    let process = Process::create(filename);
-
-    {
-        let mut process = process.borrow_mut();
-
-        try!(process.load(&exec).map_err(|_| ExecLoadError));
-
-        try!(process.set_args(&[filename.as_bytes()])
-             .map_err(|_| SetArgsError));
-
-        console().set_color(Color::LightGrey, Color::Black).unwrap();
-
-        process.run();
-    }
-
-    scheduler::push(process);
-
-    unsafe { scheduler::enter(); }
-
-    Ok(())
 }
 
 #[lang = "stack_exhausted"]

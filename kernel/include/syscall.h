@@ -37,7 +37,7 @@ void syscall_initialize();
   int syscall_sleep();
 
 #define SYSCALL_SPAWN 0x5
-  int syscall_spawn(const char *file, int argc, const char *const *argv);
+  int64_t syscall_spawn(const char *file, int argc, const char *const *argv);
 
 #define SYSCALL_WAIT_PROCESS 0x6
   int syscall_wait_process(process_id_t id, int *exit_status);

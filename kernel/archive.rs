@@ -51,8 +51,11 @@ pub fn system() -> Archive {
 /// C interface. See `kit/kernel/include/archive.h`.
 pub mod ffi {
     use multiboot;
+    use archive::utils;
 
-    use c_ffi::c_char;
+    use c_ffi::{c_int, c_char, int64_t, CStr};
+
+    use collections::Vec;
 
     #[repr(C)]
     pub enum ArchiveHeader {
@@ -70,5 +73,82 @@ pub mod ffi {
                            entry_name: *const c_char,
                            buffer: *mut *const u8,
                            length: *mut u64) -> i8;
+    }
+
+    #[no_mangle]
+    pub unsafe extern fn archive_utils_spawn(filename: *const c_char,
+                                             argc: c_int,
+                                             argv: *const *const c_char)
+                                             -> int64_t {
+
+        // XXX: This is dangerous in so many ways.
+        // Beyond FIXME status. Get rid of it.
+
+        let filename = CStr::from_ptr(filename);
+
+        let argv: Vec<Vec<u8>> = (0..argc as isize).map(|i| {
+            CStr::from_ptr(*argv.offset(i)).as_bytes().iter().map(|&b| b).collect()
+        }).collect();
+
+        let argv_ptrs: Vec<&[u8]> = argv.iter().map(|v| &v[..]).collect();
+
+        utils::spawn(filename, &argv_ptrs)
+            .map(|pid| pid as i64)
+            .unwrap_or_else(|e| -((e as u32) as i64))
+    }
+}
+
+/// Archive utilities.
+pub mod utils {
+    use archive;
+    use process::{self, Process};
+    use elf::Elf;
+    use scheduler;
+    use c_ffi::CStr;
+
+    #[derive(Debug)]
+    pub enum SpawnError {
+        NoProgramSpecified,
+        FileNotFound,
+        ElfVerifyError,
+        ElfNotExecutable,
+        ExecLoadError,
+        SetArgsError
+    }
+
+    use self::SpawnError::*;
+
+    pub fn spawn<'a>(filename: CStr<'static>, argv: &[&[u8]])
+                     -> Result<process::Id, SpawnError> {
+
+        if filename.is_empty() {
+            return Err(NoProgramSpecified);
+        }
+
+        let system = archive::system();
+
+        let data = try!(system.get(filename).ok_or(FileNotFound));
+
+        let elf = try!(Elf::new(data).ok_or(ElfVerifyError));
+
+        let exec = try!(elf.as_executable().ok_or(ElfNotExecutable));
+
+        let process = Process::create(filename);
+
+        let process_id = process.borrow().id();
+
+        {
+            let mut process = process.borrow_mut();
+
+            try!(process.load(&exec).map_err(|_| ExecLoadError));
+
+            try!(process.set_args(argv).map_err(|_| SetArgsError));
+
+            process.run();
+        }
+
+        scheduler::push(process);
+
+        Ok(process_id)
     }
 }

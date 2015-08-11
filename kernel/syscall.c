@@ -97,47 +97,9 @@ int syscall_sleep()
   return 0;
 }
 
-int syscall_spawn(const char *file, int argc, const char *const *argv)
+int64_t syscall_spawn(const char *file, int argc, const char *const *argv)
 {
-/*
-  char     *buffer;
-  uint64_t  length;
-
-  if (!archive_get(archive_system, file, &buffer, &length))
-  {
-    return -1;
-  }
-
-  elf_header_64_t *elf = (elf_header_64_t *) buffer;
-
-  if (!elf_verify(elf))
-  {
-    return -2;
-  }
-
-  process_t *process = process_create(argv[0]);
-
-  if (process == NULL)
-  {
-    return -3;
-  }
-
-  if (!elf_load(elf, process))
-  {
-    return -4;
-  }
-
-  if (!process_set_args(process, argc, argv))
-  {
-    return -5;
-  }
-
-  process_run(process);
-
-  return process->id;
-*/
-  DEBUG_FORMAT("file = %p, argc = %i, argv = %p", file, argc, argv);
-  return -1;
+  return archive_utils_spawn(file, argc, argv);
 }
 
 int syscall_wait_process(process_id_t id, int *exit_status)
