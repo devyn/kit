@@ -55,7 +55,10 @@ pub mod ffi {
     use c_ffi::c_char;
 
     #[repr(C)]
-    pub struct ArchiveHeader;
+    pub enum ArchiveHeader {
+        __variant1,
+        __variant2,
+    }
 
     extern {
         pub static archive_system: *const ArchiveHeader;

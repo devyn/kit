@@ -60,7 +60,6 @@ pub static HEAP_BASE_ADDR:  usize = 0x0000_0001_0000_0000;
 ///
 /// On x86_64, includes the kernel stack pointer and base, as well as the
 /// registers.
-#[allow(drop_with_repr_extern)]
 #[repr(C)]
 #[derive(Debug)]
 #[allow(raw_pointer_derive)]

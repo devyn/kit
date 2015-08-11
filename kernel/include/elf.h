@@ -57,27 +57,27 @@ typedef struct PACKED elf_header_64
 # define ELF_E_TYPE_EXEC   2
 # define ELF_E_TYPE_DYN    3
 # define ELF_E_TYPE_CORE   4
-  uint16_t e_type;
+  uint16_t e_type; // 16
 
 # define ELF_E_MACHINE_NONE  0
 # define ELF_E_MACHINE_386   3
 # define ELF_E_MACHINE_AMD64 62
-  uint16_t e_machine;
+  uint16_t e_machine; // 18
 
-  uint32_t e_version;
-  uint64_t e_entry;
-  uint64_t e_phoff;
-  uint64_t e_shoff;
+  uint32_t e_version; // 20
+  uint64_t e_entry; // 24
+  uint64_t e_phoff; // 32
+  uint64_t e_shoff; // 40
 
   // TODO: (processor specific flags)
-  uint32_t e_flags;
+  uint32_t e_flags; // 48
 
-  uint16_t e_ehsize;
-  uint16_t e_phentsize;
-  uint16_t e_phnum;
-  uint16_t e_shentsize;
-  uint16_t e_shnum;
-  uint16_t e_shstrndx;
+  uint16_t e_ehsize; // 52
+  uint16_t e_phentsize; // 54
+  uint16_t e_phnum; // 56
+  uint16_t e_shentsize; // 58
+  uint16_t e_shnum; // 60
+  uint16_t e_shstrndx; // 62
 } elf_header_64_t;
 
 typedef struct PACKED elf_program_header
@@ -95,19 +95,19 @@ typedef struct PACKED elf_program_header
 # define ELF_P_TYPE_LOPROC     0x70000000
 # define ELF_P_TYPE_HIPROC     0x7fffffff
 # define ELF_P_TYPE_GNU_STACK  0x6474e551
-  uint32_t p_type;
+  uint32_t p_type; // 0
 
 # define ELF_P_FLAG_READ    4
 # define ELF_P_FLAG_WRITE   2
 # define ELF_P_FLAG_EXECUTE 1
-  uint32_t p_flags;
+  uint32_t p_flags; // 4
 
-  uint64_t p_offset;
-  uint64_t p_vaddr;
-  uint64_t p_paddr;
-  uint64_t p_filesz;
-  uint64_t p_memsz;
-  uint64_t p_align;
+  uint64_t p_offset; // 8
+  uint64_t p_vaddr; // 16
+  uint64_t p_paddr; // 24
+  uint64_t p_filesz; // 32
+  uint64_t p_memsz; // 40
+  uint64_t p_align; // 48
 } elf_program_header_t;
 
 typedef struct elf_program_header_iterator

@@ -12,7 +12,11 @@
 
 //! Executable and Linkable Format loader.
 
+use core::slice;
+use core::slice::bytes::{self, MutableByteVector};
+
 use process::{self, Process, Image};
+use paging::{self, PageType};
 
 static MAGIC: &'static [u8] = b"\x7fELF";
 
@@ -62,7 +66,7 @@ pub enum ElfType {
     Executable,
     Dynamic,
     CoreDump,
-    Unknown,
+    Unknown(u16),
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -70,7 +74,7 @@ pub enum Machine {
     None,
     Intel386,
     Amd64,
-    Unknown,
+    Unknown(u16),
 }
 
 #[derive(Clone, Copy)]
@@ -107,7 +111,7 @@ impl<'a> Elf64Le<'a> {
             2 => ElfType::Executable,
             3 => ElfType::Dynamic,
             4 => ElfType::CoreDump,
-            _ => ElfType::Unknown,
+            n => ElfType::Unknown(n),
         }
     }
 
@@ -116,13 +120,136 @@ impl<'a> Elf64Le<'a> {
             0  => Machine::None,
             3  => Machine::Intel386,
             62 => Machine::Amd64,
-            _  => Machine::Unknown,
+            n  => Machine::Unknown(n),
+        }
+    }
+
+    pub fn program_headers(&'a self) -> ElfProgramHeaders<'a> {
+        let e_phoff     = self.read_u64(32) as usize;
+        let e_phentsize = self.read_u16(54) as usize;
+        let e_phnum     = self.read_u16(56) as usize;
+
+        ElfProgramHeaders {
+            elf: self,
+            offset: e_phoff,
+            header_size: e_phentsize,
+            index: 0,
+            count: e_phnum,
         }
     }
 
     fn read_u16(&self, offset: usize) -> u16 {
-        u16::from_le((self.buffer[offset] as u16) +
-                     ((self.buffer[offset + 1] as u16) << 8))
+        (0..2).map(|index| {
+            (self.buffer[index + offset] as u16) << (index * 8)
+        }).sum()
+    }
+
+    fn read_u32(&self, offset: usize) -> u32 {
+        (0..4).map(|index| {
+            (self.buffer[index + offset] as u32) << (index * 8)
+        }).sum()
+    }
+
+    fn read_u64(&self, offset: usize) -> u64 {
+        (0..8).map(|index| {
+            (self.buffer[index + offset] as u64) << (index * 8)
+        }).sum()
+    }
+}
+
+pub struct ElfProgramHeaders<'a> {
+    elf: &'a Elf64Le<'a>,
+    offset: usize,
+    header_size: usize,
+    index: usize,
+    count: usize,
+}
+
+impl<'a> Iterator for ElfProgramHeaders<'a> {
+    type Item = ElfProgramHeader<'a>;
+
+    fn next(&mut self) -> Option<ElfProgramHeader<'a>> {
+        if self.index < self.count {
+            let o = self.offset + self.index * self.header_size;
+
+            self.index += 1;
+
+            let flags = self.elf.read_u32(o+4);
+
+            let data_start = self.elf.read_u64(o+8) as usize;
+            let data_end   = data_start + self.elf.read_u64(o+32) as usize;
+
+            Some(ElfProgramHeader {
+                region_type: match self.elf.read_u32(o) {
+                    0 => RegionType::Null,
+                    1 => RegionType::Load,
+                    2 => RegionType::Dynamic,
+                    3 => RegionType::Interpreter,
+                    4 => RegionType::Note,
+                    6 => RegionType::ProgramHeader,
+                    n => RegionType::Unknown(n),
+                },
+                readable:    flags & 4 == 4,
+                writable:    flags & 2 == 2,
+                executable:  flags & 1 == 1,
+                data:        &self.elf.buffer[data_start..data_end],
+                mem_offset:  self.elf.read_u64(o + 16) as usize,
+                mem_size:    self.elf.read_u64(o + 40) as usize,
+            })
+        } else {
+            None
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum RegionType {
+    Null,
+    Load,
+    Dynamic,
+    Interpreter,
+    Note,
+    ProgramHeader,
+    Unknown(u32),
+}
+
+#[derive(Clone)]
+pub struct ElfProgramHeader<'a> {
+    pub region_type: RegionType,
+    pub readable:    bool,
+    pub writable:    bool,
+    pub executable:  bool,
+    pub data:        &'a [u8],
+    pub mem_offset:  usize,
+    pub mem_size:    usize,
+}
+
+impl<'a> ElfProgramHeader<'a> {
+    /// Copy the data referenced by the program header into the destination
+    /// buffer. The buffer must be large enough to fit the entire `mem_size`
+    /// specified by the header, or `Err` will be returned with the difference.
+    ///
+    /// # Panics
+    ///
+    /// Panics if the `mem_size` is less than the length of the `data`, unless
+    /// `mem_size` is zero (in which case nothing is loaded and `Ok` is
+    /// returned).
+    pub fn load_into(&self, destination: &mut [u8]) -> Result<(), usize> {
+        if self.mem_size == 0 {
+            return Ok(());
+        }
+
+        assert!(self.data.len() <= self.mem_size);
+
+        if destination.len() < self.mem_size {
+            Err(self.mem_size - destination.len())
+        } else {
+            bytes::copy_memory(self.data, destination);
+
+            destination[self.data.len()..self.mem_size].set_memory(0);
+
+            Ok(())
+        }
     }
 }
 
@@ -164,6 +291,48 @@ impl<'a> Executable<'a> {
 impl<'a> Image for Executable<'a> {
     fn load_into(&self, process: &mut Process)
                  -> Result<(), process::Error> {
-        unimplemented!()
+        let mut result = Ok(());
+
+        unsafe {
+            // Load the process's pageset, making sure to restore the previous
+            // one after.
+            let original_pageset = paging::current_pageset();
+            paging::set_current_pageset(Some(process.pageset()));
+
+            // Must not return directly from this loop. Set result and break if
+            // necessary.
+            for phdr in self.elf64_le.program_headers() {
+                if phdr.region_type == RegionType::Load {
+                    result = phdr_load(phdr, process);
+                }
+
+                if result.is_err() { break }
+            }
+
+            // Restore the previous pageset.
+            paging::set_current_pageset(original_pageset);
+        }
+
+        result
     }
+}
+
+unsafe fn phdr_load<'a>(phdr: ElfProgramHeader<'a>,
+                        process: &mut Process)
+                        -> Result<(), process::Error> {
+
+    let mut page_type = PageType::default();
+
+    if phdr.writable   { page_type = page_type.writable(); }
+    if phdr.executable { page_type = page_type.executable(); }
+
+    try!(process.map_allocate(phdr.mem_offset, phdr.mem_size, page_type));
+
+    // Access the memory directly via a slice into userspace.
+    let memory = slice::from_raw_parts_mut(
+        phdr.mem_offset as *mut u8, phdr.mem_size);
+
+    assert!(phdr.load_into(memory).is_ok());
+
+    Ok(())
 }
