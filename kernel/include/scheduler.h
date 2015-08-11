@@ -18,8 +18,6 @@
 
 #include "process.h"
 
-void scheduler_enter();
-
 /**
  * When scheduler_tick() returns, process_current is guaranteed to be the same
  * as it was before, but many things may have happened in between. Thus, the
@@ -27,12 +25,8 @@ void scheduler_enter();
  */
 void scheduler_tick();
 
-void scheduler_enqueue_run(process_t *process);
-
-process_t *scheduler_dequeue_run();
-
 void scheduler_sleep();
 
-bool scheduler_wake(process_t *process);
+int scheduler_wake(process_id_t pid);
 
 #endif

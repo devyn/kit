@@ -124,6 +124,11 @@ impl<'a> Elf64Le<'a> {
         }
     }
 
+    pub fn entry(&self) -> usize {
+        write!(::terminal::console(), "entry={:#x}\n", self.read_u64(24));
+        self.read_u64(24) as usize
+    }
+
     pub fn program_headers(&'a self) -> ElfProgramHeaders<'a> {
         let e_phoff     = self.read_u64(32) as usize;
         let e_phentsize = self.read_u16(54) as usize;
@@ -292,6 +297,8 @@ impl<'a> Image for Executable<'a> {
     fn load_into(&self, process: &mut Process)
                  -> Result<(), process::Error> {
         let mut result = Ok(());
+
+        process.set_entry_point(self.elf64_le.entry());
 
         unsafe {
             // Load the process's pageset, making sure to restore the previous

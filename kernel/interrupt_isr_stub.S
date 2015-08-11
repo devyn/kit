@@ -25,6 +25,11 @@
 # FS.base MSR (required to set to ignore Rust stack checks)
 .set IA32_FS_BASE, 0xc0000100
 
+# HwState offsets
+.set HWSTATE_KSTACK_BASE,    0x00
+.set HWSTATE_KSTACK_POINTER, 0x08
+.set HWSTATE_REGISTERS,      0x10
+
 .section .text
 
 # Emulates pusha on x86_64
@@ -221,9 +226,9 @@ interrupt_isr_stub_common:
   # Store this in the TSS.
   mov %rbx, tss_stack
 
-  # And the process.
-  mov process_current,                     %rdi
-  add PROCESS_OFFSET_KERNEL_STACK_POINTER, %rdi
+  # And the process's HwState.
+  mov process_hwstate,         %rdi
+  add $HWSTATE_KSTACK_POINTER, %rdi
 
   mov %rbx, (%rdi)
 

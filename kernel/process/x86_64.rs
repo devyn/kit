@@ -19,24 +19,24 @@ use core::ptr;
 #[repr(C)]
 #[derive(Debug)]
 pub struct Registers {
-    rax:     usize,
-    rcx:     usize,
-    rdx:     usize,
-    rbx:     usize,
-    rsp:     usize,
-    rbp:     usize,
-    rsi:     usize,
-    rdi:     usize,
-    r8:      usize,
-    r9:      usize,
-    r10:     usize,
-    r11:     usize,
-    r12:     usize,
-    r13:     usize,
-    r14:     usize,
-    r15:     usize,
-    rip:     usize,
-    eflags:  u32,
+    rax:     usize, // 0x00
+    rcx:     usize, // 0x08
+    rdx:     usize, // 0x10
+    rbx:     usize, // 0x18
+    rsp:     usize, // 0x20
+    rbp:     usize, // 0x28
+    rsi:     usize, // 0x30
+    rdi:     usize, // 0x38
+    r8:      usize, // 0x40
+    r9:      usize, // 0x48
+    r10:     usize, // 0x50
+    r11:     usize, // 0x58
+    r12:     usize, // 0x60
+    r13:     usize, // 0x68
+    r14:     usize, // 0x70
+    r15:     usize, // 0x78
+    rip:     usize, // 0x80
+    eflags:  u32,   // 0x88
 }
 
 impl Default for Registers {
@@ -56,6 +56,8 @@ pub static ARGS_TOP_ADDR:   usize = 0x0000_7fee_ffff_ffff;
 pub static STACK_BASE_ADDR: usize = 0x0000_7fff_ffff_f000;
 pub static HEAP_BASE_ADDR:  usize = 0x0000_0001_0000_0000;
 
+pub static STACK_SIZE:      usize = 8192;
+
 /// The hardware state of a process. Usually mutated by foreign code.
 ///
 /// On x86_64, includes the kernel stack pointer and base, as well as the
@@ -73,7 +75,7 @@ static KSTACK_SIZE: usize = 8192;
 static KSTACK_ALIGN: usize = 16;
 
 extern {
-    static mut process_hwstate: *mut HwState;
+    fn process_hw_prepare(stack_pointer: *mut u8) -> *mut u8;
 }
 
 impl HwState {
@@ -85,16 +87,13 @@ impl HwState {
 
             HwState {
                 kstack_base:    kstack,
-                kstack_pointer: kstack.offset(KSTACK_SIZE as isize),
-                registers:      Registers::default(),
+                kstack_pointer: process_hw_prepare(
+                                    kstack.offset(KSTACK_SIZE as isize)),
+                registers:      Registers {
+                    rsp: STACK_BASE_ADDR,
+                    ..Registers::default()
+                },
             }
-        }
-    }
-
-    /// Loads the HwState as the current HwState.
-    pub fn load(&mut self) {
-        unsafe {
-            process_hwstate = self as *mut HwState;
         }
     }
 

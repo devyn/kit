@@ -42,14 +42,13 @@ pub mod archive;
 pub mod process;
 pub mod elf;
 pub mod scheduler;
-pub mod shell;
+pub mod syscall;
 pub mod c_ffi;
 pub mod error;
 
 use terminal::*;
 use elf::Elf;
 use process::Process;
-use shell::shell;
 
 use c_ffi::CStr;
 
@@ -140,14 +139,7 @@ pub extern fn kernel_main() -> ! {
         if !cmdline.is_empty() {
             spawn_init(cmdline).unwrap();
         } else {
-            write!(console(), "W: No initial program specified on kernel \
-                               command line; dropping into kernel\n   \
-                               shell.\n").unwrap();
-
-            unsafe {
-                interrupt::enable();
-                shell();
-            }
+            panic!("No initial program specified on kernel command line!");
         }
     }
 
@@ -195,6 +187,8 @@ fn spawn_init<'a>(filename: CStr<'static>) -> Result<(), SpawnInitError> {
 
         process.run();
     }
+
+    scheduler::push(process);
 
     unsafe { scheduler::enter(); }
 

@@ -43,7 +43,8 @@ syscall_handler:
   mov %ax, %gs
 
   # Load the current process's registers' base address into RAX.
-  mov $(process_hwstate + HWSTATE_REGISTERS), %r15
+  mov process_hwstate, %rax
+  add $HWSTATE_REGISTERS, %rax
 
   # Save the process's register set.
   # Clear RCX and R11 (they are clobbered by syscalls).
@@ -72,7 +73,7 @@ syscall_handler:
   # Load the stack for ring 0 from the TSS.
   mov tss_stack, %rsp
 
-  # Otherwise, let's see if the syscall is within the valid range:
+  # Let's see if the syscall is within the valid range:
   mov syscall_table_size, %r13
   cmp %r13, %r12
   jae .LoutOfRange
@@ -90,9 +91,6 @@ syscall_handler:
   # which means that we need to use something else. So we'll use R10, because
   # that's what Linux uses.
   mov %r10, %rcx
-
-  # Let's save RAX (process registers) because we'll want it after.
-  push %rax
 
   # Set FS.base (necessary for Rust).
   push   %rcx
@@ -115,14 +113,16 @@ syscall_handler:
   # Reset the stack.
   mov %rbp, %rsp
 
-  # Load process registers into R15.
-  pop %r15
-
 .Lsysret:
   # Now we can return to the system. The result should be in RAX, so don't touch
   # that. First, let's save the stack:
   mov %rsp, tss_stack
-  mov %rsp, process_hwstate + HWSTATE_KSTACK_POINTER
+
+  mov process_hwstate, %r15
+  mov %rsp, HWSTATE_KSTACK_POINTER(%r15)
+
+  # Add the registers offset to R15 for when we save those.
+  add $HWSTATE_REGISTERS, %r15
 
   # Set up the segment registers.
   mov $USER_DATA_SEL, %bx

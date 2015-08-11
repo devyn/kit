@@ -95,17 +95,14 @@ static inline char keyboard_get_keychar(uint8_t keycode)
   return keychar;
 }
 
-process_t *keyboard_blocked_process = NULL;
+process_id_t keyboard_blocked_process = 0;
 
 static bool keyboard_wake_blocked()
 {
-  if (keyboard_blocked_process != NULL)
+  if (keyboard_blocked_process)
   {
-    process_t *process = keyboard_blocked_process;
-
-    keyboard_blocked_process = NULL;
-
-    scheduler_wake(process);
+    scheduler_wake(keyboard_blocked_process);
+    keyboard_blocked_process = 0;
 
     return true;
   }
@@ -166,7 +163,7 @@ void keyboard_sleep_dequeue(keyboard_event_t *event)
 {
   if (!keyboard_dequeue(event))
   {
-    keyboard_blocked_process = process_current;
+    keyboard_blocked_process = process_current_id();
     scheduler_sleep();
     keyboard_dequeue(event);
   }

@@ -1,9 +1,8 @@
 /*******************************************************************************
  *
- * kit/kernel/include/shell.h
- * - kernel hacking command interface
+ * kit/kernel/syscall.rs
  *
- * vim:ts=2:sw=2:et:tw=80:ft=c
+ * vim:ft=rust:ts=4:sw=4:et:tw=80
  *
  * Copyright (C) 2015, Devyn Cairns
  * Redistribution of this file is permitted under the terms of the simplified
@@ -11,9 +10,10 @@
  *
  ******************************************************************************/
 
-#ifndef SHELL_H
-#define SHELL_H
+pub unsafe fn initialize() {
+    extern {
+        fn syscall_initialize();
+    }
 
-void shell();
-
-#endif
+    syscall_initialize();
+}

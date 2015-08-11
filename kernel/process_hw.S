@@ -1,7 +1,7 @@
 ################################################################################
 #
-# kit/kernel/process_asm.S
-# - user process trampoline
+# kit/kernel/process_hw.S
+# - user process hardware helpers
 #
 # vim:ts=2:sw=2:et:tw=80:ft=asm
 #
@@ -23,14 +23,15 @@
 process_hwstate: .quad 0
 
 # HwState offsets
+.set HWSTATE_KSTACK_BASE,    0x00
 .set HWSTATE_KSTACK_POINTER, 0x08
 .set HWSTATE_REGISTERS,      0x10
 
 .section .text
 
-# C: (void *stack_pointer) -> void *stack_pointer
-.global process_asm_prepare
-process_asm_prepare:
+# Rust: (stack_pointer: *mut u8) -> *mut u8
+.global process_hw_prepare
+process_hw_prepare:
   xchg %rdi, %rsp
   pushq $.Lbootstrap # return address
   pushq $0
@@ -48,7 +49,8 @@ process_asm_prepare:
   mov %rsp, tss_stack
 
   # Load the current process's registers' base address into R15.
-  mov $(process_hwstate + HWSTATE_REGISTERS), %r15
+  mov (process_hwstate), %r15
+  add $HWSTATE_REGISTERS, %r15
 
   # Put SS, RSP, EFLAGS, CS, RIP on the stack
   pushq $USER_DATA_SEL # SS
@@ -103,13 +105,13 @@ process_asm_prepare:
   hlt
   jmp .LsomethingWentWrong
 
-# C: (void **old_stack_pointer, void *new_stack_pointer) -> void
+# Rust: (old: *mut HwState, new: *mut HwState) -> ()
 # This function is a bit tricky because it actually returns out of a different
 # invocation of this function on a different stack.
 #
-# (Which is why we don't do it in C.)
-.global process_asm_switch
-process_asm_switch:
+# (Which is why we don't do it in Rust.)
+.global process_hw_switch
+process_hw_switch:
   # Disable interrupts, though they probably should be disabled already anyway.
   cli
 
@@ -122,10 +124,17 @@ process_asm_switch:
   push %r15
 
   # Save stack
-  mov %rsp, (%rdi)
+  mov %rsp,             HWSTATE_KSTACK_POINTER(%rdi)
+  mov rust_stack_limit, %rbp
+  mov %rbp,             HWSTATE_KSTACK_BASE(%rdi)
 
   # Switch stacks
-  mov %rsi, %rsp
+  mov HWSTATE_KSTACK_POINTER(%rsi), %rsp
+  mov HWSTATE_KSTACK_BASE(%rsi),    %rbp
+  mov %rbp,                         rust_stack_limit
+
+  # Set process_hwstate
+  mov %rsi, process_hwstate
 
   # Return into process_switch() on other stack
   pop %r15

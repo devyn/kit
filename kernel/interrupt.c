@@ -242,8 +242,8 @@ void interrupt_handler(interrupt_stack_t stack) {
       DEBUG_FORMAT("invalid opcode, rip=%#lx", stack.rip);
       while (true) hlt();
     case 0xd:
-      DEBUG_FORMAT("general protection fault, rip=%#lx, err_code=%#lx",
-          stack.rip, stack.err_code);
+      DEBUG_FORMAT("general protection fault, rip=%#lx, err_code=%#lx, cs=%#lx",
+          stack.rip, stack.err_code, stack.cs);
       while (true) hlt();
     case 0xe:
       {

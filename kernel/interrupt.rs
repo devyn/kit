@@ -27,6 +27,11 @@ pub unsafe fn disable() {
     asm!("cli" :::: "volatile");
 }
 
+/// Wait for an interrupt.
+pub unsafe fn wait() {
+    asm!("sti; hlt; cli" :::: "volatile");
+}
+
 /// C interface. See `kit/kernel/include/interrupt.h`.
 pub mod ffi {
     extern {

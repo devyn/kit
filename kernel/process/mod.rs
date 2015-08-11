@@ -28,6 +28,8 @@ use error;
 use paging::{self, Pageset, PagesetExt, RcPageset, PageType};
 use paging::generic::Pageset as GenericPageset;
 use memory;
+use scheduler;
+use syscall;
 
 pub mod x86_64;
 pub use self::x86_64 as target;
@@ -45,6 +47,7 @@ pub enum State {
 struct GlobalState {
     process_tree: BTreeMap<Id, RcProcess>,
     current_process: Option<RcProcess>,
+    noproc_hw_state: *mut target::HwState,
     next_id: Id,
 }
 
@@ -63,10 +66,12 @@ pub unsafe fn initialize() {
     GLOBAL_STATE = Some(Box::into_raw(box RefCell::new(GlobalState {
         process_tree: BTreeMap::new(),
         current_process: None,
+        noproc_hw_state: Box::into_raw(box target::HwState::new()),
         next_id: 1,
     })));
 
-    //syscall::initialize();
+    scheduler::initialize();
+    syscall::initialize();
 
     INITIALIZED = true;
 }
@@ -83,6 +88,66 @@ fn global_state<'a>() -> &'a RefCell<GlobalState> {
 /// During initialization, this may be None.
 pub fn current() -> Option<RcProcess> {
     global_state().borrow_mut().current_process.clone()
+}
+
+/// Get a process by ID.
+pub fn by_id(id: Id) -> Option<RcProcess> {
+    global_state().borrow().process_tree.get(&id).map(|r| r.clone())
+}
+
+/// Change the current process (immediately).
+///
+/// # Unsafety
+///
+/// Unsafe because the entire call stack must be reentrant. Execution of another
+/// process could allow a lot of things to change before this function returns.
+///
+/// # Panics
+///
+/// Panics if the process to switch to is not in the `Running` state.
+pub unsafe fn switch_to(process: RcProcess) {
+    assert!(process.borrow().is_running());
+
+    let old_process = current();
+
+    let old_hw_state = match old_process {
+        Some(old_process) => old_process.borrow().hw_state,
+        None              => global_state().borrow().noproc_hw_state
+    };
+
+    let new_hw_state = process.borrow().hw_state;
+
+    paging::set_current_pageset(Some(process.borrow().pageset()));
+
+    global_state().borrow_mut().current_process = Some(process);
+
+    write!(::terminal::console(), "About to switch!\n");
+
+    // Do the magic!
+    process_hw_switch(old_hw_state, new_hw_state);
+}
+
+// Use scheduler::exit() instead
+#[doc(hidden)]
+pub unsafe fn switch_to_noproc() {
+    let old_process = match current() {
+        Some(old_process) => old_process,
+        None              => return
+    };
+
+    let old_hw_state = old_process.borrow().hw_state;
+    let new_hw_state = global_state().borrow().noproc_hw_state;
+
+    paging::set_current_pageset(None);
+
+    global_state().borrow_mut().current_process = None;
+
+    // Do the magic!
+    process_hw_switch(old_hw_state, new_hw_state);
+}
+
+extern {
+    fn process_hw_switch(old: *mut target::HwState, new: *mut target::HwState);
 }
 
 pub type RcProcess = Rc<RefCell<Process>>;
@@ -116,7 +181,7 @@ impl Process {
     pub fn create<S>(name: S) -> RcProcess where S: Into<String> {
         let id = Process::next_id();
 
-        let process = Process {
+        let mut process = Process {
             id:          id,
             name:        name.into(),
             state:       State::Loading,
@@ -127,6 +192,12 @@ impl Process {
             exit_status: 0,
             waiting:     vec![],
         };
+
+        // FIXME? This assumes a downward growing stack, like x86
+        process.map_allocate(
+            target::STACK_BASE_ADDR - target::STACK_SIZE,
+            target::STACK_SIZE,
+            PageType::default().writable()).unwrap();
 
         let rc_process = Rc::new(RefCell::new(process));
 
@@ -169,6 +240,27 @@ impl Process {
         }
 
         heap_end
+    }
+
+    pub fn is_running(&self) -> bool {
+        self.state == State::Running
+    }
+
+    pub fn is_sleeping(&self) -> bool {
+        self.state == State::Sleeping
+    }
+
+    /// True if the process is `Running` or `Sleeping`.
+    pub fn is_alive(&self) -> bool {
+        self.is_running() || self.is_sleeping()
+    }
+
+    pub fn is_loading(&self) -> bool {
+        self.state == State::Loading
+    }
+
+    pub fn is_dead(&self) -> bool {
+        self.state == State::Dead
     }
 
     /// Returns the exit status of the process if it has exited.
@@ -303,6 +395,34 @@ impl Process {
         self.state = State::Running;
     }
 
+    /// Set the process's state to `Sleeping`.
+    ///
+    /// # Panics
+    ///
+    /// Panics if the current state is neither `Running` nor `Sleeping`.
+    pub fn sleep(&mut self) {
+        if !self.is_alive() {
+            panic!("Tried to put a {:?} process to sleep", self.state);
+        }
+
+        self.state = State::Sleeping;
+    }
+
+    /// Set the process's state to `Running` if it was `Sleeping`.
+    ///
+    /// Make sure to call this before pushing a process onto the scheduler.
+    ///
+    /// # Panics
+    ///
+    /// Panics if the current state is neither `Running` nor `Sleeping`.
+    pub fn awaken(&mut self) {
+        if !self.is_alive() {
+            panic!("Tried to wake a {:?} process", self.state);
+        }
+
+        self.state = State::Running;
+    }
+
     /// Set the process's state to `Dead` and set its exit status to the given
     /// value.
     pub fn exit(&mut self, exit_status: i32) {
@@ -426,6 +546,14 @@ impl Process {
     }
 }
 
+impl PartialEq for Process {
+    fn eq(&self, other: &Process) -> bool {
+        self.id == other.id
+    }
+}
+
+impl Eq for Process { }
+
 impl Drop for Process {
     fn drop(&mut self) {
         unsafe {
@@ -487,62 +615,70 @@ pub trait Image {
 
 /// C interface. See `kit/kernel/include/process.h`.
 pub mod ffi {
-    use core::cell::*;
-    use core::mem;
-
-    use c_ffi::c_void;
-
-    use alloc::rc::Rc;
-
     use super::*;
+    use c_ffi::*;
+    use scheduler;
 
-    #[repr(C)]
-    pub struct ProcessCRef(*const c_void);
-
-    impl ProcessCRef {
-        pub fn new(rc_process: Rc<RefCell<Process>>) -> ProcessCRef {
-            unsafe {
-                mem::transmute(rc_process)
-            }
+    #[no_mangle]
+    pub extern fn process_current_id() -> uint32_t {
+        if let Some(process) = super::current() {
+            process.borrow().id
+        } else {
+            0
         }
+    }
 
-        pub fn to_rc(&self) -> Rc<RefCell<Process>> {
-            if self.is_null() {
-                panic!("Tried to call into_rc() on null ProcessCRef");
-            }
-
-            unsafe {
-                let ProcessCRef(ptr) = *self;
-                let rc1: Rc<RefCell<Process>> = mem::transmute(ptr);
-                let rc2 = rc1.clone();
-
-                mem::forget(rc1);
-                rc2
-            }
+    #[no_mangle]
+    pub unsafe extern fn process_exit(status: c_int) {
+        if let Some(process) = super::current() {
+            process.borrow_mut().exit(status);
+            scheduler::tick();
+        } else {
+            panic!("C called process_exit() but there is no current process");
         }
+    }
 
-        pub fn to_option(&self) -> Option<Rc<RefCell<Process>>> {
-            if self.is_null() {
-                None
+    #[no_mangle]
+    pub unsafe extern fn process_wait_exit_status(pid: uint32_t,
+                                                  status: *mut c_int)
+                                                  -> c_int {
+        let current_process = super::current()
+            .expect("C called process_wait_exit_status() but there is
+                     no current process");
+
+        if let Some(process) = super::by_id(pid) {
+            let exit_status = process.borrow().exit_status();
+
+            if let Some(exit_status) = exit_status {
+                // TODO: remove process from wait list
+
+                *status = exit_status;
+                return 0;
             } else {
-                Some(self.to_rc())
+                process.borrow_mut().waiting
+                    .push(current_process.borrow().id());
+
+                current_process.borrow_mut().sleep();
+                scheduler::tick();
+
+                return process_wait_exit_status(pid, status);
             }
+        } else {
+            return -1;
         }
+    }
 
-        pub fn into_rc(self) -> Rc<RefCell<Process>> {
-            if self.is_null() {
-                panic!("Tried to call into_rc() on null ProcessCRef");
-            }
+    //void *process_adjust_heap(int64_t amount);
+    #[no_mangle]
+    pub unsafe extern fn process_adjust_heap(amount: int64_t) -> *mut c_void {
+        let current_process = super::current()
+            .expect("C called process_adjust_heap() but there is
+                     no current process");
 
-            unsafe {
-                mem::transmute(self)
-            }
-        }
+        current_process.borrow_mut().adjust_heap(amount as isize).unwrap();
 
-        pub fn is_null(&self) -> bool {
-            let ProcessCRef(ptr) = *self;
+        let heap_end = current_process.borrow().heap_end() as *mut c_void;
 
-            ptr.is_null()
-        }
+        heap_end
     }
 }
