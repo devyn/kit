@@ -125,7 +125,6 @@ impl<'a> Elf64Le<'a> {
     }
 
     pub fn entry(&self) -> usize {
-        write!(::terminal::console(), "entry={:#x}\n", self.read_u64(24));
         self.read_u64(24) as usize
     }
 

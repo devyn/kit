@@ -121,8 +121,6 @@ pub unsafe fn switch_to(process: RcProcess) {
 
     global_state().borrow_mut().current_process = Some(process);
 
-    write!(::terminal::console(), "About to switch!\n");
-
     // Do the magic!
     process_hw_switch(old_hw_state, new_hw_state);
 }
@@ -527,8 +525,13 @@ impl Process {
 
         let page_size = <Pageset as GenericPageset>::page_size();
 
-        let old_heap_pages = self.heap_length / page_size;
-        let new_heap_pages = new_heap_length  / page_size;
+        fn divup(dividend: usize, divisor: usize) -> usize {
+            if dividend % divisor == 0 { dividend / divisor }
+            else                       { dividend / divisor + 1 }
+        }
+
+        let old_heap_pages = divup(self.heap_length, page_size);
+        let new_heap_pages = divup(new_heap_length,  page_size);
 
         if new_heap_pages > old_heap_pages {
             let base = self.heap_base + old_heap_pages * page_size;
@@ -541,6 +544,8 @@ impl Process {
 
             try!(self.unmap_deallocate(base, size));
         }
+
+        self.heap_length = new_heap_length;
 
         Ok(())
     }
