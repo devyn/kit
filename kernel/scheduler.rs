@@ -168,7 +168,9 @@ pub unsafe fn tick() {
     let current_process = current_process.unwrap();
 
     while global_state().borrow().run_queue.is_empty() {
-        if current_process.borrow().is_running() {
+        let current_process_is_running = current_process.borrow().is_running();
+
+        if current_process_is_running {
             // We can just continue running the current process, since it has
             // more work to do, and no one else does.
             return;
@@ -189,12 +191,15 @@ pub unsafe fn tick() {
     // If the process we're about to execute is not Running (for example, it
     // changed while it was on the queue), discard it with a tail-recursive
     // call.
-    if !next_process.borrow().is_running() {
+    let next_process_is_running = next_process.borrow().is_running();
+    if !next_process_is_running {
         return tick();
     }
 
     if next_process != current_process {
-        if current_process.borrow().is_running() {
+        let current_process_is_running = current_process.borrow().is_running();
+
+        if current_process_is_running {
             // The process we're leaving was running, so let's put the current
             // process on the queue.
             push(current_process);
