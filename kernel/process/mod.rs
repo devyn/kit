@@ -637,6 +637,14 @@ pub mod ffi {
     pub unsafe extern fn process_exit(status: c_int) {
         if let Some(process) = super::current() {
             process.borrow_mut().exit(status);
+
+            // Let waiting processes know
+            for &pid in &process.borrow().waiting {
+                if let Some(process) = super::by_id(pid) {
+                    let _ = scheduler::awaken(process);
+                }
+            }
+
             scheduler::tick();
         } else {
             panic!("C called process_exit() but there is no current process");
