@@ -11,8 +11,22 @@
 #
 ################################################################################
 
-all-system-deps:
+build/deps/system/.dir: build/deps/.dir
+	mkdir -p build/deps/system
+	touch build/deps/system/.dir
+
+build/deps/system/liblua.a: deps/lua/.dir build/deps/system/.dir
+	@${ECHO_MAKE} build/deps/system/liblua.a
+	@cd deps/lua/lua-${LUA_VERSION}/src && \
+		make "CC=${CC}" "CFLAGS=${SYSTEM_CFLAGS}" "SYSLDFLAGS=${SYSTEM_LDFLAGS}" \
+			liblua.a
+	@cp deps/lua/lua-${LUA_VERSION}/src/liblua.a build/deps/system/liblua.a
+
+all-system-deps: build/deps/system/liblua.a
 
 clean-system-deps:
+	rm -rf build/deps/system
+	[[ ! -d deps/lua/lua-${LUA_VERSION}/src ]] || \
+		(cd deps/lua/lua-${LUA_VERSION}/src && make clean)
 
 .PHONY: all-system-deps clean-system-deps

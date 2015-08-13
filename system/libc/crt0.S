@@ -1,6 +1,6 @@
 ################################################################################
 #
-# kit/system/crt0.S
+# kit/system/libc/crt0.S
 # - C runtime entry point
 #
 # vim:ts=2:sw=2:et:tw=80:ft=asm

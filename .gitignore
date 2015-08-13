@@ -9,5 +9,6 @@ tools/*
 *.img
 
 build/
-deps/rust/
+deps/
+!deps/*.mk
 tags

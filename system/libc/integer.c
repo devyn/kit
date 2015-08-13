@@ -1,7 +1,7 @@
 /*******************************************************************************
  *
- * kit/system/libc/exit.c
- * - cleanup functions and exit()
+ * kit/system/libc/integer.c
+ * - integer functions
  *
  * vim:ts=2:sw=2:et:tw=80:ft=c
  *
@@ -12,22 +12,8 @@
  ******************************************************************************/
 
 #include <stdlib.h>
-#include <kit/syscall.h>
 
-void exit(int status)
+int abs(int n)
 {
-  // TODO: any cleanup
-  _Exit(status);
-}
-
-void _Exit(int status)
-{
-  syscall_exit(status);
-
-  __builtin_trap();
-}
-
-void abort()
-{
-  exit(1);
+  return n & 0x7FFFFFF;
 }

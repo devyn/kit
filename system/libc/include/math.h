@@ -1,7 +1,7 @@
 /*******************************************************************************
  *
- * kit/system/libc/exit.c
- * - cleanup functions and exit()
+ * kit/system/libc/include/math.h
+ * - <stdlib.h>: 'mathematical declarations'
  *
  * vim:ts=2:sw=2:et:tw=80:ft=c
  *
@@ -9,25 +9,13 @@
  * Redistribution of this file is permitted under the terms of the simplified
  * BSD license. See LICENSE for more information.
  *
+ * This file should be compatible with ANSI C [C89].
+ *
  ******************************************************************************/
 
-#include <stdlib.h>
-#include <kit/syscall.h>
+#ifndef _MATH_H
+#define _MATH_H
 
-void exit(int status)
-{
-  // TODO: any cleanup
-  _Exit(status);
-}
+// TODO: add functions to support Lua as necessary
 
-void _Exit(int status)
-{
-  syscall_exit(status);
-
-  __builtin_trap();
-}
-
-void abort()
-{
-  exit(1);
-}
+#endif

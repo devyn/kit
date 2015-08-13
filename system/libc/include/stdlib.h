@@ -54,4 +54,14 @@ void *realloc(void *ptr, size_t size);
  */
 void free(void *ptr);
 
+/**
+ * Absolute value of an integer.
+ */
+int abs(int n);
+
+/**
+ * Exit with status code 1.
+ */
+void abort(void);
+
 #endif

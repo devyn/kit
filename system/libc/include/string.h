@@ -74,4 +74,11 @@ size_t strlen(const char *s);
  */
 char *strcat(char *dest, const char *src);
 
+/**
+ * Locate byte 'c' in a string, searching from the beginning.
+ *
+ * Returns NULL if not found.
+ */
+char *strchr(const char *s, int c);
+
 #endif
