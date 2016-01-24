@@ -64,7 +64,6 @@ pub static STACK_SIZE:      usize = 8192;
 /// registers.
 #[repr(C)]
 #[derive(Debug)]
-#[allow(raw_pointer_derive)]
 pub struct HwState {
     kstack_base:    *mut u8,    // offset 0x00
     kstack_pointer: *mut u8,    // offset 0x08

@@ -17,12 +17,12 @@ use core::mem;
 use core::fmt;
 use core::ptr;
 use core::slice;
-use core::slice::bytes::MutableByteVector;
 
 use error;
 
 use alloc::boxed::Box;
 use memory;
+use util::zero_memory;
 
 use constants::{KERNEL_OFFSET, KERNEL_LOW_START, KERNEL_LOW_END};
 
@@ -850,7 +850,7 @@ unsafe fn zeroed_aligned_box<T>(alignment: usize) -> Box<T> {
 
     let ptr = memory::allocate(mem::size_of::<T>(), alignment);
 
-    slice::from_raw_parts_mut(ptr, mem::size_of::<T>()).set_memory(0);
+    zero_memory(slice::from_raw_parts_mut(ptr, mem::size_of::<T>()));
 
     Box::from_raw(ptr as *mut T)
 }

@@ -18,8 +18,8 @@
 #![crate_name="kernel"]
 #![crate_type="lib"]
 
-#![feature(lang_items, asm, no_std, box_syntax, step_by, ptr_as_ref)]
-#![feature(unicode, slice_bytes, box_patterns, alloc, box_raw, collections)]
+#![feature(lang_items, asm, box_syntax, step_by, ptr_as_ref)]
+#![feature(unicode, box_patterns, alloc, collections)]
 #![feature(iter_arith)]
 
 #![allow(improper_ctypes)]
@@ -45,6 +45,7 @@ pub mod scheduler;
 pub mod syscall;
 pub mod c_ffi;
 pub mod error;
+pub mod util;
 
 use terminal::*;
 

@@ -13,10 +13,10 @@
 //! Executable and Linkable Format loader.
 
 use core::slice;
-use core::slice::bytes::{self, MutableByteVector};
 
 use process::{self, Process, Image};
 use paging::{self, PageType};
+use util::{copy_memory, zero_memory};
 
 static MAGIC: &'static [u8] = b"\x7fELF";
 
@@ -248,9 +248,9 @@ impl<'a> ElfProgramHeader<'a> {
         if destination.len() < self.mem_size {
             Err(self.mem_size - destination.len())
         } else {
-            bytes::copy_memory(self.data, destination);
+            copy_memory(self.data, destination);
 
-            destination[self.data.len()..self.mem_size].set_memory(0);
+            zero_memory(&mut destination[self.data.len()..self.mem_size]);
 
             Ok(())
         }

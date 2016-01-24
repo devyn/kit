@@ -113,16 +113,16 @@ void __stub(const char *fn)
   DEBUG_FORMAT("%s", fn); cli(); while (1) hlt();
 }
 
-void *rust_allocate(size_t size, size_t align) {
+void *__rust_allocate(size_t size, size_t align) {
   return memory_alloc_aligned(size, align);
 }
 
-void rust_deallocate(void *pointer, UNUSED size_t old_size,
+void __rust_deallocate(void *pointer, UNUSED size_t old_size,
     UNUSED size_t align) {
   memory_free(pointer);
 }
 
-void *rust_reallocate(void *pointer, size_t old_size, size_t size,
+void *__rust_reallocate(void *pointer, size_t old_size, size_t size,
     size_t align) {
   // No reallocation yet, so just allocate a new buffer and copy
   void *new_pointer = memory_alloc_aligned(size, align);
@@ -146,16 +146,16 @@ void *rust_reallocate(void *pointer, size_t old_size, size_t size,
   return new_pointer;
 }
 
-size_t rust_reallocate_inplace(UNUSED void *pointer, UNUSED size_t old_size,
+size_t __rust_reallocate_inplace(UNUSED void *pointer, UNUSED size_t old_size,
     size_t size, UNUSED size_t align) {
   return size;
 }
 
-size_t rust_usable_size(size_t size, UNUSED size_t align) {
+size_t __rust_usable_size(size_t size, UNUSED size_t align) {
   return size;
 }
 
-void rust_stats_print() {
+void __rust_stats_print() {
   uint64_t pages = memory_get_total_free();
 
   terminal_printf(

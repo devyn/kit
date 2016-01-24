@@ -16,7 +16,6 @@ use core::{i32, u32, usize};
 use core::cell::*;
 use core::fmt;
 use core::slice;
-use core::slice::bytes;
 use core::mem;
 
 use alloc::boxed::Box;
@@ -30,6 +29,7 @@ use paging::generic::Pageset as GenericPageset;
 use memory;
 use scheduler;
 use syscall;
+use util::copy_memory;
 
 pub mod x86_64;
 pub use self::x86_64 as target;
@@ -350,7 +350,7 @@ impl Process {
 
                 ptr_table[index] = next_ptr;
 
-                bytes::copy_memory(arg, arg_dest);
+                copy_memory(arg, arg_dest);
 
                 arg_dest[arg.len()] = 0;
 
@@ -620,7 +620,6 @@ pub trait Image {
 
 /// C interface. See `kit/kernel/include/process.h`.
 pub mod ffi {
-    use super::*;
     use c_ffi::*;
     use scheduler;
 
