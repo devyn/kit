@@ -160,7 +160,7 @@ char *_libc_fgets_stdin(char *s, size_t size)
   return s;
 }
 
-char *fgets(char *s, size_t size, FILE *stream) {
+char *fgets(char *s, int size, FILE *stream) {
   if (stream == stdin) {
     return _libc_fgets_stdin(s, size);
   }

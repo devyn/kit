@@ -45,7 +45,7 @@ int puts(const char *str);
 int fgetc(FILE *stream);
 int getchar();
 
-char *fgets(char *s, size_t size, FILE *stream);
+char *fgets(char *s, int size, FILE *stream);
 
 #define getc(stream) fgetc(stream)
 #define putc(str, stream) fputc(str, stream)
