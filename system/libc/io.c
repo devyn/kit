@@ -1,7 +1,7 @@
 /*******************************************************************************
  *
- * kit/system/shell/io.c
- * - temporary I/O functions
+ * kit/system/libc/io.c
+ * - standard C I/O implementation
  *
  * vim:ts=2:sw=2:et:tw=80:ft=c
  *
@@ -16,31 +16,63 @@
 #include <string.h>
 #include <kit/syscall.h>
 
-#include "io.h"
+#define _STDIO_C
+#include <stdio.h>
 
-void tputc(char c)
+int putchar(int ch)
 {
+  char c = ch;
+
   syscall_twrite(1, &c);
+
+  return ch;
 }
 
-void tputs(const char *str)
+int fputc(int ch, FILE *stream) {
+  if (stream == stdout || stream == stderr) {
+    return putchar(ch);
+  }
+  else {
+    return EOF;
+  }
+}
+
+void _libc_puts_nonl(const char *str)
 {
   syscall_twrite(strlen(str), str);
+}
+
+int puts(const char *str) {
+  _libc_puts_nonl(str);
+  putchar('\n');
+  return 1;
+}
+
+int fputs(const char *str, FILE *stream) {
+  if (stream == stdout || stream == stderr) {
+    _libc_puts_nonl(str);
+    return 1;
+  }
+  else {
+    return EOF;
+  }
 }
 
 /**
  * Can handle any base from binary up to sexatrigesimal (36), encompassing all
  * alphanumeric characters
  */
-int tputu64(uint64_t integer, uint8_t base)
+int _libc_putu64(uint64_t integer, uint8_t base)
 {
+  int len = 0;
+
   if (base < 2 || base > 36)
     return -1;
 
   if (integer == 0)
   {
-    tputc('0');
-    return 0;
+    putchar('0');
+    return 1;
   }
 
   char string[65];
@@ -61,18 +93,20 @@ int tputu64(uint64_t integer, uint8_t base)
       string[--position] = 'a' + (digit - 10);
     }
 
+    len++;
+
     integer = integer / base;
   }
 
-  tputs(string + position);
+  _libc_puts_nonl(string + position);
 
-  return 0;
+  return len;
 }
 
 /**
- * Signed variant of tputu64
+ * Signed variant of _libc_putu64
  */
-int tputi64(int64_t integer, uint8_t base)
+int _libc_puti64(int64_t integer, uint8_t base)
 {
   if (base < 2 || base > 36)
     return -1;
@@ -80,17 +114,17 @@ int tputi64(int64_t integer, uint8_t base)
   if (integer & ((uint64_t) 1 << 63))
   {
     // Negative
-    tputc('-');
-    return tputu64(~integer + 1, base);
+    putchar('-');
+    return _libc_putu64(~integer + 1, base) + 1;
   }
   else
   {
     // Positive
-    return tputu64(integer, base);
+    return _libc_putu64(integer, base);
   }
 }
 
-size_t tgets(char *buffer, size_t size)
+char *_libc_fgets_stdin(char *s, size_t size)
 {
   size_t index = 0;
 
@@ -107,86 +141,122 @@ size_t tgets(char *buffer, size_t size)
         // Handle backspace only if there are characters to erase.
         if (index > 0)
         {
-          tputc('\b');
+          putchar('\b');
           index--;
         }
       }
       else
       {
-        tputc(event.keychar);
-        buffer[index++] = event.keychar;
+        putchar(event.keychar);
+        s[index++] = event.keychar;
 
         if (event.keychar == '\n') break;
       }
     }
   }
 
-  buffer[index] = '\0';
+  s[index] = '\0';
 
-  return index;
+  return s;
 }
 
-typedef struct tprintf_state
+char *fgets(char *s, size_t size, FILE *stream) {
+  if (stream == stdin) {
+    return _libc_fgets_stdin(s, size);
+  }
+  else {
+    return NULL;
+  }
+}
+
+int _libc_fgetc_stdin() {
+  keyboard_event_t event;
+
+  while (true) {
+    syscall_key_get(&event);
+
+    if (event.pressed && event.keychar != 0) {
+      return event.keychar;
+    }
+  }
+}
+
+int fgetc(FILE *stream) {
+  if (stream == stdin) {
+    return _libc_fgetc_stdin();
+  }
+  else {
+    return EOF;
+  }
+}
+
+int getchar() {
+  return _libc_fgetc_stdin();
+}
+
+typedef struct _libc_printf_state
 {
   bool active;
   size_t start;
   bool alt_form;
 
   enum {
-    TPRINTF_LENGTH_CHAR,
-    TPRINTF_LENGTH_SHORT,
-    TPRINTF_LENGTH_NORMAL,
-    TPRINTF_LENGTH_LONG,
-    TPRINTF_LENGTH_LONG_LONG
+    _LIBC_PRINTF_LENGTH_CHAR,
+    _LIBC_PRINTF_LENGTH_SHORT,
+    _LIBC_PRINTF_LENGTH_NORMAL,
+    _LIBC_PRINTF_LENGTH_LONG,
+    _LIBC_PRINTF_LENGTH_LONG_LONG
   } length;
-} tprintf_state_t;
+} _libc_printf_state_t;
 
 /**
  * Incomplete printf implementation.
- * See kit/kernel/terminal.c.
  */
-FORMAT_PRINTF(1, 2) void tprintf(const char *format, ...)
+__attribute__((__format__ (__printf__, 1, 2)))
+int printf(const char *format, ...)
 {
   va_list args;
+  int len = 0;
 
-  tprintf_state_t state;
+  _libc_printf_state_t state;
 
 #define CLEAR_STATE() \
   { \
     state.active   = false; \
     state.start    = 0; \
     state.alt_form = false; \
-    state.length   = TPRINTF_LENGTH_NORMAL; \
+    state.length   = _LIBC_PRINTF_LENGTH_NORMAL; \
   }
 
 #define FORMAT_NUM(fn, mod, base) \
   switch (state.length) { \
-    case TPRINTF_LENGTH_CHAR: \
+    case _LIBC_PRINTF_LENGTH_CHAR: \
       {mod char val = va_arg(args, mod int); \
-      fn(val, (base));} \
+      len += fn(val, (base));} \
       break; \
-    case TPRINTF_LENGTH_SHORT: \
+    case _LIBC_PRINTF_LENGTH_SHORT: \
       {mod short val = va_arg(args, mod int); \
-      fn(val, (base));} \
+      len += fn(val, (base));} \
       break; \
-    case TPRINTF_LENGTH_NORMAL: \
+    case _LIBC_PRINTF_LENGTH_NORMAL: \
       {mod int val = va_arg(args, mod int); \
-      fn(val, (base));} \
+      len += fn(val, (base));} \
       break; \
-    case TPRINTF_LENGTH_LONG: \
+    case _LIBC_PRINTF_LENGTH_LONG: \
       {mod long val = va_arg(args, mod long); \
-      fn(val, (base));} \
+      len += fn(val, (base));} \
       break; \
-    case TPRINTF_LENGTH_LONG_LONG: \
+    case _LIBC_PRINTF_LENGTH_LONG_LONG: \
       {mod long long val = va_arg(args, mod long long); \
-      fn(val, (base));} \
+      len += fn(val, (base));} \
       break; \
   }
 
 #define INVALID_FORMAT() \
   for (size_t j = state.start; j <= i; j++) \
   { \
-    tputc(format[j]); \
+    putchar(format[j]); \
+    len++; \
   }
 
   CLEAR_STATE();
@@ -206,7 +276,8 @@ FORMAT_PRINTF(1, 2) void tprintf(const char *format, ...)
           break;
 
         default:
-          tputc(format[i]);
+          putchar(format[i]);
+          len++;
       }
     }
     else
@@ -215,23 +286,25 @@ FORMAT_PRINTF(1, 2) void tprintf(const char *format, ...)
       {
         case '\0':
           // flush
-          tputs(format + state.start);
+          _libc_puts_nonl(format + state.start);
+          len += strlen(format + state.start);
           goto end;
 
         case '%':
-          tputc('%');
+          putchar('%');
+          len++;
           CLEAR_STATE();
           break;
 
         // set short/char
         case 'h':
-          if (state.length == TPRINTF_LENGTH_NORMAL)
+          if (state.length == _LIBC_PRINTF_LENGTH_NORMAL)
           {
-            state.length = TPRINTF_LENGTH_SHORT;
+            state.length = _LIBC_PRINTF_LENGTH_SHORT;
           }
-          else if (state.length == TPRINTF_LENGTH_SHORT)
+          else if (state.length == _LIBC_PRINTF_LENGTH_SHORT)
           {
-            state.length = TPRINTF_LENGTH_CHAR;
+            state.length = _LIBC_PRINTF_LENGTH_CHAR;
           }
           else
           {
@@ -242,13 +315,13 @@ FORMAT_PRINTF(1, 2) void tprintf(const char *format, ...)
 
         // set long/long long
         case 'l':
-          if (state.length == TPRINTF_LENGTH_NORMAL)
+          if (state.length == _LIBC_PRINTF_LENGTH_NORMAL)
           {
-            state.length = TPRINTF_LENGTH_LONG;
+            state.length = _LIBC_PRINTF_LENGTH_LONG;
           }
-          else if (state.length == TPRINTF_LENGTH_LONG)
+          else if (state.length == _LIBC_PRINTF_LENGTH_LONG)
           {
-            state.length = TPRINTF_LENGTH_LONG_LONG;
+            state.length = _LIBC_PRINTF_LENGTH_LONG_LONG;
           }
           else
           {
@@ -265,7 +338,7 @@ FORMAT_PRINTF(1, 2) void tprintf(const char *format, ...)
         // signed decimal
         case 'd':
         case 'i':
-          FORMAT_NUM(tputi64, signed, 10);
+          FORMAT_NUM(_libc_puti64, signed, 10);
           CLEAR_STATE();
           break;
 
@@ -273,15 +346,16 @@ FORMAT_PRINTF(1, 2) void tprintf(const char *format, ...)
         case 'o':
           if (state.alt_form)
           {
-            tputc('0');
+            putchar('0');
+            len++;
           }
-          FORMAT_NUM(tputu64, unsigned, 8);
+          FORMAT_NUM(_libc_putu64, unsigned, 8);
           CLEAR_STATE();
           break;
 
         // unsigned decimal
         case 'u':
-          FORMAT_NUM(tputu64, unsigned, 10);
+          FORMAT_NUM(_libc_putu64, unsigned, 10);
           CLEAR_STATE();
           break;
 
@@ -289,29 +363,29 @@ FORMAT_PRINTF(1, 2) void tprintf(const char *format, ...)
         case 'x':
           if (state.alt_form)
           {
-            tputc('0');
-            tputc('x');
+            _libc_puts_nonl("0x");
+            len += 2;
           }
-          FORMAT_NUM(tputu64, unsigned, 16);
+          FORMAT_NUM(_libc_putu64, unsigned, 16);
           CLEAR_STATE();
           break;
 
         // char
         case 'c':
-          tputc(va_arg(args, int));
+          putchar(va_arg(args, int));
           CLEAR_STATE();
           break;
 
         // string
         case 's':
-          tputs(va_arg(args, char *));
+          _libc_puts_nonl(va_arg(args, char *));
           CLEAR_STATE();
           break;
 
         // pointer
         case 'p':
-          tputs("0x");
-          tputu64((uint64_t) va_arg(args, void *), 16);
+          _libc_puts_nonl("0x");
+          len += 2 + _libc_putu64((uint64_t) va_arg(args, void *), 16);
           CLEAR_STATE();
           break;
 
@@ -324,4 +398,6 @@ FORMAT_PRINTF(1, 2) void tprintf(const char *format, ...)
 
 end:
   va_end(args);
+
+  return len;
 }

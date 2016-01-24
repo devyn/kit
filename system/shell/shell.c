@@ -14,28 +14,28 @@
 #include <stdbool.h>
 #include <stdint.h>
 #include <stddef.h>
+#include <stdio.h>
 #include <string.h>
 #include <kit/syscall.h>
 
-#include "io.h"
 #include "parser.h"
 
 static int last_exit_code = 0;
 
 static void display_prompt(uint64_t lineno)
 {
-  tputc('\n');
+  putchar('\n');
 
   if (last_exit_code == 0)
   {
-    tputs("\033[32;1m");
+    fputs("\033[32;1m", stdout);
   }
   else
   {
-    tputs("\033[31;1m");
+    fputs("\033[31;1m", stdout);
   }
 
-  tprintf("user %lu>>\033[0;1m ", lineno);
+  printf("user %lu>>\033[0;1m ", lineno);
 }
 
 static void execute(char *line, uint64_t lineno)
@@ -57,26 +57,26 @@ static void execute(char *line, uint64_t lineno)
       {
         last_exit_code = -100 + pid;
 
-        tprintf("\033[31m E: spawn('%s', %lu, argv) failed; => %d\033[0m\n",
+        printf("\033[31m E: spawn('%s', %lu, argv) failed; => %d\033[0m\n",
             command.filename, command.args.len, pid);
       }
       else if (command.foreground &&
                syscall_wait_process(pid, &last_exit_code) < 0)
       {
         last_exit_code = -99;
-        tputs("\033[31m E: wait_process() failed\033[0m\n");
+        puts("\033[31m E: wait_process() failed\033[0m");
       }
 
       if (!command.foreground)
       {
-        tprintf("[%lu] %d          ", lineno, pid);
+        printf("[%lu] %d          ", lineno, pid);
 
         for (size_t i = 0; i < command.args.len; i++)
         {
-          tprintf(" %s", command.args.ptr[i]);
+          printf(" %s", command.args.ptr[i]);
         }
 
-        tputc('\n');
+        putchar('\n');
       }
     }
 
@@ -96,8 +96,8 @@ int main(UNUSED int argc, UNUSED char **argv)
   while (true)
   {
     display_prompt(lineno);
-    tgets(line, 4096);
-    tputs("\033[0m");
+    fgets(line, 4096, stdin);
+    fputs("\033[0m", stdout);
     execute(line, lineno++);
   }
 }
