@@ -55,14 +55,16 @@ extern void ret();
 #define DICT_PRIMITIVE 1
 #define DICT_CONSTANT  2
 
+#define WORD_LENGTH 51
+
 struct dict_entry {
-  int  type;
-  char name[32];
+  int  type; // 4 bytes
+  char name[WORD_LENGTH + 1];
   union {
     void (*as_code)();
     void *as_ptr;
     uint64_t as_int;
-  } value;
+  } value; // 8 bytes
 };
 
 struct dict_entry *dict;
@@ -74,8 +76,8 @@ bool append_primitive(const char *name, void (*code)()) {
 
   if (dict_len < dict_cap) {
     dict[dict_len].type = DICT_PRIMITIVE;
-    strncpy(dict[dict_len].name, name, 31);
-    dict[dict_len].name[31] = '\0';
+    strncpy(dict[dict_len].name, name, WORD_LENGTH);
+    dict[dict_len].name[WORD_LENGTH] = '\0';
     dict[dict_len].value.as_code = code;
     dict_len++;
     return 1;
@@ -91,8 +93,8 @@ bool append_constant(const char *name, uint64_t value) {
 
   if (dict_len < dict_cap) {
     dict[dict_len].type = DICT_CONSTANT;
-    strncpy(dict[dict_len].name, name, 31);
-    dict[dict_len].name[31] = '\0';
+    strncpy(dict[dict_len].name, name, WORD_LENGTH);
+    dict[dict_len].name[WORD_LENGTH] = '\0';
     dict[dict_len].value.as_int = value;
     dict_len++;
     return 1;
@@ -130,12 +132,12 @@ void interpret() {
   char *in = line;
 
   void (*code[3])();
-  char word[32];
+  char word[WORD_LENGTH + 1];
 
   while (*in != '\n') {
     int i;
 
-    for (i = 0; *in != '\n' && *in != ' ' && i < 31; i++, in++) {
+    for (i = 0; *in != '\n' && *in != ' ' && i < WORD_LENGTH; i++, in++) {
       word[i] = *in;
     }
     word[i] = '\0';
@@ -191,7 +193,7 @@ void printdata() {
 
   fputs("\x1b[1;33m", stdout);
 
-  for (x = dp; x < data_stack + 512; x++) {
+  for (x = data_stack + 511; x >= dp; x--) {
     printu64x(*x);
   }
 
