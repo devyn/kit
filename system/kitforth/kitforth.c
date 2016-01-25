@@ -113,7 +113,7 @@ void init_dict() {
   append_primitive(".",   &display);
   append_primitive("cr",  &cr);
 
-  append_constant("1", 1);
+  append_constant("one", 1);
 }
 
 struct dict_entry *find_in_dict(char *word) {
@@ -143,6 +143,8 @@ void interpret() {
     while (*in == ' ') in++;
 
     struct dict_entry *match;
+    long number;
+    char *endptr;
 
     if (strlen(word) == 0) {
       continue;
@@ -164,6 +166,12 @@ void interpret() {
           printf("Error: unknown dictionary entry type %i\n", match->type);
           return;
       }
+    }
+    else if (number = strtol(word, &endptr, 16), *endptr == '\0') {
+      // Numeric word
+      code[0] = &push;
+      code[1] = (void (*)()) number;
+      code[2] = &ret;
     }
     else {
       printf("Error: unknown word %s\n", word);

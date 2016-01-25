@@ -54,4 +54,29 @@ void *realloc(void *ptr, size_t size);
  */
 void free(void *ptr);
 
+/**
+ * Parse a string to a long int.
+ *
+ * Any amount of whitespace at the beginning of the string is skipped. A single
+ * '+' or '-' may follow.
+ *
+ * If base is 16, a '0x' prefix may follow. Otherwise, if base is 8, a '0'
+ * prefix may follow.
+ *
+ * If base is zero, and either prefix is present, base will be set respectively.
+ * Otherwise, base will be set to 10.
+ *
+ * Digits are then interpreted intutitvely according to base, in the range
+ * '0'..'9', 'A'..'Z', case-insensitive. The minimum base is 2; the maximum is
+ * 36.
+ *
+ * The parser will stop at the first parsing error or null byte, with the
+ * most recent position then stored in *endptr. This should be used to detect
+ * errors. If *endptr is not the end of the string, the string is not a valid
+ * input, and the return value should be ignored.
+ *
+ * FIXME: currently does not handle overflow, but should.
+ */
+long int strtol(const char *nptr, char **endptr, int base);
+
 #endif
