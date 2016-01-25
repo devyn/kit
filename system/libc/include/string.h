@@ -74,4 +74,13 @@ size_t strlen(const char *s);
  */
 char *strcat(char *dest, const char *src);
 
+/**
+ * Copies the string 'src' to the destination buffer 'dest'. Will not copy more
+ * than n bytes. Fills the remaining space with null bytes.
+ *
+ * Warning: if n bytes are reached before a null byte, dest will not be
+ * null-terminated.
+ */
+char *strncpy(char *dest, const char *src, size_t n);
+
 #endif

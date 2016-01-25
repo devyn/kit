@@ -24,16 +24,18 @@ uint64_t data_stack[512];
 
 uint64_t *dp = data_stack + 512;
 
+void init_dict();
 void interpret();
 void printdata();
 
 int main(UNUSED int argc, UNUSED char **argv) {
+  init_dict();
   while (!feof(stdin)) {
     printdata();
     printf("\x1b[1;32mok] \x1b[0;1m");
-    fgets(line, 4096, stdin);
+    char *res = fgets(line, 4096, stdin);
     fputs("\x1b[0m", stdout);
-    interpret();
+    if (res != NULL) interpret();
   }
   return 0;
 }
@@ -50,7 +52,79 @@ extern void display();
 extern void cr();
 extern void ret();
 
-void (*code_buffer[512])();
+#define DICT_PRIMITIVE 1
+#define DICT_CONSTANT  2
+
+struct dict_entry {
+  int  type;
+  char name[32];
+  union {
+    void (*as_code)();
+    void *as_ptr;
+    uint64_t as_int;
+  } value;
+};
+
+struct dict_entry *dict;
+int dict_len = 0;
+int dict_cap = 0;
+
+bool append_primitive(const char *name, void (*code)()) {
+  printf("PRIMITIVE %s = %p.\n", name, (void *) code);
+
+  if (dict_len < dict_cap) {
+    dict[dict_len].type = DICT_PRIMITIVE;
+    strncpy(dict[dict_len].name, name, 31);
+    dict[dict_len].name[31] = '\0';
+    dict[dict_len].value.as_code = code;
+    dict_len++;
+    return 1;
+  }
+  else {
+    puts("Dictionary is full!");
+    return 0;
+  }
+}
+
+bool append_constant(const char *name, uint64_t value) {
+  printf("CONSTANT  %s = %lx.\n", name, value);
+
+  if (dict_len < dict_cap) {
+    dict[dict_len].type = DICT_CONSTANT;
+    strncpy(dict[dict_len].name, name, 31);
+    dict[dict_len].name[31] = '\0';
+    dict[dict_len].value.as_int = value;
+    dict_len++;
+    return 1;
+  }
+  else {
+    puts("Dictionary is full!");
+    return 0;
+  }
+}
+
+void init_dict() {
+  dict_cap = 512;
+
+  dict = calloc(dict_cap, sizeof(struct dict_entry *));
+
+  append_primitive("+",   &add);
+  append_primitive("dup", &dup);
+  append_primitive(".",   &display);
+  append_primitive("cr",  &cr);
+
+  append_constant("1", 1);
+}
+
+struct dict_entry *find_in_dict(char *word) {
+  for (int i = dict_len - 1; i >= 0; i--) {
+    if (strcmp(dict[i].name, word) == 0) {
+      return &dict[i];
+    }
+  }
+
+  return NULL;
+}
 
 void interpret() {
   char *in = line;
@@ -68,33 +142,32 @@ void interpret() {
 
     while (*in == ' ') in++;
 
+    struct dict_entry *match;
+
     if (strlen(word) == 0) {
       continue;
     }
-    else if (strcmp(word, "+") == 0) {
-      code[0] = &add;
-      code[1] = &ret;
-    }
-    else if (strcmp(word, "dup") == 0) {
-      code[0] = &dup;
-      code[1] = &ret;
-    }
-    else if (strcmp(word, ".") == 0) {
-      code[0] = &display;
-      code[1] = &ret;
-    }
-    else if (strcmp(word, "cr") == 0) {
-      code[0] = &cr;
-      code[1] = &ret;
-    }
-    else if (strcmp(word, "1") == 0) {
-      code[0] = &push;
-      code[1] = (void (*)()) 1;
-      code[2] = &ret;
+    else if ((match = find_in_dict(word)) != NULL) {
+      switch (match->type) {
+        case DICT_PRIMITIVE:
+          code[0] = match->value.as_code;
+          code[1] = &ret;
+          break;
+
+        case DICT_CONSTANT:
+          code[0] = &push;
+          code[1] = match->value.as_code;
+          code[2] = &ret;
+          break;
+
+        default:
+          printf("Error: unknown dictionary entry type %i\n", match->type);
+          return;
+      }
     }
     else {
       printf("Error: unknown word %s\n", word);
-      continue;
+      return;
     }
 
     dp = execute(code, dp);
