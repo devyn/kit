@@ -43,12 +43,12 @@ build/system/hello.txt: system/hello.txt build/system/.dir
 include system/libc/libc.mk
 include system/util/util.mk
 include system/shell/shell.mk
-include system/kforth/kforth.mk
+include system/kitforth/kitforth.mk
 
 build/system.kit: build/system/hello.txt \
 	                ${SYSTEM_UTILS} \
 	                build/system/bin/shell \
-									build/system/bin/kforth
+									build/system/bin/kitforth
 	ruby resources/build-util/kit-archive.rb build/system \
 		$(patsubst build/system/%,%,$^) \
 		> $@
