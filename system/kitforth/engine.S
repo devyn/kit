@@ -54,11 +54,28 @@ add: # ( n m -- n+m )
   add $8, %rbp
   jmp *(%rbp)
 
+.global dup
+dup: # ( x -- x x )
+  mov (%rbx), %rax
+  sub $8, %rbx
+  mov %rax, (%rbx)
+
+  add $8, %rbp
+  jmp *(%rbp)
+
 .global display
 display: # ( x -- )
   mov (%rbx), %rdi
   add $8, %rbx
   call printu64x
+
+  add $8, %rbp
+  jmp *(%rbp)
+
+.global cr
+cr: # ( -- ); print newline
+  mov $0xA, %rdi
+  call putchar
 
   add $8, %rbp
   jmp *(%rbp)
