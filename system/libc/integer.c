@@ -53,10 +53,10 @@ long int strtol(const char *nptr, char **endptr, int base) {
       n += *nptr - '0';
     }
     else if (base > 10 && *nptr >= 'a' && *nptr < ('a' + (base - 10))) {
-      n += *nptr - 'a';
+      n += *nptr - 'a' + 10;
     }
     else if (base > 10 && *nptr >= 'A' && *nptr < ('A' + (base - 10))) {
-      n += *nptr - 'A';
+      n += *nptr - 'A' + 10;
     }
     else {
       break; // error!
