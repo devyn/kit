@@ -93,11 +93,16 @@ int main(UNUSED int argc, UNUSED char **argv)
 {
   uint64_t lineno = 1;
 
-  while (true)
+  while (!feof(stdin))
   {
     display_prompt(lineno);
-    fgets(line, 4096, stdin);
+
+    char *lineptr = fgets(line, 4096, stdin);
     fputs("\033[0m", stdout);
-    execute(line, lineno++);
+    if (lineptr != NULL) {
+      execute(lineptr, lineno++);
+    }
   }
+
+  return 0;
 }

@@ -12,14 +12,20 @@
  ******************************************************************************/
 
 #include <stdio.h>
+#include <stdlib.h>
+#include <stdbool.h>
 
 #define UNUSED __attribute__((unused))
 
 int main(UNUSED int argc, UNUSED char **argv) {
   char line[1024];
+  int i = 0;
 
-  printf("ok] ");
-  fgets(line, 1024, stdin);
-  printf("So sorry. We aren't ready yet. Check back later.\n");
+  while (!feof(stdin)) {
+    i++;
+    printf("\x1b[1;32m%i ok] \x1b[0;1m", i);
+    fgets(line, 1024, stdin);
+  }
+  printf("\x1b[0;31mSo sorry. We aren't ready yet. Check back later.\x1b[0m\n");
   return 0;
 }

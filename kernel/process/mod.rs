@@ -637,10 +637,17 @@ pub mod ffi {
         if let Some(process) = super::current() {
             process.borrow_mut().exit(status);
 
+            if process.borrow().id == 1 {
+                panic!("initial process ({}, {}) exited with status {}",
+                       process.borrow().id,
+                       process.borrow().name,
+                       status);
+            }
+
             // Let waiting processes know
             for &pid in &process.borrow().waiting {
-                if let Some(process) = super::by_id(pid) {
-                    let _ = scheduler::awaken(process);
+                if let Some(process_waiting) = super::by_id(pid) {
+                    let _ = scheduler::awaken(process_waiting);
                 }
             }
 

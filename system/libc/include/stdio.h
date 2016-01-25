@@ -50,6 +50,8 @@ char *fgets(char *s, int size, FILE *stream);
 #define getc(stream) fgetc(stream)
 #define putc(str, stream) fputc(str, stream)
 
+int feof(FILE *stream);
+
 __attribute__((__format__ (__printf__, 1, 2)))
 int printf(const char *restrict format, ...);
 

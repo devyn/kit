@@ -124,11 +124,17 @@ int _libc_puti64(int64_t integer, uint8_t base)
   }
 }
 
+bool _libc_stdin_eof = false;
+
 char *_libc_fgets_stdin(char *s, size_t size)
 {
   size_t index = 0;
 
   keyboard_event_t event;
+
+  if (_libc_stdin_eof) {
+    return NULL;
+  }
 
   while (index < size - 1)
   {
@@ -136,7 +142,18 @@ char *_libc_fgets_stdin(char *s, size_t size)
 
     if (event.pressed && event.keychar != 0)
     {
-      if (event.keychar == '\b')
+      if (event.ctrl_down && event.keychar == 'd') {
+        // C-d = EOF
+        _libc_stdin_eof = true;
+
+        if (index == 0) {
+          return NULL;
+        }
+        else {
+          break;
+        }
+      }
+      else if (event.keychar == '\b')
       {
         // Handle backspace only if there are characters to erase.
         if (index > 0)
@@ -172,11 +189,22 @@ char *fgets(char *s, int size, FILE *stream) {
 int _libc_fgetc_stdin() {
   keyboard_event_t event;
 
+  if (_libc_stdin_eof) {
+    return EOF;
+  }
+
   while (true) {
     syscall_key_get(&event);
 
     if (event.pressed && event.keychar != 0) {
-      return event.keychar;
+      if (event.ctrl_down && event.keychar == 'd') {
+        // C-d = EOF
+        _libc_stdin_eof = true;
+        return EOF;
+      }
+      else {
+        return event.keychar;
+      }
     }
   }
 }
@@ -192,6 +220,15 @@ int fgetc(FILE *stream) {
 
 int getchar() {
   return _libc_fgetc_stdin();
+}
+
+int feof(FILE *stream) {
+  if (stream == stdin && _libc_stdin_eof) {
+    return 1;
+  }
+  else {
+    return 0;
+  }
 }
 
 typedef struct _libc_printf_state
