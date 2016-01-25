@@ -25,9 +25,11 @@ uint64_t data_stack[512];
 uint64_t *dp = data_stack + 512;
 
 void interpret();
+void printdata();
 
 int main(UNUSED int argc, UNUSED char **argv) {
   while (!feof(stdin)) {
+    printdata();
     printf("\x1b[1;32mok] \x1b[0;1m");
     fgets(line, 4096, stdin);
     fputs("\x1b[0m", stdout);
@@ -49,8 +51,6 @@ extern void cr();
 extern void ret();
 
 void (*code_buffer[512])();
-
-void printdata();
 
 void interpret() {
   char *in = line;
@@ -99,8 +99,6 @@ void interpret() {
 
     dp = execute(code, dp);
   }
-
-  printdata();
 }
 
 void printu64x(uint64_t n) {
