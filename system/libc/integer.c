@@ -43,7 +43,7 @@ long int strtol(const char *nptr, char **endptr, int base) {
 
   if (base < 2 || base > 36) {
     *endptr = (char *) nptr;
-    return n;
+    return sign * n;
   }
 
   while (*nptr != '\0') {
@@ -66,5 +66,5 @@ long int strtol(const char *nptr, char **endptr, int base) {
   }
 
   *endptr = (char *) nptr;
-  return n;
+  return sign * n;
 }

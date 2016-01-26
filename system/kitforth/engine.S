@@ -12,6 +12,11 @@ global:
 #
 ################################################################################
 
+.section .rodata
+
+STACK_OVERFLOW_ERROR: .asciz "Stack overflow."
+STACK_UNDERFLOW_ERROR: .asciz "Stack underflow."
+
 .section .text
 
 # Across jumps:
@@ -90,3 +95,13 @@ ret:
   pop %rbx
   pop %rbp
   ret
+
+stackoverflow:
+  mov STACK_OVERFLOW_ERROR, %rdi
+  jmp error
+stackunderflow:
+  mov STACK_UNDERFLOW_ERROR, %rdi
+  jmp error
+error:
+  call puts
+  jmp ret

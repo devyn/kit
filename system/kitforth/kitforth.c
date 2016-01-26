@@ -24,6 +24,15 @@ uint64_t data_stack[512];
 
 uint64_t *dp = data_stack + 512;
 
+void upcase(char *str) {
+  while (*str != '\0') {
+    if (*str >= 'a' && *str <= 'z') {
+      *str -= 0x20; // offset lower -> upper
+    }
+    str++;
+  }
+}
+
 void init_dict();
 void interpret();
 void printdata();
@@ -72,12 +81,15 @@ int dict_len = 0;
 int dict_cap = 0;
 
 bool append_primitive(const char *name, void (*code)()) {
-  printf("PRIMITIVE %s = %p.\n", name, (void *) code);
-
   if (dict_len < dict_cap) {
     dict[dict_len].type = DICT_PRIMITIVE;
+
     strncpy(dict[dict_len].name, name, WORD_LENGTH);
     dict[dict_len].name[WORD_LENGTH] = '\0';
+    upcase(dict[dict_len].name);
+
+    printf("PRIMITIVE %s = %p.\n", dict[dict_len].name, (void *) code);
+
     dict[dict_len].value.as_code = code;
     dict_len++;
     return 1;
@@ -89,14 +101,18 @@ bool append_primitive(const char *name, void (*code)()) {
 }
 
 bool append_constant(const char *name, uint64_t value) {
-  printf("CONSTANT  %s = %lx.\n", name, value);
-
   if (dict_len < dict_cap) {
     dict[dict_len].type = DICT_CONSTANT;
+
     strncpy(dict[dict_len].name, name, WORD_LENGTH);
     dict[dict_len].name[WORD_LENGTH] = '\0';
+    upcase(dict[dict_len].name);
+
+    printf("CONSTANT  %s = %lx.\n", dict[dict_len].name, value);
+
     dict[dict_len].value.as_int = value;
     dict_len++;
+
     return 1;
   }
   else {
@@ -141,6 +157,8 @@ void interpret() {
       word[i] = *in;
     }
     word[i] = '\0';
+
+    upcase(word);
 
     while (*in == ' ') in++;
 
