@@ -199,6 +199,15 @@ void interpret() {
     }
 
     dp = execute(code, dp);
+
+    if (dp > data_stack + 512) {
+      puts("Stack underflow.");
+      break;
+    }
+    else if (dp < data_stack) {
+      puts("Stack overflow.");
+      break;
+    }
   }
 }
 
