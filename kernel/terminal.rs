@@ -248,6 +248,10 @@ impl Vga {
                     *self.buffer.offset(index - self.width as isize) =
                         *self.buffer.offset(index);
                 }
+
+                // XXX: SSE memory operations fail on memory-mapped I/O in KVM,
+                // so inhibit vectorization
+                unsafe { asm!("" :::: "volatile"); }
             }
         }
 
@@ -277,6 +281,10 @@ impl Terminal for Vga {
         for row in 0..self.height {
             for col in 0..self.width {
                 self.put(' ' as u8, attr, row, col);
+
+                // XXX: SSE memory operations fail on memory-mapped I/O in KVM,
+                // so inhibit vectorization
+                unsafe { asm!("" :::: "volatile"); }
             }
         }
 
