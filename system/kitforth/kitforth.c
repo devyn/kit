@@ -17,6 +17,9 @@
 #include <stdint.h>
 #include <string.h>
 
+#include "engine.h"
+#include "boot.h"
+
 #define UNUSED __attribute__((unused))
 
 char line[4096];
@@ -56,10 +59,6 @@ int main(UNUSED int argc, UNUSED char **argv) {
   }
   return 0;
 }
-
-// Callable with instruction pointer & data pointer
-// Returns new data pointer
-extern uint64_t *execute(void (**ip)(), uint64_t *dp);
 
 #define DICT_TYPE_PRIMITIVE 0x01
 #define DICT_TYPE_CODE      0x02
@@ -133,7 +132,6 @@ bool append_code(const char *name) {
 
     printf("CODE      %s = %p.\n", last_word->name, last_word->value.as_ptr);
 
-    dict_len++;
     return true;
   }
   else {
@@ -170,43 +168,42 @@ void immediate() {
   last_word->flags |= DICT_FLAG_IMMEDIATE;
 }
 
-// NOT CALLABLE! These are asm routines
-extern void push();
-extern void add();
-extern void dup();
-extern void display();
-extern void emit();
-extern void in_char();
-extern void compiler_off();
-extern void compiler_on();
-extern void call();
-extern void ret();
-extern void ret_quit();
-extern void literal_stub();
-extern void postpone_stub();
-extern void immediate_stub();
-extern void defword_stub();
-extern void endword_stub();
-
 void init_dict() {
   dict_cap = 512;
 
   dict = calloc(dict_cap, sizeof(struct dict_entry *));
 
   append_primitive("+",         &add);
+  append_primitive("xor",       &bit_xor);
+  append_primitive("=",         &equal);
   append_primitive("dup",       &dup);
+  append_primitive("swap",      &swap);
+  append_primitive("over",      &over);
+  append_primitive("rot",       &rot);
+  append_primitive("drop",      &drop);
+  append_primitive(">r",        &to_rstack);
+  append_primitive("r>",        &from_rstack);
+  append_primitive("r@",        &fetch_rstack);
+  append_primitive("here",      &here_stub);
+  append_primitive("branch",    &branch);
+  append_primitive("branch?",   &branch_if_zero);
   append_primitive(".",         &display);
   append_primitive("emit",      &emit);
   append_primitive("char",      &in_char);
   append_primitive("[",         &compiler_off); immediate();
   append_primitive("]",         &compiler_on);
-  append_primitive("literal",   &literal_stub); immediate();
+  append_primitive("(literal)", &literal_stub);
   append_primitive("postpone",  &postpone_stub); immediate();
   append_primitive("immediate", &immediate_stub);
   append_primitive(":",         &defword_stub);
   append_primitive(";",         &endword_stub); immediate();
 
-  append_constant("one", 1);
+  append_constant("false", 0);
+  append_constant("true", ~0);
+
+  in = boot_source;
+
+  consume_line();
 }
 
 struct dict_entry *find_in_dict(char *word) {
@@ -275,49 +272,51 @@ void consume_line() {
   }
 }
 
-void interpret(char *word) {
+void interpret_dict_entry(struct dict_entry *entry) {
   void (*code[3])();
 
+  switch (entry->type) {
+    case DICT_TYPE_PRIMITIVE:
+      code[0] = entry->value.as_code;
+      code[1] = &ret_quit;
+      break;
+
+    case DICT_TYPE_CODE:
+      code[0] = &call;
+      code[1] = entry->value.as_code;
+      code[2] = &ret_quit;
+      break;
+
+    case DICT_TYPE_CONSTANT:
+      code[0] = &push;
+      code[1] = entry->value.as_code;
+      code[2] = &ret_quit;
+      break;
+
+    default:
+      printf("Error: unknown dictionary entry type %i\n", entry->type);
+      return;
+  }
+
+  dp = execute(code, dp);
+}
+
+void interpret(char *word) {
   struct dict_entry *match;
   long number;
   char *endptr;
 
   if ((match = find_in_dict(word)) != NULL) {
-    switch (match->type) {
-      case DICT_TYPE_PRIMITIVE:
-        code[0] = match->value.as_code;
-        code[1] = &ret_quit;
-        break;
-
-      case DICT_TYPE_CODE:
-        code[0] = &call;
-        code[1] = match->value.as_code;
-        code[2] = &ret_quit;
-        break;
-
-      case DICT_TYPE_CONSTANT:
-        code[0] = &push;
-        code[1] = match->value.as_code;
-        code[2] = &ret_quit;
-        break;
-
-      default:
-        printf("Error: unknown dictionary entry type %i\n", match->type);
-        return;
-    }
+    interpret_dict_entry(match);
   }
   else if (number = strtol(word, &endptr, 16), *endptr == '\0') {
-    // Numeric word
-    code[0] = &push;
-    code[1] = (void (*)()) number;
-    code[2] = &ret_quit;
+    dp -= 1;
+    *((uint64_t *) dp) = number;
   }
   else {
     printf("Error: unknown word %s\n", word);
     return;
   }
-
-  dp = execute(code, dp);
 
   if (dp > data_stack + DATA_STACK_SAFE) {
     puts("Stack underflow.");
@@ -331,7 +330,33 @@ void interpret(char *word) {
   }
 }
 
-bool disable_immediate = false;
+void compile_dict_entry(struct dict_entry *entry) {
+  void (**code)() = (void (**)()) last_word->value.as_ptr;
+
+  if (entry->flags & DICT_FLAG_IMMEDIATE) {
+    interpret_dict_entry(entry);
+  }
+  else {
+    switch (entry->type) {
+      case DICT_TYPE_PRIMITIVE:
+        code[last_word->len++] = entry->value.as_code;
+        break;
+
+      case DICT_TYPE_CODE:
+        code[last_word->len++] = &call;
+        code[last_word->len++] = entry->value.as_code;
+        break;
+
+      case DICT_TYPE_CONSTANT:
+        code[last_word->len++] = &push;
+        code[last_word->len++] = entry->value.as_code;
+        break;
+
+      default:
+        printf("Error: unknown dictionary entry type %i\n", entry->type);
+    }
+  }
+}
 
 void compile(char *word) {
   void (**code)() = (void (**)()) last_word->value.as_ptr;
@@ -341,30 +366,7 @@ void compile(char *word) {
   char *endptr;
 
   if ((match = find_in_dict(word)) != NULL) {
-    if (!disable_immediate && match->flags & DICT_FLAG_IMMEDIATE) {
-      interpret(word);
-    }
-    else {
-      switch (match->type) {
-        case DICT_TYPE_PRIMITIVE:
-          code[last_word->len++] = match->value.as_code;
-          break;
-
-        case DICT_TYPE_CODE:
-          code[last_word->len++] = &call;
-          code[last_word->len++] = match->value.as_code;
-          break;
-
-        case DICT_TYPE_CONSTANT:
-          code[last_word->len++] = &push;
-          code[last_word->len++] = match->value.as_code;
-          break;
-
-        default:
-          printf("Error: unknown dictionary entry type %i\n", match->type);
-          return;
-      }
-    }
+    compile_dict_entry(match);
   }
   else if (number = strtol(word, &endptr, 16), *endptr == '\0') {
     // Numeric word
@@ -385,15 +387,27 @@ void literal(uint64_t value) {
 }
 
 void postpone() {
+  void (**code)() = last_word->value.as_ptr;
+
+  struct dict_entry *match;
   char word[WORD_LENGTH + 1];
 
   if (!read_word(word)) return;
 
   upcase(word);
 
-  disable_immediate = true;
-  compile(word);
-  disable_immediate = false;
+  if ((match = find_in_dict(word)) != NULL) {
+    code[last_word->len++] = &postponed;
+    code[last_word->len++] = (void (*)()) match;
+  }
+  else {
+    printf("Error: unknown word %s\n", word);
+    return;
+  }
+}
+
+void *here() {
+  return (void (**)()) last_word->value.as_ptr + last_word->len;
 }
 
 void defword() {
@@ -420,6 +434,7 @@ void endword() {
   dumpptrarray((void **) code, last_word->len);
 
   compiling = 0;
+  dict_len++;
 }
 
 void printu64x(uint64_t n) {

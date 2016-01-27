@@ -3,6 +3,7 @@ tools/*
 
 .*.swp
 *.o
+*.fs.c
 *.bin
 
 *.iso

@@ -1,4 +1,3 @@
-global:
 ################################################################################
 #
 # kit/system/kitforth/engine.S
@@ -58,12 +57,112 @@ add: # ( n m -- n+m )
 
   NEXT
 
+.global bit_xor
+bit_xor: # ( n m -- n^m )
+  mov 0(%rbx), %rax
+  mov 8(%rbx), %rcx
+  xor %rax, %rcx
+
+  add $8, %rbx
+  mov %rcx, (%rbx)
+
+  NEXT
+
+.global equal
+equal: # ( x y -- flag )
+  mov 0(%rbx), %rax
+  mov 8(%rbx), %rcx
+  xor %rdx, %rdx # false
+  cmp %rax, %rcx
+  jne .Lne
+  not %rdx # true
+.Lne:
+  add $8, %rbx
+  mov %rdx, (%rbx)
+  NEXT
+
 .global dup
 dup: # ( x -- x x )
   mov (%rbx), %rax
   sub $8, %rbx
   mov %rax, (%rbx)
   NEXT
+
+.global swap
+swap: # ( x y -- y x )
+  mov 0(%rbx), %rax
+  mov 8(%rbx), %rcx
+  mov %rcx, 0(%rbx)
+  mov %rax, 8(%rbx)
+  NEXT
+
+.global over
+over: # ( x y -- x y x )
+  mov 8(%rbx), %rax
+  sub $8, %rbx
+  mov %rax, (%rbx)
+  NEXT
+
+.global rot
+rot: # ( x y z -- y z x )
+  mov 0x10(%rbx), %rax # x
+  mov 0x08(%rbx), %rcx # y
+  mov 0x00(%rbx), %rdx # z
+  mov %rcx, 0x10(%rbx) # y
+  mov %rdx, 0x08(%rbx) # z
+  mov %rax, 0x00(%rbx) # x
+  NEXT
+
+.global drop
+drop: # ( x -- )
+  add $8, %rbx
+  NEXT
+
+.global to_rstack
+to_rstack: # ( x -- ); push value to return stack
+  mov (%rbx), %rax
+  add $8, %rbx
+  push %rax
+  NEXT
+
+.global from_rstack
+from_rstack: # ( -- x ); pop value from return stack
+  pop %rax
+  sub $8, %rbx
+  mov %rax, (%rbx)
+  NEXT
+
+.global fetch_rstack
+fetch_rstack: # ( -- x ); copy value from return stack
+  mov (%rsp), %rax
+  sub $8, %rbx
+  mov %rax, (%rbx)
+  NEXT
+
+.global here_stub
+here_stub: # ( -- ip ); push the end of the current compilation as an ip
+  call here
+  sub $8, %rbx
+  mov %rax, (%rbx)
+  NEXT
+
+.global branch
+branch: # ( ip -- ); set ip
+  mov (%rbx), %rbp
+  add $8, %rbx
+  jmp *(%rbp)
+
+.global branch_if_zero
+branch_if_zero: # ( flag ip -- ); set ip if flag is zero
+  mov 0(%rbx), %rax
+  mov 8(%rbx), %rcx
+  add $16, %rbx
+  test %rcx, %rcx
+  jz .Lzero
+  NEXT
+.Lzero:
+  mov %rax, %rbp
+  jmp *(%rbp)
 
 .global display
 display: # ( x -- )
@@ -80,7 +179,7 @@ emit: # ( char -- ); print single char
   NEXT
 
 .global in_char
-in_char: # ( -- char); parse next char and put it on the stack
+in_char: # ( -- char ); parse next char and put it on the stack
   call read_charword
   and  $0xFF, %rax
 
@@ -107,9 +206,18 @@ literal_stub: # ( x -- ); push literal to compiled code
   NEXT
 
 .global postpone_stub
-postpone_stub: # get a stub and append its compilation semantics
+postpone_stub: # compile the compilation semantics of a word
   call postpone
   NEXT
+
+.global postponed
+postponed: # compile the compilation semantics of a postponed word
+  mov 8(%rbp), %rdi
+  mov %rbx, dp
+  call compile_dict_entry
+  mov dp, %rbx
+  add $16, %rbp
+  jmp *(%rbp)
 
 .global immediate_stub
 immediate_stub: # make the last defined word immediate

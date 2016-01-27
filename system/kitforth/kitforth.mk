@@ -12,7 +12,8 @@
 ################################################################################
 
 KFORTH_OBJECTS := $(patsubst %.c,build/%.o,$(wildcard system/kitforth/*.c))
-KFORTH_OBJECTS+=$(patsubst %.S,build/%.o,$(wildcard system/kitforth/*.S))
+KFORTH_OBJECTS += $(patsubst %.S,build/%.o,$(wildcard system/kitforth/*.S))
+KFORTH_OBJECTS += $(patsubst %.fs,build/%.fs.o,$(wildcard system/kitforth/*.fs))
 
 all-kitforth: build/system/bin/kitforth
 
@@ -39,3 +40,11 @@ build/system/kitforth/%.o: system/kitforth/%.c build/system/kitforth/.dir
 build/system/kitforth/%.o: system/kitforth/%.S build/system/kitforth/.dir
 	@${ECHO_AS} $@
 	@${AS} ${ASFLAGS} ${SYSTEM_ASFLAGS} -c $< -o $@
+
+system/kitforth/%.fs.c: system/kitforth/%.fs build/system/kitforth/.dir
+	ruby resources/build-util/fs-to-c.rb \
+		$(notdir $(patsubst %.fs,%_source,$<)) \
+		< $< \
+		> $@
+
+system/kitforth/%.fs:
