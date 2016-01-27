@@ -168,7 +168,7 @@ branch_if_zero: # ( flag ip -- ); set ip if flag is zero
 display: # ( x -- )
   mov (%rbx), %rdi
   add $8, %rbx
-  call printu64x
+  call printi64
   NEXT
 
 .global emit

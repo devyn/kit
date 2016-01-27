@@ -1,4 +1,4 @@
-: cr a emit ;
+: cr 10 emit ;
 
 : 2drop drop drop ;
 

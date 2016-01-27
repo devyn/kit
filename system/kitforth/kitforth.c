@@ -309,7 +309,7 @@ void interpret(char *word) {
   if ((match = find_in_dict(word)) != NULL) {
     interpret_dict_entry(match);
   }
-  else if (number = strtol(word, &endptr, 16), *endptr == '\0') {
+  else if (number = strtol(word, &endptr, 10), *endptr == '\0') {
     dp -= 1;
     *((uint64_t *) dp) = number;
   }
@@ -368,7 +368,7 @@ void compile(char *word) {
   if ((match = find_in_dict(word)) != NULL) {
     compile_dict_entry(match);
   }
-  else if (number = strtol(word, &endptr, 16), *endptr == '\0') {
+  else if (number = strtol(word, &endptr, 10), *endptr == '\0') {
     // Numeric word
     code[last_word->len++] = &push;
     code[last_word->len++] = (void (*)()) number;
@@ -437,8 +437,8 @@ void endword() {
   dict_len++;
 }
 
-void printu64x(uint64_t n) {
-  printf("%lx ", n);
+void printi64(int64_t n) {
+  printf("%ld ", n);
 }
 
 void printdata() {
@@ -447,7 +447,7 @@ void printdata() {
   fputs("\x1b[1;33m", stdout);
 
   for (x = data_stack + DATA_STACK_SAFE - 1; x >= dp; x--) {
-    printu64x(*x);
+    printi64(*x);
   }
 
   fputs("\x1b[0m", stdout);
