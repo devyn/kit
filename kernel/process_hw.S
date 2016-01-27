@@ -67,6 +67,9 @@ process_hw_prepare:
   mov   0x80(%r15), %rcx # RIP
   push  %rcx
 
+  # Load the FXSAVE data
+  fxrstor64 0x90(%r15) # FXSAVE
+
   # Load the remainder of the general purpose registers
   mov 0x00(%r15), %rax
   mov 0x08(%r15), %rcx

@@ -19,24 +19,25 @@ use core::ptr;
 #[repr(C)]
 #[derive(Debug)]
 pub struct Registers {
-    rax:     usize, // 0x00
-    rcx:     usize, // 0x08
-    rdx:     usize, // 0x10
-    rbx:     usize, // 0x18
-    rsp:     usize, // 0x20
-    rbp:     usize, // 0x28
-    rsi:     usize, // 0x30
-    rdi:     usize, // 0x38
-    r8:      usize, // 0x40
-    r9:      usize, // 0x48
-    r10:     usize, // 0x50
-    r11:     usize, // 0x58
-    r12:     usize, // 0x60
-    r13:     usize, // 0x68
-    r14:     usize, // 0x70
-    r15:     usize, // 0x78
-    rip:     usize, // 0x80
-    eflags:  u32,   // 0x88
+    rax:     usize,       // 0x00
+    rcx:     usize,       // 0x08
+    rdx:     usize,       // 0x10
+    rbx:     usize,       // 0x18
+    rsp:     usize,       // 0x20
+    rbp:     usize,       // 0x28
+    rsi:     usize,       // 0x30
+    rdi:     usize,       // 0x38
+    r8:      usize,       // 0x40
+    r9:      usize,       // 0x48
+    r10:     usize,       // 0x50
+    r11:     usize,       // 0x58
+    r12:     usize,       // 0x60
+    r13:     usize,       // 0x68
+    r14:     usize,       // 0x70
+    r15:     usize,       // 0x78
+    rip:     usize,       // 0x80
+    eflags:  u32,         // 0x88
+    fxsave:  [SSEReg; 32] // 0x90
 }
 
 impl Default for Registers {
@@ -48,9 +49,31 @@ impl Default for Registers {
             r12: 0, r13: 0, r14: 0, r15: 0,
             rip: 0,
             eflags: 0,
+            fxsave: [
+                SSEReg(0,0,0,0), SSEReg(0,0,0,0),
+                SSEReg(0,0,0,0), SSEReg(0,0,0,0),
+                SSEReg(0,0,0,0), SSEReg(0,0,0,0),
+                SSEReg(0,0,0,0), SSEReg(0,0,0,0),
+                SSEReg(0,0,0,0), SSEReg(0,0,0,0),
+                SSEReg(0,0,0,0), SSEReg(0,0,0,0),
+                SSEReg(0,0,0,0), SSEReg(0,0,0,0),
+                SSEReg(0,0,0,0), SSEReg(0,0,0,0),
+                SSEReg(0,0,0,0), SSEReg(0,0,0,0),
+                SSEReg(0,0,0,0), SSEReg(0,0,0,0),
+                SSEReg(0,0,0,0), SSEReg(0,0,0,0),
+                SSEReg(0,0,0,0), SSEReg(0,0,0,0),
+                SSEReg(0,0,0,0), SSEReg(0,0,0,0),
+                SSEReg(0,0,0,0), SSEReg(0,0,0,0),
+                SSEReg(0,0,0,0), SSEReg(0,0,0,0),
+                SSEReg(0,0,0,0), SSEReg(0,0,0,0),
+            ]
         }
     }
 }
+
+#[repr(simd)]
+#[derive(Debug)]
+pub struct SSEReg(u32, u32, u32, u32);
 
 pub static ARGS_TOP_ADDR:   usize = 0x0000_7fee_ffff_ffff;
 pub static STACK_BASE_ADDR: usize = 0x0000_7fff_ffff_f000;

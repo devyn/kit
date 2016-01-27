@@ -28,6 +28,14 @@
 
 rax_temp: .skip 8
 
+.section .rodata
+
+# FPU init word (div by zero + invalid operand cause exceptions)
+FPU_INIT: .word 0x37a
+
+# SSE init dword (same config)
+SSE_INIT: .long 0x1d00
+
 .section .text
 
 .global syscall_handler
@@ -69,6 +77,13 @@ syscall_handler:
   # Reload our old RAX into R12 now that we've cleared it up, and then save it.
   mov rax_temp, %r12
   mov %r12,     0x00(%rax)
+
+  # Save the FXSAVE data (x87/SSE regs etc.)
+  fxsave64 0x90(%rax)
+
+  # Restore kernel FP settings
+  fldcw (FPU_INIT)
+  ldmxcsr (SSE_INIT)
 
   # Load the stack for ring 0 from the TSS.
   mov tss_stack, %rsp
@@ -123,6 +138,9 @@ syscall_handler:
 
   # Add the registers offset to R15 for when we save those.
   add $HWSTATE_REGISTERS, %r15
+
+  # Restore the FXSAVE data.
+  fxrstor64 0x90(%r15)
 
   # Set up the segment registers.
   mov $USER_DATA_SEL, %bx

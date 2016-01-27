@@ -20,7 +20,7 @@
 
 #![feature(lang_items, asm, box_syntax, step_by, ptr_as_ref)]
 #![feature(unicode, box_patterns, alloc, collections)]
-#![feature(iter_arith)]
+#![feature(iter_arith, repr_simd)]
 
 #![allow(improper_ctypes)]
 
