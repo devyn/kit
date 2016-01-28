@@ -81,6 +81,21 @@ equal: # ( x y -- flag )
   mov %rdx, (%rbx)
   NEXT
 
+.global load_cell
+load_cell: # ( addr -- value ); load value at addr
+  mov (%rbx), %rsi
+  mov (%rsi), %rax
+  mov %rax, (%rbx)
+  NEXT
+
+.global store_cell
+store_cell: # ( value addr -- ); store value in addr
+  mov 0(%rbx), %rdi
+  mov 8(%rbx), %rax
+  add $16, %rbx
+  mov %rax, (%rdi)
+  NEXT
+
 .global dup
 dup: # ( x -- x x )
   mov (%rbx), %rax
@@ -146,20 +161,29 @@ here_stub: # ( -- ip ); push the end of the current compilation as an ip
   mov %rax, (%rbx)
   NEXT
 
+.global here_incr_stub
+here_incr_stub: # ( -- ip ); push end of current compilation, then advance by 1
+  call here_incr
+  sub $8, %rbx
+  mov %rax, (%rbx)
+  NEXT
+
 .global branch
-branch: # ( ip -- ); set ip
-  mov (%rbx), %rbp
-  add $8, %rbx
+branch: # ( -- ); set ip to following number
+  mov 8(%rbp), %rbp
   jmp *(%rbp)
 
 .global branch_if_zero
-branch_if_zero: # ( flag ip -- ); set ip if flag is zero
-  mov 0(%rbx), %rax
-  mov 8(%rbx), %rcx
-  add $16, %rbx
+branch_if_zero: # ( flag -- ); set ip to following number if flag is zero
+  mov 8(%rbp), %rax
+  mov (%rbx), %rcx
+  add $8, %rbx
+
   test %rcx, %rcx
   jz .Lzero
-  NEXT
+
+  add $16, %rbp
+  jmp *(%rbp)
 .Lzero:
   mov %rax, %rbp
   jmp *(%rbp)
