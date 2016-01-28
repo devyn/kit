@@ -32,6 +32,11 @@ uint64_t data_stack[DATA_STACK_SIZE];
 
 uint64_t *dp = data_stack + DATA_STACK_SAFE;
 
+#define DATA_SPACE_SIZE 65536
+
+char *here;
+char *there;
+
 void upcase(char *str) {
   while (*str != '\0') {
     if (*str >= 'a' && *str <= 'z') {
@@ -46,6 +51,8 @@ void consume_line();
 void printdata();
 
 int main(UNUSED int argc, UNUSED char **argv) {
+  here = calloc(1, DATA_SPACE_SIZE);
+  there = here + DATA_SPACE_SIZE;
   init_dict();
   while (!feof(stdin)) {
     printdata();
@@ -169,15 +176,28 @@ void immediate() {
 }
 
 void init_dict() {
-  dict_cap = 512;
+  dict_cap = 1024;
 
   dict = calloc(dict_cap, sizeof(struct dict_entry *));
 
   append_primitive("+",         &add);
+  append_primitive("-",         &sub);
+  append_primitive("*",         &mul);
+  append_primitive("/mod",      &divmod);
+
   append_primitive("xor",       &bit_xor);
+  append_primitive("and",       &bit_and);
+  append_primitive("or",        &bit_or);
+
   append_primitive("=",         &equal);
+  append_primitive(">",         &gt);
+  append_primitive(">=",        &gte);
+  append_primitive("<",         &lt);
+  append_primitive("<=",        &lt);
+
   append_primitive("@",         &fetch);
   append_primitive("!",         &store);
+
   append_primitive("dup",       &dup);
   append_primitive("swap",      &swap);
   append_primitive("over",      &over);
@@ -198,12 +218,16 @@ void init_dict() {
   append_primitive("literal",   &literal_stub); immediate();
   append_primitive("postpone",  &postpone_stub); immediate();
   append_primitive("immediate", &immediate_stub);
+  append_primitive("create",    &create_stub);
   append_primitive(":",         &defword_stub);
   append_primitive(";",         &endword_stub); immediate();
   append_primitive("parse",     &parse_stub);
 
   append_constant("false", 0);
   append_constant("true", ~0);
+
+  append_constant("(here)",  (uint64_t) &here);
+  append_constant("(there)", (uint64_t) there);
 
   in = boot_source;
 
@@ -421,6 +445,14 @@ void cp_comma(uint64_t value) {
   uint64_t *code = last_word->value.as_ptr;
 
   code[last_word->len++] = value;
+}
+
+void create() {
+  char word[WORD_LENGTH + 1];
+
+  if (!read_word(word)) return;
+
+  append_constant(word, (uint64_t) here);
 }
 
 void defword() {

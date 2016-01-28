@@ -23,8 +23,19 @@ extern uint64_t *execute(void (**ip)(), uint64_t *dp);
 extern void push();
 
 extern void add();
+extern void sub();
+extern void mul();
+extern void divmod();
+
 extern void bit_xor();
+extern void bit_and();
+extern void bit_or();
+
 extern void equal();
+extern void gt();
+extern void gte();
+extern void lt();
+extern void lte();
 
 extern void fetch();
 extern void store();
@@ -58,6 +69,7 @@ extern void literal_stub();
 extern void postpone_stub();
 extern void postponed();
 extern void immediate_stub();
+extern void create_stub();
 extern void defword_stub();
 extern void endword_stub();
 

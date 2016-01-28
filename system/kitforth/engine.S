@@ -57,11 +57,67 @@ add: # ( n m -- n+m )
 
   NEXT
 
+.global sub
+sub: # ( n m -- n-m )
+  mov 0(%rbx), %rax
+  mov 8(%rbx), %rcx
+  sub %rax, %rcx
+
+  add $8, %rbx
+  mov %rcx, (%rbx)
+
+  NEXT
+
+.global mul
+mul: # ( n m -- n*m )
+  mov 0(%rbx), %rax
+  mov 8(%rbx), %rcx
+  imul %rax, %rcx
+
+  add $8, %rbx
+  mov %rcx, (%rbx)
+
+  NEXT
+
+.global divmod
+divmod: # ( n m -- n%m n/m )
+  mov 0(%rbx), %rcx
+  mov 8(%rbx), %rax
+  cqto
+  idiv %rcx
+
+  mov %rax, 0(%rbx)
+  mov %rdx, 8(%rbx)
+
+  NEXT
+
 .global bit_xor
 bit_xor: # ( n m -- n^m )
   mov 0(%rbx), %rax
   mov 8(%rbx), %rcx
   xor %rax, %rcx
+
+  add $8, %rbx
+  mov %rcx, (%rbx)
+
+  NEXT
+
+.global bit_and
+bit_and: # ( n m -- n&m )
+  mov 0(%rbx), %rax
+  mov 8(%rbx), %rcx
+  and %rax, %rcx
+
+  add $8, %rbx
+  mov %rcx, (%rbx)
+
+  NEXT
+
+.global bit_or
+bit_or: # ( n m -- n|m )
+  mov 0(%rbx), %rax
+  mov 8(%rbx), %rcx
+  or   %rax, %rcx
 
   add $8, %rbx
   mov %rcx, (%rbx)
@@ -77,6 +133,58 @@ equal: # ( x y -- flag )
   jne .Lne
   not %rdx # true
 .Lne:
+  add $8, %rbx
+  mov %rdx, (%rbx)
+  NEXT
+
+.global gt
+gt: # ( x y -- flag )
+  mov 0(%rbx), %rax
+  mov 8(%rbx), %rcx
+  mov $-1, %rdx # true
+  cmp %rax, %rcx
+  jg .Lgt
+  not %rdx # true
+.Lgt:
+  add $8, %rbx
+  mov %rdx, (%rbx)
+  NEXT
+
+.global gte
+gte: # ( x y -- flag )
+  mov 0(%rbx), %rax
+  mov 8(%rbx), %rcx
+  mov $-1, %rdx # true
+  cmp %rax, %rcx
+  jge .Lgte
+  not %rdx # true
+.Lgte:
+  add $8, %rbx
+  mov %rdx, (%rbx)
+  NEXT
+
+.global lt
+lt: # ( x y -- flag )
+  mov 0(%rbx), %rax
+  mov 8(%rbx), %rcx
+  mov $-1, %rdx # true
+  cmp %rax, %rcx
+  jl .Llt
+  not %rdx # false
+.Llt:
+  add $8, %rbx
+  mov %rdx, (%rbx)
+  NEXT
+
+.global lt
+lte: # ( x y -- flag )
+  mov 0(%rbx), %rax
+  mov 8(%rbx), %rcx
+  mov $-1, %rdx # true
+  cmp %rax, %rcx
+  jle .Llte
+  not %rdx # false
+.Llte:
   add $8, %rbx
   mov %rdx, (%rbx)
   NEXT
@@ -246,6 +354,11 @@ postponed: # compile the compilation semantics of a postponed word
 .global immediate_stub
 immediate_stub: # make the last defined word immediate
   call immediate
+  NEXT
+
+.global create_stub
+create_stub:
+  call create
   NEXT
 
 .global defword_stub

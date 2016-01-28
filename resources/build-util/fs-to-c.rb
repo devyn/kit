@@ -13,7 +13,7 @@ char *#{member} ="
 
 $stdin.each_line do |line|
   $stdout << "\n  \""
-  $stdout << line.chomp.gsub("\\", "\\"*4)
+  $stdout << line.chomp.gsub("\\", "\\"*4).gsub("\"", "\\\"")
   $stdout << "\\n\""
 end
 
