@@ -1,6 +1,10 @@
-: cr 10 emit ;
+: ( [ char ) ] literal parse drop drop ; immediate
 
-: 2drop drop drop ;
+( Now we can use comments! )
+
+: cr ( -- ) 10 emit ;
+
+: 2drop ( x y -- ) drop drop ;
 
 : 2>r swap r> swap >r swap >r >r ;
 : 2r> r> r> r> swap rot >r ;
@@ -9,8 +13,8 @@
 : 2r>drop r> 2r> drop drop >r ;
 
 : <mark here ;
-: <resolve here+ ! ;
-: >mark here+ dup 0 swap ! ;
+: <resolve +here ! ;
+: >mark +here dup 0 swap ! ;
 : >resolve here swap ! ;
 
 : not -1 xor ;

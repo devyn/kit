@@ -258,6 +258,15 @@ endword_stub:
   call endword
   NEXT
 
+.global parse_stub
+parse_stub:
+  mov (%rbx), %rdi
+  mov %rbx, %rsi
+  call parse
+  sub $8, %rbx
+  mov %rax, (%rbx)
+  NEXT
+
 .global call
 call: # push IP+2 on return stack, take new IP from IP+1
   lea 16(%rbp), %rax

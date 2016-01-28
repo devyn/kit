@@ -61,4 +61,6 @@ extern void immediate_stub();
 extern void defword_stub();
 extern void endword_stub();
 
+extern void parse_stub();
+
 #endif

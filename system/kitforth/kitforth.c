@@ -187,7 +187,7 @@ void init_dict() {
   append_primitive("r>",        &from_rstack);
   append_primitive("r@",        &fetch_rstack);
   append_primitive("here",      &here_stub);
-  append_primitive("here+",     &here_incr_stub);
+  append_primitive("+here",     &here_incr_stub);
   append_primitive("branch",    &branch);
   append_primitive("?branch",   &branch_if_zero);
   append_primitive(".",         &display);
@@ -200,6 +200,7 @@ void init_dict() {
   append_primitive("immediate", &immediate_stub);
   append_primitive(":",         &defword_stub);
   append_primitive(";",         &endword_stub); immediate();
+  append_primitive("parse",     &parse_stub);
 
   append_constant("false", 0);
   append_constant("true", ~0);
@@ -442,6 +443,18 @@ void endword() {
 
   compiling = 0;
   dict_len++;
+}
+
+uint64_t parse(char delimiter, char **addr) {
+  *addr = in;
+
+  while (*in != '\0' && *in != '\n' && *in != delimiter) {
+    in++;
+  }
+
+  if (*in == delimiter) in++;
+
+  return in - *addr;
 }
 
 void printi64(int64_t n) {
