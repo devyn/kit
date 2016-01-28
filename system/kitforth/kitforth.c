@@ -176,8 +176,8 @@ void init_dict() {
   append_primitive("+",         &add);
   append_primitive("xor",       &bit_xor);
   append_primitive("=",         &equal);
-  append_primitive("@",         &load_cell);
-  append_primitive("!",         &store_cell);
+  append_primitive("@",         &fetch);
+  append_primitive("!",         &store);
   append_primitive("dup",       &dup);
   append_primitive("swap",      &swap);
   append_primitive("over",      &over);
@@ -186,8 +186,8 @@ void init_dict() {
   append_primitive(">r",        &to_rstack);
   append_primitive("r>",        &from_rstack);
   append_primitive("r@",        &fetch_rstack);
-  append_primitive("here",      &here_stub);
-  append_primitive("+here",     &here_incr_stub);
+  append_primitive("cp",        &cp_stub);
+  append_primitive("cp,",       &cp_comma_stub);
   append_primitive("branch",    &branch);
   append_primitive("?branch",   &branch_if_zero);
   append_primitive(".",         &display);
@@ -413,12 +413,14 @@ void postpone() {
   }
 }
 
-void *here() {
+void *cp() {
   return (void (**)()) last_word->value.as_ptr + last_word->len;
 }
 
-void *here_incr() {
-  return (void (**)()) last_word->value.as_ptr + (last_word->len++);
+void cp_comma(uint64_t value) {
+  uint64_t *code = last_word->value.as_ptr;
+
+  code[last_word->len++] = value;
 }
 
 void defword() {

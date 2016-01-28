@@ -26,8 +26,8 @@ extern void add();
 extern void bit_xor();
 extern void equal();
 
-extern void load_cell();
-extern void store_cell();
+extern void fetch();
+extern void store();
 
 extern void dup();
 extern void swap();
@@ -38,8 +38,8 @@ extern void to_rstack();
 extern void from_rstack();
 extern void fetch_rstack();
 
-extern void here_stub();
-extern void here_incr_stub();
+extern void cp_stub();
+extern void cp_comma_stub();
 extern void branch();
 extern void branch_if_zero();
 

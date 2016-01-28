@@ -81,15 +81,15 @@ equal: # ( x y -- flag )
   mov %rdx, (%rbx)
   NEXT
 
-.global load_cell
-load_cell: # ( addr -- value ); load value at addr
+.global fetch
+fetch: # ( addr -- value ); fetch value in addr
   mov (%rbx), %rsi
   mov (%rsi), %rax
   mov %rax, (%rbx)
   NEXT
 
-.global store_cell
-store_cell: # ( value addr -- ); store value in addr
+.global store
+store: # ( value addr -- ); store value in addr
   mov 0(%rbx), %rdi
   mov 8(%rbx), %rax
   add $16, %rbx
@@ -154,18 +154,18 @@ fetch_rstack: # ( -- x ); copy value from return stack
   mov %rax, (%rbx)
   NEXT
 
-.global here_stub
-here_stub: # ( -- ip ); push the end of the current compilation as an ip
-  call here
+.global cp_stub
+cp_stub: # ( -- addr ); push the end of the current compilation
+  call cp
   sub $8, %rbx
   mov %rax, (%rbx)
   NEXT
 
-.global here_incr_stub
-here_incr_stub: # ( -- ip ); push end of current compilation, then advance by 1
-  call here_incr
-  sub $8, %rbx
-  mov %rax, (%rbx)
+.global cp_comma_stub
+cp_comma_stub: # ( x -- ); write to the current compilation, advancing CP
+  mov (%rbx), %rdi
+  add $8, %rbx
+  call cp_comma
   NEXT
 
 .global branch

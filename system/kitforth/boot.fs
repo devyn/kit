@@ -1,5 +1,6 @@
-: \ 0 parse drop drop ; immediate
+: \ 10 parse drop drop ; immediate
 
+\ vim:ts=3:sw=3:et:tw=80:ft=forth
 \ Now we can use comments! Hi there!
 \ Let's define another type of comment.
 
@@ -7,7 +8,8 @@
 
 ( Neat. We often use these comments for stack effects. )
 
-: cr ( -- ) 10 emit ;
+: bl ( -- char ) 32 ; \ space character
+: cr ( -- ) 10 emit ; \ emit newline
 
 : 2drop ( x y -- ) drop drop ;
 
@@ -19,15 +21,15 @@
 
 \ Backward MARK/RESOLVE. Use to BRANCH backward.
 : <mark ( -- addr )
-   here ;
+   cp ;
 : <resolve ( addr -- )
-   +here ! ;
+   cp, ;
 
 \ Forward MARK/RESOLVE. Use to BRANCH forward.
 : >mark ( -- addr )
-   +here dup 0 swap ! ;
+   cp 0 cp, ;
 : >resolve ( addr -- )
-   here swap ! ;
+   cp swap ! ;
 
 : not ( flag -- !flag ) -1 xor ;
 
