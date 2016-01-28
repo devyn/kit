@@ -61,10 +61,6 @@ extern void in_char();
 extern void compiler_off();
 extern void compiler_on();
 
-extern void call();
-extern void ret();
-extern void ret_quit();
-
 extern void literal_stub();
 extern void postpone_stub();
 extern void postponed();
@@ -74,5 +70,11 @@ extern void defword_stub();
 extern void endword_stub();
 
 extern void parse_stub();
+
+extern void syscall_from_forth();
+
+extern void call();
+extern void ret();
+extern void ret_quit();
 
 #endif

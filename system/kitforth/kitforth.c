@@ -50,18 +50,60 @@ void init_dict();
 void consume_line();
 void printdata();
 
+bool readline() {
+  int c;
+
+  char *buf = line;
+  
+  while (true) {
+    c = getchar();
+
+    if (c == EOF) {
+      return false;
+    }
+    else if (c == '\n') {
+      *buf++ = c;
+      break;
+    }
+    else if (c == '\b') {
+      if (buf > line) {
+        buf--;
+        putchar('\b');
+      }
+    }
+    else {
+      *buf++ = c;
+      putchar(c);
+    }
+
+    if (buf - line >= 4095) {
+      break;
+    }
+  }
+
+  *buf++ = '\0';
+  return true;
+}
+
+bool ok;
+
 int main(UNUSED int argc, UNUSED char **argv) {
   here = calloc(1, DATA_SPACE_SIZE);
   there = here + DATA_SPACE_SIZE;
   init_dict();
+
   while (!feof(stdin)) {
+    putchar('\n');
     printdata();
-    printf("\x1b[1;32mok] \x1b[0;1m");
-    char *res = fgets(line, 4096, stdin);
+    printf("\x1b[1;33m> \x1b[0;1m");
+    ok = readline();
     fputs("\x1b[0m", stdout);
-    if (res != NULL) {
+    if (ok) {
       in = line;
       consume_line();
+    }
+    if (ok) {
+      fputs("\x1b[1;32m ok\x1b[0m", stdout);
     }
   }
   return 0;
@@ -109,7 +151,7 @@ bool append_primitive(const char *name, void (*code)()) {
 
     last_word = &dict[dict_len];
 
-    printf("PRIMITIVE %s = %p.\n", last_word->name, last_word->value.as_ptr);
+    //printf("PRIMITIVE %s = %p.\n", last_word->name, last_word->value.as_ptr);
 
     dict_len++;
     return true;
@@ -137,7 +179,7 @@ bool append_code(const char *name) {
 
     last_word = &dict[dict_len];
 
-    printf("CODE      %s = %p.\n", last_word->name, last_word->value.as_ptr);
+    //printf("CODE      %s = %p.\n", last_word->name, last_word->value.as_ptr);
 
     return true;
   }
@@ -158,7 +200,7 @@ bool append_constant(const char *name, uint64_t value) {
 
     dict[dict_len].value.as_int = value;
 
-    printf("CONSTANT  %s = %lx.\n", dict[dict_len].name, value);
+    //printf("CONSTANT  %s = %ld.\n", dict[dict_len].name, value);
 
     last_word = &dict[dict_len];
 
@@ -206,22 +248,29 @@ void init_dict() {
   append_primitive(">r",        &to_rstack);
   append_primitive("r>",        &from_rstack);
   append_primitive("r@",        &fetch_rstack);
+
   append_primitive("cp",        &cp_stub);
   append_primitive("cp,",       &cp_comma_stub);
   append_primitive("branch",    &branch);
   append_primitive("?branch",   &branch_if_zero);
+
   append_primitive(".",         &display);
   append_primitive("emit",      &emit);
   append_primitive("char",      &in_char);
+
   append_primitive("[",         &compiler_off); immediate();
   append_primitive("]",         &compiler_on);
+
   append_primitive("literal",   &literal_stub); immediate();
   append_primitive("postpone",  &postpone_stub); immediate();
   append_primitive("immediate", &immediate_stub);
   append_primitive("create",    &create_stub);
   append_primitive(":",         &defword_stub);
   append_primitive(";",         &endword_stub); immediate();
+
   append_primitive("parse",     &parse_stub);
+
+  append_primitive("syscall",   &syscall_from_forth);
 
   append_constant("false", 0);
   append_constant("true", ~0);
@@ -230,6 +279,7 @@ void init_dict() {
   append_constant("(there)", (uint64_t) there);
 
   in = boot_source;
+  ok = true;
 
   while (*in != '\0') {
     consume_line();
@@ -285,7 +335,7 @@ void compile(char *word);
 void consume_line() {
   char word[WORD_LENGTH + 1];
 
-  while (*in != '\0' && *in != '\n') {
+  while (ok && *in != '\0' && *in != '\n') {
     while (*in == ' ') in++;
 
     if (!read_word(word)) continue;
@@ -325,7 +375,8 @@ void interpret_dict_entry(struct dict_entry *entry) {
       break;
 
     default:
-      printf("Error: unknown dictionary entry type %i\n", entry->type);
+      printf(" \x1b[1;31munknown dictionary entry type %i\x1b[0m", entry->type);
+      ok = false;
       return;
   }
 
@@ -345,19 +396,20 @@ void interpret(char *word) {
     *((uint64_t *) dp) = number;
   }
   else {
-    printf("Error: unknown word %s\n", word);
+    printf(" \x1b[1;31munknown word %s\x1b[0m", word);
+    ok = false;
     return;
   }
 
   if (dp > data_stack + DATA_STACK_SAFE) {
-    puts("Stack underflow.");
+    fputs(" \x1b[1;31mstack underflow\x1b[0m", stderr);
     dp = data_stack + DATA_STACK_SAFE;
-    while (*in != '\0');
+    ok = false;
   }
   else if (dp <= data_stack) {
-    puts("Stack overflow.");
+    fputs(" \x1b[1;31mstack overflow\x1b[0m", stderr);
     dp = data_stack + 1;
-    while (*in != '\0');
+    ok = false;
   }
 }
 
@@ -384,7 +436,7 @@ void compile_dict_entry(struct dict_entry *entry) {
         break;
 
       default:
-        printf("Error: unknown dictionary entry type %i\n", entry->type);
+        printf(" \x1b[1;31munknown dictionary entry type %i\x1b[0m", entry->type);
     }
   }
 }
@@ -405,7 +457,8 @@ void compile(char *word) {
     code[last_word->len++] = (void (*)()) number;
   }
   else {
-    printf("Error: unknown word %s\n", word);
+    printf(" \x1b[1;31munknown word %s\x1b[0m", word);
+    ok = false;
     return;
   }
 }
@@ -432,7 +485,8 @@ void postpone() {
     code[last_word->len++] = (void (*)()) match;
   }
   else {
-    printf("Error: unknown word %s\n", word);
+    printf(" \x1b[1;31munknown word %s\x1b[0m", word);
+    ok = false;
     return;
   }
 }
@@ -476,7 +530,7 @@ void endword() {
 
   code[last_word->len++] = &ret;
 
-  dumpptrarray((void **) code, last_word->len);
+  //dumpptrarray((void **) code, last_word->len);
 
   compiling = 0;
   dict_len++;
@@ -489,13 +543,15 @@ uint64_t parse(char delimiter, char **addr) {
     in++;
   }
 
+  uint64_t len = in - *addr;
+
   if (*in == delimiter) in++;
 
-  return in - *addr;
+  return len;
 }
 
 void printi64(int64_t n) {
-  printf("%ld ", n);
+  printf(" %ld", n);
 }
 
 void printdata() {

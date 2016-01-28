@@ -380,6 +380,33 @@ parse_stub:
   mov %rax, (%rbx)
   NEXT
 
+.global syscall_from_forth
+syscall_from_forth: # ( ...args #args n -- ret ) max #args=6
+  mov 0(%rbx), %rax
+  mov 8(%rbx), %rcx
+  add $16, %rbx
+  test %cx, %cx
+  jz .Lsyscall
+
+  .macro SYSCALL_ARG reg
+    mov (%rbx), \reg
+    add $8, %rbx
+    dec %cx
+    jz .Lsyscall
+  .endm
+
+  SYSCALL_ARG %rdi
+  SYSCALL_ARG %rsi
+  SYSCALL_ARG %rdx
+  SYSCALL_ARG %r10
+  SYSCALL_ARG %r8
+  SYSCALL_ARG %r9
+.Lsyscall:
+  syscall
+  sub $8, %rbx
+  mov %rax, (%rbx)
+  NEXT
+
 .global call
 call: # push IP+2 on return stack, take new IP from IP+1
   lea 16(%rbp), %rax
