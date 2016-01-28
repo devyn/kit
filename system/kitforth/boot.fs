@@ -1,64 +1,92 @@
+: \ 0 parse drop drop ; immediate
+
+\ Now we can use comments! Hi there!
+\ Let's define another type of comment.
+
 : ( [ char ) ] literal parse drop drop ; immediate
 
-( Now we can use comments! )
+( Neat. We often use these comments for stack effects. )
 
 : cr ( -- ) 10 emit ;
 
 : 2drop ( x y -- ) drop drop ;
 
-: 2>r swap r> swap >r swap >r >r ;
-: 2r> r> r> r> swap rot >r ;
-: 2r@ r> 2r> over over 2>r rot >r ;
-: r>drop r> r> drop >r ;
-: 2r>drop r> 2r> drop drop >r ;
+: 2>r ( x y -- ) swap r> swap >r swap >r >r ;
+: 2r> ( -- x y ) r> r> r> swap rot >r ;
+: 2r@ ( -- x y ) r> 2r> over over 2>r rot >r ;
+: r>drop ( -- ) r> r> drop >r ;
+: 2r>drop ( -- ) r> 2r> drop drop >r ;
 
-: <mark here ;
-: <resolve +here ! ;
-: >mark +here dup 0 swap ! ;
-: >resolve here swap ! ;
+\ Backward MARK/RESOLVE. Use to BRANCH backward.
+: <mark ( -- addr )
+   here ;
+: <resolve ( addr -- )
+   +here ! ;
 
-: not -1 xor ;
+\ Forward MARK/RESOLVE. Use to BRANCH forward.
+: >mark ( -- addr )
+   +here dup 0 swap ! ;
+: >resolve ( addr -- )
+   here swap ! ;
+
+: not ( flag -- !flag ) -1 xor ;
+
 : [char] char postpone literal ; immediate
 
-: if postpone ?branch >mark ; immediate
-: else postpone branch >mark
-       swap >resolve ; immediate
-: then >resolve ; immediate
+\ flag IF true-code... THEN
+\ flag IF true-code... ELSE false-code... THEN
+: if ( flag -- )
+   postpone ?branch >mark ; immediate
+: else
+   postpone branch >mark
+   swap >resolve ; immediate
+: then
+    >resolve ; immediate
 
+\ BEGIN code... flag UNTIL
+  \ stops when flag is true
 : begin <mark ; immediate
-: until postpone ?branch <resolve ; immediate
-: while postpone if ; immediate
-: repeat postpone branch
-         swap <resolve
-         postpone then ; immediate
+: until ( flag -- ) postpone ?branch <resolve ; immediate
 
-: do postpone 2>r <mark ; immediate
+\ BEGIN code... flag WHILE true-code... REPEAT
+  \ stops when flag is false
+: while ( flag -- ) postpone if ; immediate
+: repeat
+   postpone branch
+   swap <resolve
+   postpone then ; immediate
+
+\ limit index DO code... LOOP
+\ limit index DO code... n +LOOP
+
+: do ( limit index -- )
+   postpone 2>r <mark ; immediate
 
 : (+=loop)
-  r> swap r> + >r 2r@ = swap >r ;
+   r> swap r> + >r 2r@ = swap >r ;
 
 : (+loop)
-  postpone (+=loop)
-  postpone ?branch
-  <resolve
-  postpone 2r>drop ;
+   postpone (+=loop)
+   postpone ?branch
+   <resolve
+   postpone 2r>drop ;
 
 : +loop (+loop) ; immediate
 : loop 1 postpone literal (+loop) ; immediate
 
-: i r> r@ swap >r ;
-: j r> 2r> r@ rot rot 2>r swap >r ;
+: i ( -- i ) r> r@ swap >r ; \ inner loop index
+: j ( -- j ) r> 2r> r@ rot rot 2>r swap >r ; \ outer loop index
 
-: testline
-  0 do
-    i .
-  loop ;
+: testline ( size -- )
+   0 do
+     i .
+   loop ;
 
-: testbox
-  dup 0 do
-    dup 0 do
-      [char] | emit j . i .
-    loop
-    cr
-  loop
-  drop ;
+: testbox ( size -- )
+   dup 0 do
+     dup 0 do
+       [char] | emit j . i .
+     loop
+     cr
+   loop
+   drop ;

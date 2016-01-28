@@ -207,7 +207,10 @@ void init_dict() {
 
   in = boot_source;
 
-  consume_line();
+  while (*in != '\0') {
+    consume_line();
+    if (*in == '\n') in++;
+  }
 }
 
 struct dict_entry *find_in_dict(char *word) {
