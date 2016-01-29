@@ -30,6 +30,8 @@ extern void divmod();
 extern void bit_xor();
 extern void bit_and();
 extern void bit_or();
+extern void bit_lshift();
+extern void bit_rshift();
 
 extern void equal();
 extern void gt();
@@ -39,6 +41,9 @@ extern void lte();
 
 extern void fetch();
 extern void store();
+extern void fetch_char();
+extern void store_char();
+extern void move();
 
 extern void dup();
 extern void swap();
@@ -57,6 +62,7 @@ extern void branch_if_zero();
 extern void display();
 extern void emit();
 extern void in_char();
+extern void get_string();
 
 extern void compiler_off();
 extern void compiler_on();

@@ -124,6 +124,28 @@ bit_or: # ( n m -- n|m )
 
   NEXT
 
+.global bit_lshift
+bit_lshift: # ( x u -- x )
+  mov 0(%rbx), %rcx
+  mov 8(%rbx), %rax
+  shl %cl, %rax
+
+  add $8, %rbx
+  mov %rax, (%rbx)
+
+  NEXT
+
+.global bit_rshift
+bit_rshift: # ( x u -- x )
+  mov 0(%rbx), %rcx
+  mov 8(%rbx), %rax
+  shr %cl, %rax
+
+  add $8, %rbx
+  mov %rax, (%rbx)
+
+  NEXT
+
 .global equal
 equal: # ( x y -- flag )
   mov 0(%rbx), %rax
@@ -202,6 +224,31 @@ store: # ( value addr -- ); store value in addr
   mov 8(%rbx), %rax
   add $16, %rbx
   mov %rax, (%rdi)
+  NEXT
+
+.global fetch_char
+fetch_char: # ( addr -- char ); fetch char in addr
+  mov (%rbx), %rsi
+  xor %rax, %rax
+  mov (%rsi), %ax
+  mov %rax, (%rbx)
+  NEXT
+
+.global store_char
+store_char: # ( char addr -- ); store char in addr
+  mov 0(%rbx), %rdi
+  mov 8(%rbx), %rax
+  add $16, %rbx
+  mov %ax, (%rdi)
+  NEXT
+
+.global move
+move: # ( src-addr dest-addr u -- ); move u bytes from src-addr to dest-addr
+  mov 0x00(%rbx), %rdx
+  mov 0x08(%rbx), %rdi
+  mov 0x10(%rbx), %rsi
+  add $24, %rbx
+  call memmove
   NEXT
 
 .global dup
@@ -319,6 +366,28 @@ in_char: # ( -- char ); parse next char and put it on the stack
   mov %rax, (%rbx)
 
   NEXT
+
+.global get_string
+get_string: # put string ahead of instruction pointer on stack
+  mov 0x08(%rbp), %rcx # length of string
+  lea 0x10(%rbp), %rax # address of string
+  add $16, %rbp
+
+  sub $16, %rbx
+  mov %rcx, 0x00(%rbx)
+  mov %rax, 0x08(%rbx)
+
+  # now skip over the string, keeping alignment in mind
+  test $7, %rcx
+  setnz %dl
+  shl $3, %dl
+
+  and $-8, %rcx
+  add %rcx, %rbp
+
+  movzx %dl, %rcx
+  add %rcx, %rbp
+  jmp *(%rbp)
 
 .global compiler_off
 compiler_off: # go to immediate/interpreted mode

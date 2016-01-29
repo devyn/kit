@@ -230,6 +230,8 @@ void init_dict() {
   append_primitive("xor",       &bit_xor);
   append_primitive("and",       &bit_and);
   append_primitive("or",        &bit_or);
+  append_primitive("lshift",    &bit_lshift);
+  append_primitive("rshift",    &bit_rshift);
 
   append_primitive("=",         &equal);
   append_primitive(">",         &gt);
@@ -239,6 +241,9 @@ void init_dict() {
 
   append_primitive("@",         &fetch);
   append_primitive("!",         &store);
+  append_primitive("c@",        &fetch_char);
+  append_primitive("c!",        &store_char);
+  append_primitive("move",      &move);
 
   append_primitive("dup",       &dup);
   append_primitive("swap",      &swap);
@@ -257,6 +262,7 @@ void init_dict() {
   append_primitive(".",         &display);
   append_primitive("emit",      &emit);
   append_primitive("char",      &in_char);
+  append_primitive("(string)",  &get_string);
 
   append_primitive("[",         &compiler_off); immediate();
   append_primitive("]",         &compiler_on);
@@ -281,7 +287,7 @@ void init_dict() {
   in = boot_source;
   ok = true;
 
-  while (*in != '\0') {
+  while (ok && *in != '\0') {
     consume_line();
     if (*in == '\n') in++;
   }
@@ -350,6 +356,11 @@ void consume_line() {
     else {
       interpret(word);
     }
+  }
+
+  if (!ok) {
+    // Reset stack pointer on error.
+    dp = data_stack + DATA_STACK_SAFE;
   }
 }
 

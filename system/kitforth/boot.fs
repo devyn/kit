@@ -77,7 +77,16 @@
 \ limit index DO code... n +LOOP
 
 : do ( limit index -- )
-   postpone 2>r <mark
+   0 postpone 2>r <mark
+; immediate
+: ?do ( limit index -- )
+   postpone 2>r
+   postpone 2r@
+   postpone =
+   postpone not
+   postpone ?branch
+   >mark
+   <mark
 ; immediate
 : (+=loop)
    r> swap r> + >r 2r@ = swap >r
@@ -86,6 +95,7 @@
    postpone (+=loop)
    postpone ?branch
    <resolve
+   dup if >resolve else drop then
    postpone 2r>drop
 ;
 : +loop
@@ -104,6 +114,8 @@
 
 \ Allocation.
 
+: char+ ( addr1 -- addr2 ) 1 + ;
+: chars ( #chars -- #bytes ) ; \ chars are bytes; does nothing
 : cell+ ( addr1 -- addr2 ) 8 + ;
 : cells ( #cells -- #bytes ) 8 * ;
 
@@ -136,7 +148,16 @@
 : type ( c-addr u -- ) 2 1 syscall drop ;
 
 \ Strings.
-: ." ( -- ) [char] " parse type ;
+: s" ( -- c-addr u )
+   [char] " parse        \ get input string
+   postpone (string)     \ (string) creates the string pointer at runtime
+   dup cp,               \ write the length of the string
+   cp swap               \ this is where we're going to put the string
+   dup aligned 1 cells / \ number of cells we need to allocate for the string
+   0 ?do 0 cp, loop      \ allocate them
+   move                  \ put the string in
+; immediate
+: ." ( -- ) postpone s" postpone type ; immediate
 : .( ( -- ) [char] ) parse type ; immediate
 
 \ Fun tests!
@@ -158,6 +179,6 @@
 ;
 
 cr
-27 emit ." [36m"
-." + kitFORTH ready" cr
-27 emit ." [0m"
+27 emit .( [36m)
+.( + kitFORTH ready) cr
+27 emit .( [0m)
