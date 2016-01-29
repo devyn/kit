@@ -222,6 +222,8 @@ void init_dict() {
 
   dict = calloc(dict_cap, sizeof(struct dict_entry *));
 
+  append_primitive("see",       &see_stub);
+
   append_primitive("+",         &add);
   append_primitive("-",         &sub);
   append_primitive("*",         &mul);
@@ -284,6 +286,11 @@ void init_dict() {
   append_constant("(here)",  (uint64_t) &here);
   append_constant("(there)", (uint64_t) there);
 
+  // None of these should ever be invoked directly.
+  append_primitive("(push)", &push);
+  append_primitive("(call)", &call);
+  append_primitive("(ret)",  &ret);
+
   in = boot_source;
   ok = true;
 
@@ -296,6 +303,16 @@ void init_dict() {
 struct dict_entry *find_in_dict(char *word) {
   for (int i = dict_len - 1; i >= 0; i--) {
     if (strcmp(dict[i].name, word) == 0) {
+      return &dict[i];
+    }
+  }
+
+  return NULL;
+}
+
+struct dict_entry *find_val_in_dict(uint64_t value) {
+  for (int i = dict_len - 1; i >= 0; i--) {
+    if (dict[i].value.as_int == value) {
       return &dict[i];
     }
   }
@@ -533,7 +550,45 @@ void dumpptrarray(void **ptr, size_t len) {
   for (size_t i = 0; i < len; i++) {
     printf("%p ", ptr[i]);
   }
-  puts("");
+  putchar('\n');
+}
+
+void colortype(int type) {
+  switch (type) {
+  case DICT_TYPE_PRIMITIVE:
+    fputs("\x1b[1;33m", stdout);
+    break;
+  case DICT_TYPE_CONSTANT:
+    fputs("\x1b[1;36m", stdout);
+    break;
+  case DICT_TYPE_CODE:
+    fputs("\x1b[1;35m", stdout);
+    break;
+  }
+}
+
+void dumpcode(void **ptr, size_t len) {
+  for (size_t i = 0; i < len; i++) {
+    printf("\n\x1b[32m%4lu:\x1b[0m %16lx \x1b[1;30m\"", i, (uint64_t) ptr[i]);
+
+    for (int j = 0; j < 8; j++) {
+      char c = ((char *) (ptr + i))[j];
+
+      putchar(c < 32 ? '.' : c);
+    }
+    fputs("\"\x1b[0m", stdout);
+
+    struct dict_entry *entry;
+
+    if ((entry = find_val_in_dict((uint64_t) ptr[i])) != NULL) {
+      colortype(entry->type);
+      printf(" %s\x1b[0m", entry->name);
+    }
+    else if (ptr[i] > (void *)ptr && ptr[i] < (void *)(ptr + len)) {
+      printf("\x1b[32m ref %lu:\x1b[0m",
+             ((uint64_t) ptr[i] - (uint64_t) ptr)/8);
+    }
+  }
 }
 
 void endword() {
@@ -545,6 +600,50 @@ void endword() {
 
   compiling = 0;
   dict_len++;
+}
+
+void see() {
+  char word[WORD_LENGTH + 1];
+
+  if (!read_word(word)) return;
+
+  upcase(word);
+
+  struct dict_entry *entry = find_in_dict(word);
+
+  if (entry != NULL) {
+    colortype(entry->type);
+    printf("\n%s\x1b[0m", entry->name);
+
+    switch (entry->type) {
+    case DICT_TYPE_PRIMITIVE:
+      fputs(" primitive", stdout);
+      if (entry->flags & DICT_FLAG_IMMEDIATE) {
+        fputs(" immediate", stdout);
+      }
+      printf(" = %p", entry->value.as_ptr);
+      break;
+
+    case DICT_TYPE_CONSTANT:
+      printf(" constant = %ld", entry->value.as_int);
+      break;
+
+    case DICT_TYPE_CODE:
+      fputs(" code", stdout);
+      if (entry->flags & DICT_FLAG_IMMEDIATE) {
+        fputs(" immediate", stdout);
+      }
+      printf(" = %p (%u cells)", entry->value.as_ptr, entry->len);
+      dumpcode((void **) entry->value.as_ptr, entry->len);
+      break;
+
+    default:
+      printf(" bugged!");
+    }
+  }
+  else {
+    printf("\n%s not defined", word);
+  }
 }
 
 uint64_t parse(char delimiter, char **addr) {

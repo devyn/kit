@@ -46,6 +46,11 @@ push: # ( -- x ); ip+2 -> [PUSH, x, <ip> ...]
   add $16, %rbp
   jmp *(%rbp)
 
+.global see_stub
+see_stub:
+  call see
+  NEXT
+
 .global add
 add: # ( n m -- n+m )
   mov 0(%rbx), %rax

@@ -58,6 +58,29 @@ int fputs(const char *str, FILE *stream) {
   }
 }
 
+int _libc_uwidth(uint64_t integer, uint8_t base)
+{
+  int digits = 0;
+
+  do {
+    integer /= base;
+    digits++;
+  } while (integer > 0);
+  return digits;
+}
+
+int _libc_iwidth(int64_t integer, uint8_t base)
+{
+  int digits = 0;
+  int sign = integer >> 63;
+
+  do {
+    integer /= base;
+    digits++;
+  } while (integer != 0);
+  return digits + sign;
+}
+
 /**
  * Can handle any base from binary up to sexatrigesimal (36), encompassing all
  * alphanumeric characters
@@ -237,6 +260,10 @@ typedef struct _libc_printf_state
   size_t start;
   bool alt_form;
 
+  int pad;
+  bool pad_left;
+  char pad_char;
+
   enum {
     _LIBC_PRINTF_LENGTH_CHAR,
     _LIBC_PRINTF_LENGTH_SHORT,
@@ -262,30 +289,59 @@ int printf(const char *format, ...)
     state.active   = false; \
     state.start    = 0; \
     state.alt_form = false; \
+    state.pad      = 0; \
+    state.pad_left = false; \
+    state.pad_char = ' '; \
     state.length   = _LIBC_PRINTF_LENGTH_NORMAL; \
   }
 
-#define FORMAT_NUM(fn, mod, base) \
+#define LPAD(size) \
+  if (!state.pad_left) { \
+    for (int l = state.pad - size; l > 0; l--) { \
+      putchar(state.pad_char); \
+      len++; \
+    } \
+  }
+
+#define RPAD(size) \
+  if (state.pad_left) { \
+    for (int l = state.pad - size; l > 0; l--) { \
+      putchar(state.pad_char); \
+      len++; \
+    } \
+  }
+
+#define FORMAT_NUM(fn, lenfn, mod, base) \
   switch (state.length) { \
     case _LIBC_PRINTF_LENGTH_CHAR: \
       {mod char val = va_arg(args, mod int); \
-      len += fn(val, (base));} \
+      LPAD(lenfn(val, (base))); \
+      len += fn(val, (base)); \
+      RPAD(lenfn(val, (base)));} \
       break; \
     case _LIBC_PRINTF_LENGTH_SHORT: \
       {mod short val = va_arg(args, mod int); \
-      len += fn(val, (base));} \
+      LPAD(lenfn(val, (base))); \
+      len += fn(val, (base)); \
+      RPAD(lenfn(val, (base)));} \
       break; \
     case _LIBC_PRINTF_LENGTH_NORMAL: \
       {mod int val = va_arg(args, mod int); \
-      len += fn(val, (base));} \
+      LPAD(lenfn(val, (base))); \
+      len += fn(val, (base)); \
+      RPAD(lenfn(val, (base)));} \
       break; \
     case _LIBC_PRINTF_LENGTH_LONG: \
       {mod long val = va_arg(args, mod long); \
-      len += fn(val, (base));} \
+      LPAD(lenfn(val, (base))); \
+      len += fn(val, (base)); \
+      RPAD(lenfn(val, (base)));} \
       break; \
     case _LIBC_PRINTF_LENGTH_LONG_LONG: \
       {mod long long val = va_arg(args, mod long long); \
-      len += fn(val, (base));} \
+      LPAD(lenfn(val, (base))); \
+      len += fn(val, (base)); \
+      RPAD(lenfn(val, (base)));} \
       break; \
   }
 
@@ -333,6 +389,34 @@ int printf(const char *format, ...)
           CLEAR_STATE();
           break;
 
+        case '-':
+          if (state.pad == 0 && state.pad_char == ' ' && !state.pad_left) {
+            state.pad_left = true;
+          }
+          else {
+            INVALID_FORMAT();
+            CLEAR_STATE();
+          }
+          break;
+
+        case '0':
+          if (state.pad == 0 && state.pad_char == ' ') {
+            state.pad_char = '0';
+            break;
+          }
+        case '1':
+        case '2':
+        case '3':
+        case '4':
+        case '5':
+        case '6':
+        case '7':
+        case '8':
+        case '9':
+          state.pad *= 10;
+          state.pad += format[i] - '0';
+          break;
+
         // set short/char
         case 'h':
           if (state.length == _LIBC_PRINTF_LENGTH_NORMAL)
@@ -375,7 +459,7 @@ int printf(const char *format, ...)
         // signed decimal
         case 'd':
         case 'i':
-          FORMAT_NUM(_libc_puti64, signed, 10);
+          FORMAT_NUM(_libc_puti64, _libc_iwidth, signed, 10);
           CLEAR_STATE();
           break;
 
@@ -386,13 +470,13 @@ int printf(const char *format, ...)
             putchar('0');
             len++;
           }
-          FORMAT_NUM(_libc_putu64, unsigned, 8);
+          FORMAT_NUM(_libc_putu64, _libc_uwidth, unsigned, 8);
           CLEAR_STATE();
           break;
 
         // unsigned decimal
         case 'u':
-          FORMAT_NUM(_libc_putu64, unsigned, 10);
+          FORMAT_NUM(_libc_putu64, _libc_uwidth, unsigned, 10);
           CLEAR_STATE();
           break;
 
@@ -403,7 +487,7 @@ int printf(const char *format, ...)
             _libc_puts_nonl("0x");
             len += 2;
           }
-          FORMAT_NUM(_libc_putu64, unsigned, 16);
+          FORMAT_NUM(_libc_putu64, _libc_uwidth, unsigned, 16);
           CLEAR_STATE();
           break;
 
