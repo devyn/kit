@@ -23,6 +23,7 @@ extern uint64_t *execute(void (**ip)(), uint64_t *dp);
 extern void push();
 
 extern void see_stub();
+extern void dump_stub();
 
 extern void add();
 extern void sub();

@@ -51,6 +51,14 @@ see_stub:
   call see
   NEXT
 
+.global dump_stub
+dump_stub:
+  mov 0(%rbx), %rsi
+  mov 8(%rbx), %rdi
+  add $16, %rbx
+  call dump
+  NEXT
+
 .global add
 add: # ( n m -- n+m )
   mov 0(%rbx), %rax

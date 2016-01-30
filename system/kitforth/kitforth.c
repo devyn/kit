@@ -223,6 +223,7 @@ void init_dict() {
   dict = calloc(dict_cap, sizeof(struct dict_entry *));
 
   append_primitive("see",       &see_stub);
+  append_primitive("dump",      &dump_stub);
 
   append_primitive("+",         &add);
   append_primitive("-",         &sub);
@@ -644,6 +645,48 @@ void see() {
   else {
     printf("\n%s not defined", word);
   }
+}
+
+void dump(char *ptr, uint64_t len) {
+  // XXX: lol this is so bad
+
+  char *cur = ptr;
+  uint64_t counter = 0;
+
+  while (cur < ptr + len) {
+    if (counter == 16) {
+      fputs("\x1b[1;30m ", stdout);
+      for (char *cur_inner = cur - counter; cur_inner < cur; cur_inner++) {
+        putchar(*cur_inner > 32 ? *cur_inner : '.');
+      }
+      fputs("\x1b[0m ", stdout);
+      counter = 0;
+    }
+
+    if (counter == 0) {
+      putchar('\n');
+    }
+
+    if (counter % 2 == 0) putchar(' ');
+    printf("%02hhx", *cur);
+
+    cur++;
+    counter++;
+  }
+
+  if (counter < 16) {
+    for (uint64_t i = 0; i < 16 - counter; i++) {
+      if (counter + i % 2 == 0) putchar(' ');
+      putchar(' ');
+      putchar(' ');
+    }
+  }
+
+  fputs("\x1b[1;30m ", stdout);
+  for (char *cur_inner = cur - counter; cur_inner < cur; cur_inner++) {
+    putchar(*cur_inner > 32 ? *cur_inner : '.');
+  }
+  fputs("\x1b[0m ", stdout);
 }
 
 uint64_t parse(char delimiter, char **addr) {
