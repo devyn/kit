@@ -145,4 +145,15 @@ static inline void *syscall_adjust_heap(int64_t amount)
   return ret;
 }
 
+static inline void *syscall_mmap_archive()
+{
+# define SYSCALL_MMAP_ARCHIVE 0x8
+
+  void *ret;
+
+  SYSCALL0(SYSCALL_MMAP_ARCHIVE, ret);
+
+  return ret;
+}
+
 #endif
