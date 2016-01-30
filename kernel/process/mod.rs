@@ -633,7 +633,7 @@ pub mod ffi {
     }
 
     #[no_mangle]
-    pub unsafe extern fn process_exit(status: c_int) {
+    pub unsafe extern fn process_exit(status: c_int) -> ! {
         if let Some(process) = super::current() {
             process.borrow_mut().exit(status);
 
@@ -652,8 +652,37 @@ pub mod ffi {
             }
 
             scheduler::tick();
+            unreachable!();
         } else {
             panic!("C called process_exit() but there is no current process");
+        }
+    }
+
+    #[no_mangle]
+    pub unsafe extern fn process_signal(pid: uint32_t, signal: c_int) -> c_int {
+        if let Some(process) = super::by_id(pid) {
+            // Case 1: this is the current process, so just exit
+            if let Some(current_process) = super::current() {
+                if current_process.borrow().id == process.borrow().id {
+                    process_exit(signal);
+                    // the function will not return!
+                }
+            }
+
+            // Case 2: we're telling another process to exit.
+            process.borrow_mut().exit(signal);
+
+            // Let waiting processes know
+            for &pid in &process.borrow().waiting {
+                if let Some(process_waiting) = super::by_id(pid) {
+                    let _ = scheduler::awaken(process_waiting);
+                }
+            }
+
+            1
+        } else {
+            // Case 3: we can't find the process.
+            0
         }
     }
 

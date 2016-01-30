@@ -16,7 +16,11 @@
 #include "ps2_8042.h"
 #include "memory.h"
 #include "scheduler.h"
+#include "process.h"
 #include "debug.h"
+
+// We use this to tell if we came from user code
+#define USER_CD64_SEL 0x2b
 
 // Static definitions & function prototypes
 static interrupt_gate_t *interrupt_table;
@@ -244,14 +248,24 @@ void interrupt_handler(interrupt_stack_t stack) {
     case 0xd:
       DEBUG_FORMAT("general protection fault, rip=%#lx, err_code=%#lx, cs=%#lx",
           stack.rip, stack.err_code, stack.cs);
-      while (true) hlt();
+      if (stack.cs == USER_CD64_SEL) {
+        process_signal(process_current_id(), SIG_BAD_MEM_ACCESS);
+      }
+      else {
+        while (true) hlt();
+      }
     case 0xe:
       {
         uint64_t cr2;
         __asm__ volatile("mov %%cr2, %0" : "=r" (cr2));
 
         DEBUG_FORMAT("page fault, rip=%#lx, cr2=%#lx", stack.rip, cr2);
-        while (true) hlt();
+        if (stack.cs == USER_CD64_SEL) {
+          process_signal(process_current_id(), SIG_BAD_MEM_ACCESS);
+        }
+        else {
+          while (true) hlt();
+        }
       }
     case INTERRUPT_INDEX_IRQ + 0:
       // Timer

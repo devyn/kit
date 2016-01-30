@@ -33,4 +33,8 @@ void *process_adjust_heap(int64_t amount);
 
 void process_exit(int status);
 
+#define SIG_BAD_MEM_ACCESS -2
+
+int process_signal(process_id_t pid, int signal);
+
 #endif
