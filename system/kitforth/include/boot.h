@@ -14,6 +14,6 @@
 #ifndef BOOT_H
 #define BOOT_H
 
-char *boot_source;
+char boot_source[1]; // to keep compiler happy; shouldn't matter
 
 #endif

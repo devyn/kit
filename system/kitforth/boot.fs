@@ -18,17 +18,22 @@
 : space ( -- ) bl emit ; \ emit space
 
 \ Stack manipulation.
+: -rot ( x y z -- z x y ) rot rot ;
 : nip ( x y -- y ) swap drop ;
 : tuck ( x y -- y x y ) swap over ;
 : 2drop ( x y -- ) drop drop ;
 : 2dup ( x y -- x y ) over over ;
+: 2swap ( a b c d -- c d a b ) rot >r rot r> ;
 
 \ Logic extensions.
 : not ( flag -- !flag ) -1 xor ;
+: 0= ( n -- flag ) 0 = ;
 
 \ Arithmetic extensions.
 : / ( n m -- n/m ) /mod nip ;
 : mod ( n m -- n%m ) /mod drop ;
+: 1+ ( n -- n+1 ) 1 + ;
+: 1- ( n -- n-1 ) 1 - ;
 
 \ Return stack manipulation.
 : 2>r ( x y -- ) swap r> swap >r swap >r >r ;
@@ -36,6 +41,9 @@
 : 2r@ ( -- x y ) r> 2r> over over 2>r rot >r ;
 : r>drop ( -- ) r> r> drop >r ;
 : 2r>drop ( -- ) r> 2r> drop drop >r ;
+
+\ You shall not escape!
+: exit ( -- ) postpone (ret) ; immediate
 
 \ Backward MARK/RESOLVE. Use to BRANCH backward.
 : <mark ( -- addr ) cp ;
@@ -109,8 +117,10 @@
    r> r@ swap >r
 ;
 : j ( -- j ) \ outer loop index
-   r> 2r> r@ rot rot 2>r swap >r
+   r> 2r> r@ -rot 2>r swap >r
 ;
+
+: unloop ( -- ) r> 2r>drop >r ;
 
 \ Allocation.
 
@@ -133,6 +143,9 @@
 
 : , ( value -- )
    (here) @ aligned tuck ! cell+ (here) !
+;
+: c, ( char -- )
+   (here) @ tuck c! char+ (here) !
 ;
 : allot ( n -- )
    (here) @ + (here) !
@@ -159,6 +172,93 @@
 ; immediate
 : ." ( -- ) postpone s" postpone type ; immediate
 : .( ( -- ) [char] ) parse type ; immediate
+
+\ Compare two strings.
+\ If the first string < the second string, returns -1.
+\ If the first string > the second string, returns 1.
+\ If they are equal, returns 0.
+: compare ( c-addr1 u1 c-addr2 u2 -- n )
+   rot >r >r
+   begin
+      \ make sure we haven't run out of string!
+      2r@
+      0 > swap
+      0 > and
+   while
+      2dup c@ swap c@ swap
+      2dup = not if
+         2r>drop
+         > if 1 else -1 then
+         -rot 2drop
+         exit
+      else
+         2drop
+      then
+      2r> 1- swap 1- swap 2>r
+   repeat
+   \ they must be equal up to this point, so go by difference in length
+   2drop
+   2r> 2dup = not if
+      > if 1 else -1 then
+   else
+      2drop 0
+   then
+;
+
+\ Archive utilities.
+0 variable (system.kit) \ archive pointer
+: system.kit ( -- addr )
+   (system.kit) @ 0= if
+      0 8 syscall \ SYSCALL_MMAP_ARCHIVE
+      (system.kit) !
+   then
+   (system.kit) @
+;
+: archive-#entries ( -- n )
+   system.kit cell+ @
+;
+: archive-entry0 ( -- addr )
+   system.kit 2 cells +
+;
+: archive-next ( addr -- next-addr )
+   2 cells + dup @ + cell+
+;
+: archive-entry.offset ( addr -- n )
+   @
+;
+: archive-entry.length ( addr -- n )
+   cell+ @
+;
+: archive-entry.name ( addr -- c-addr u )
+   2 cells + dup @ swap cell+ swap
+;
+: archive-entry.body ( addr -- c-addr u )
+   dup archive-entry.length >r
+   archive-entry.offset system.kit +
+   r>
+;
+: archive-scan ( c-addr u -- addr, 0 if not found )
+   archive-entry0
+   archive-#entries 0 do
+      >r 2dup r@ archive-entry.name compare 0= if
+         2drop r> unloop exit
+      else
+         r> archive-next
+      then
+   loop
+   drop 2drop 0 \ not found
+;
+: ls ( -- )
+   archive-entry0
+   archive-#entries 0 do
+      dup archive-entry.name cr type
+      archive-next
+   loop
+   drop
+;
+: read ( c-addr u -- )
+   archive-scan dup if archive-entry.body else 0 then
+;
 
 \ Fun tests!
 
