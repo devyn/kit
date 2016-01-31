@@ -161,67 +161,62 @@ bit_rshift: # ( x u -- x )
 
 .global equal
 equal: # ( x y -- flag )
-  mov 0(%rbx), %rax
-  mov 8(%rbx), %rcx
-  xor %rdx, %rdx # false
-  cmp %rax, %rcx
-  jne .Lne
-  not %rdx # true
-.Lne:
-  add $8, %rbx
-  mov %rdx, (%rbx)
+  mov  0(%rbx), %rax
+  mov  8(%rbx), %rcx
+  xor  %rdx, %rdx # false
+  cmp  %rax, %rcx
+  sete %dl
+  imul $-1, %rdx
+  add  $8, %rbx
+  mov  %rdx, (%rbx)
   NEXT
 
 .global gt
 gt: # ( x y -- flag )
-  mov 0(%rbx), %rax
-  mov 8(%rbx), %rcx
-  mov $-1, %rdx # true
-  cmp %rax, %rcx
-  jg .Lgt
-  not %rdx # true
-.Lgt:
-  add $8, %rbx
-  mov %rdx, (%rbx)
+  mov  0(%rbx), %rax
+  mov  8(%rbx), %rcx
+  xor  %rdx, %rdx
+  cmp  %rax, %rcx
+  setg %dl
+  imul $-1, %rdx
+  add  $8, %rbx
+  mov  %rdx, (%rbx)
   NEXT
 
 .global gte
 gte: # ( x y -- flag )
-  mov 0(%rbx), %rax
-  mov 8(%rbx), %rcx
-  mov $-1, %rdx # true
-  cmp %rax, %rcx
-  jge .Lgte
-  not %rdx # true
-.Lgte:
-  add $8, %rbx
-  mov %rdx, (%rbx)
+  mov   0(%rbx), %rax
+  mov   8(%rbx), %rcx
+  xor   %rdx, %rdx
+  cmp   %rax, %rcx
+  setge %dl
+  imul  $-1, %rdx
+  add   $8, %rbx
+  mov   %rdx, (%rbx)
   NEXT
 
 .global lt
 lt: # ( x y -- flag )
-  mov 0(%rbx), %rax
-  mov 8(%rbx), %rcx
-  mov $-1, %rdx # true
-  cmp %rax, %rcx
-  jl .Llt
-  not %rdx # false
-.Llt:
-  add $8, %rbx
-  mov %rdx, (%rbx)
+  mov  0(%rbx), %rax
+  mov  8(%rbx), %rcx
+  xor  %rdx, %rdx
+  cmp  %rax, %rcx
+  setl %dl
+  imul $-1, %rdx
+  add  $8, %rbx
+  mov  %rdx, (%rbx)
   NEXT
 
-.global lt
+.global lte
 lte: # ( x y -- flag )
-  mov 0(%rbx), %rax
-  mov 8(%rbx), %rcx
-  mov $-1, %rdx # true
-  cmp %rax, %rcx
-  jle .Llte
-  not %rdx # false
-.Llte:
-  add $8, %rbx
-  mov %rdx, (%rbx)
+  mov   0(%rbx), %rax
+  mov   8(%rbx), %rcx
+  xor   %rdx, %rdx
+  cmp   %rax, %rcx
+  setle %dl
+  imul  $-1, %rdx
+  add   $8, %rbx
+  mov   %rdx, (%rbx)
   NEXT
 
 .global fetch
@@ -262,6 +257,44 @@ move: # ( src-addr dest-addr u -- ); move u bytes from src-addr to dest-addr
   mov 0x10(%rbx), %rsi
   add $24, %rbx
   call memmove
+  NEXT
+
+.global allocate_f
+allocate_f: # ( u -- a-addr ior ); ior = -1 on failure
+  mov  (%rbx), %rdi
+  call malloc
+  test %rax, %rax
+  jz .Lmalloc_failed
+  mov  %rax, (%rbx)
+  sub  $8, %rbx
+  movq $0, (%rbx)
+  NEXT
+.Lmalloc_failed:
+  movq $0, (%rbx)
+  sub  $8, %rbx
+  movq $-1, (%rbx)
+  NEXT
+
+.global free_f
+free_f: # ( a-addr -- u )
+  mov  (%rbx), %rdi
+  call free
+  movq $0, (%rbx)
+  NEXT
+
+.global resize_f
+resize_f: # ( a-addr1 u -- a-addr2 ior )
+  mov  0x00(%rbx), %rsi
+  mov  0x08(%rbx), %rdi
+  call realloc
+  test %rax, %rax
+  jz .Lrealloc_failed
+  mov  %rax, 0x08(%rbx)
+  movq $0,   0x00(%rbx)
+  NEXT
+.Lrealloc_failed:
+  movq $0,   0x08(%rbx)
+  movq $-1,  0x00(%rbx)
   NEXT
 
 .global dup
@@ -320,6 +353,14 @@ fetch_rstack: # ( -- x ); copy value from return stack
   mov (%rsp), %rax
   sub $8, %rbx
   mov %rax, (%rbx)
+  NEXT
+
+.global state
+state: # ( -- flag )
+  mov  compiling, %rax
+  imul $-1, %rax
+  sub  $8, %rbx
+  mov  %rax, (%rbx)
   NEXT
 
 .global cp_stub

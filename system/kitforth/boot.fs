@@ -163,12 +163,19 @@
 \ Strings.
 : s" ( -- c-addr u )
    [char] " parse        \ get input string
-   postpone (string)     \ (string) creates the string pointer at runtime
-   dup cp,               \ write the length of the string
-   cp swap               \ this is where we're going to put the string
-   dup aligned 1 cells / \ number of cells we need to allocate for the string
-   0 ?do 0 cp, loop      \ allocate them
-   move                  \ put the string in
+   state if              \ if compiling:
+      postpone (string)     \ (string) creates the string pointer at runtime
+      dup cp,               \ write the length of the string
+      cp swap               \ this is where we're going to put the string
+      dup aligned 1 cells / \ number of cells we need to allocate for the string
+      0 ?do 0 cp, loop      \ allocate them
+      move                  \ put the string in
+   else                  \ if interpreting:
+      dup
+      allocate drop swap    \ use heap space
+      2dup 2>r move         \ put the string in
+      2r>                   \ leave the new string behind
+   then
 ; immediate
 : ." ( -- ) postpone s" postpone type ; immediate
 : .( ( -- ) [char] ) parse type ; immediate
@@ -256,8 +263,14 @@
    loop
    drop
 ;
-: read ( c-addr u -- )
+: read ( c-addr1 u1 -- c-addr2 u2 )
    archive-scan dup if archive-entry.body else 0 then
+;
+: cat ( c-addr u -- )
+   read dup if cr type else 2drop ." File not found!" then
+;
+: xxd ( c-addr u -- )
+   read dup if dump else 2drop ." File not found!" then
 ;
 
 \ Fun tests!

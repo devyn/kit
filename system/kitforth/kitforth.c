@@ -151,8 +151,6 @@ bool append_primitive(const char *name, void (*code)()) {
 
     last_word = &dict[dict_len];
 
-    //printf("PRIMITIVE %s = %p.\n", last_word->name, last_word->value.as_ptr);
-
     dict_len++;
     return true;
   }
@@ -179,8 +177,6 @@ bool append_code(const char *name) {
 
     last_word = &dict[dict_len];
 
-    //printf("CODE      %s = %p.\n", last_word->name, last_word->value.as_ptr);
-
     return true;
   }
   else {
@@ -200,8 +196,6 @@ bool append_constant(const char *name, uint64_t value) {
 
     dict[dict_len].value.as_int = value;
 
-    //printf("CONSTANT  %s = %ld.\n", dict[dict_len].name, value);
-
     last_word = &dict[dict_len];
 
     dict_len++;
@@ -220,7 +214,7 @@ void immediate() {
 void init_dict() {
   dict_cap = 1024;
 
-  dict = calloc(dict_cap, sizeof(struct dict_entry *));
+  dict = calloc(dict_cap, sizeof(struct dict_entry));
 
   append_primitive("see",       &see_stub);
   append_primitive("dump",      &dump_stub);
@@ -247,6 +241,9 @@ void init_dict() {
   append_primitive("c@",        &fetch_char);
   append_primitive("c!",        &store_char);
   append_primitive("move",      &move);
+  append_primitive("allocate",  &allocate_f);
+  append_primitive("free",      &free_f);
+  append_primitive("resize",    &resize_f);
 
   append_primitive("dup",       &dup);
   append_primitive("swap",      &swap);
@@ -257,6 +254,7 @@ void init_dict() {
   append_primitive("r>",        &from_rstack);
   append_primitive("r@",        &fetch_rstack);
 
+  append_primitive("state",     &state);
   append_primitive("cp",        &cp_stub);
   append_primitive("cp,",       &cp_comma_stub);
   append_primitive("branch",    &branch);
@@ -603,13 +601,7 @@ void endword() {
   dict_len++;
 }
 
-void see() {
-  char word[WORD_LENGTH + 1];
-
-  if (!read_word(word)) return;
-
-  upcase(word);
-
+void see_word(char *word) {
   struct dict_entry *entry = find_in_dict(word);
 
   if (entry != NULL) {
@@ -647,6 +639,16 @@ void see() {
   }
 }
 
+void see() {
+  char word[WORD_LENGTH + 1];
+
+  if (!read_word(word)) return;
+
+  upcase(word);
+
+  see_word(word);
+}
+
 void dump(char *ptr, uint64_t len) {
   // XXX: lol this is so bad
 
@@ -657,9 +659,9 @@ void dump(char *ptr, uint64_t len) {
     if (counter == 16) {
       fputs("\x1b[1;30m ", stdout);
       for (char *cur_inner = cur - counter; cur_inner < cur; cur_inner++) {
-        putchar(*cur_inner > 32 ? *cur_inner : '.');
+        putchar(*cur_inner >= 32 ? *cur_inner : '.');
       }
-      fputs("\x1b[0m ", stdout);
+      fputs("\x1b[0m", stdout);
       counter = 0;
     }
 
@@ -676,7 +678,7 @@ void dump(char *ptr, uint64_t len) {
 
   if (counter < 16) {
     for (uint64_t i = 0; i < 16 - counter; i++) {
-      if (counter + i % 2 == 0) putchar(' ');
+      if ((counter + i) % 2 == 0) putchar(' ');
       putchar(' ');
       putchar(' ');
     }
@@ -684,9 +686,9 @@ void dump(char *ptr, uint64_t len) {
 
   fputs("\x1b[1;30m ", stdout);
   for (char *cur_inner = cur - counter; cur_inner < cur; cur_inner++) {
-    putchar(*cur_inner > 32 ? *cur_inner : '.');
+    putchar(*cur_inner >= 32 ? *cur_inner : '.');
   }
-  fputs("\x1b[0m ", stdout);
+  fputs("\x1b[0m", stdout);
 }
 
 uint64_t parse(char delimiter, char **addr) {

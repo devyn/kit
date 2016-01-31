@@ -47,6 +47,9 @@ extern void store();
 extern void fetch_char();
 extern void store_char();
 extern void move();
+extern void allocate_f();
+extern void free_f();
+extern void resize_f();
 
 extern void dup();
 extern void swap();
@@ -57,6 +60,7 @@ extern void to_rstack();
 extern void from_rstack();
 extern void fetch_rstack();
 
+extern void state();
 extern void cp_stub();
 extern void cp_comma_stub();
 extern void branch();
