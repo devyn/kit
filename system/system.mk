@@ -40,6 +40,8 @@ build/system/bin/.dir: build/system/.dir
 build/system/hello.txt: system/hello.txt build/system/.dir
 	cp $< $@
 
+SYSTEM_APPS=
+
 include system/libc/libc.mk
 include system/util/util.mk
 include system/shell/shell.mk
@@ -48,7 +50,8 @@ include system/kitforth/kitforth.mk
 build/system.kit: build/system/hello.txt \
 	                ${SYSTEM_UTILS} \
 	                build/system/bin/shell \
-									build/system/bin/kitforth
+									build/system/bin/kitforth \
+									${SYSTEM_FORTH}
 	ruby resources/build-util/kit-archive.rb build/system \
 		$(patsubst build/system/%,%,$^) \
 		> $@

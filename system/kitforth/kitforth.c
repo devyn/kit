@@ -24,6 +24,7 @@
 
 char line[4096];
 char *in = NULL;
+uint64_t in_length = 0;
 
 #define DATA_STACK_SIZE 512
 #define DATA_STACK_SAFE 504
@@ -43,6 +44,13 @@ void upcase(char *str) {
       *str -= 0x20; // offset lower -> upper
     }
     str++;
+  }
+}
+
+void skip(char c) {
+  while (*in == (c) && in_length > 0) {
+    in++;
+    in_length--;
   }
 }
 
@@ -100,6 +108,7 @@ int main(UNUSED int argc, UNUSED char **argv) {
     fputs("\x1b[0m", stdout);
     if (ok) {
       in = line;
+      in_length = strlen(line);
       consume_line();
     }
     if (ok) {
@@ -218,6 +227,7 @@ void init_dict() {
 
   append_primitive("see",       &see_stub);
   append_primitive("dump",      &dump_stub);
+  append_primitive("evaluate",  &evaluate_stub);
 
   append_primitive("+",         &add);
   append_primitive("-",         &sub);
@@ -291,11 +301,11 @@ void init_dict() {
   append_primitive("(ret)",  &ret);
 
   in = boot_source;
+  in_length = strlen(boot_source);
   ok = true;
 
-  while (ok && *in != '\0') {
+  while (ok && in_length > 0) {
     consume_line();
-    if (*in == '\n') in++;
   }
 }
 
@@ -323,11 +333,11 @@ bool read_word(char *word) {
   int i;
 
   for (i = 0;
-       (*in != '\0' &&
+       (in_length > 0 &&
         *in != '\n' &&
         *in != ' ' &&
         i < WORD_LENGTH);
-       i++, in++) {
+       i++, in++, in_length--) {
 
     word[i] = *in;
   }
@@ -339,7 +349,7 @@ bool read_word(char *word) {
 int read_charword() {
   char word[WORD_LENGTH + 1];
 
-  while (*in == ' ');
+  skip(' ');
 
   if (!read_word(word)) {
     return 0;
@@ -357,14 +367,14 @@ void compile(char *word);
 void consume_line() {
   char word[WORD_LENGTH + 1];
 
-  while (ok && *in != '\0' && *in != '\n') {
-    while (*in == ' ') in++;
+  while (ok && in_length > 0 && *in != '\n') {
+    skip(' ');
 
     if (!read_word(word)) continue;
 
     upcase(word);
 
-    while (*in == ' ') in++;
+    skip(' ');
 
     if (compiling) {
       compile(word);
@@ -374,10 +384,31 @@ void consume_line() {
     }
   }
 
+  if (in_length > 0 && *in == '\n') {
+    in++;
+    in_length--;
+  }
+
   if (!ok) {
     // Reset stack pointer on error.
     dp = data_stack + DATA_STACK_SAFE;
   }
+}
+
+// For nested use.
+void evaluate(char *addr, uint64_t len) {
+  char *old_in = in;
+  uint64_t old_in_length = in_length;
+
+  in = addr;
+  in_length = len;
+
+  while (ok && in_length > 0) {
+    consume_line();
+  }
+
+  in = old_in;
+  in_length = old_in_length;
 }
 
 void interpret_dict_entry(struct dict_entry *entry) {
@@ -694,13 +725,17 @@ void dump(char *ptr, uint64_t len) {
 uint64_t parse(char delimiter, char **addr) {
   *addr = in;
 
-  while (*in != '\0' && *in != '\n' && *in != delimiter) {
+  while (in_length > 0 && *in != delimiter) {
     in++;
+    in_length--;
   }
 
   uint64_t len = in - *addr;
 
-  if (*in == delimiter) in++;
+  if (in_length > 0 && *in == delimiter) {
+    in++;
+    in_length--;
+  }
 
   return len;
 }

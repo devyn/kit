@@ -24,6 +24,7 @@ extern void push();
 
 extern void see_stub();
 extern void dump_stub();
+extern void evaluate_stub();
 
 extern void add();
 extern void sub();

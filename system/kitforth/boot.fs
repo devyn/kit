@@ -273,22 +273,10 @@
    read dup if dump else 2drop ." File not found!" then
 ;
 
-\ Fun tests!
+\ Including Forth source.
 
-: testline ( size -- )
-   0 do
-     i .
-   loop
-;
-
-: testbox ( size -- )
-   dup 0 do
-     dup 0 do
-       [char] | emit j . i .
-     loop
-     cr
-   loop
-   drop
+: included ( ... c-addr u -- ... )
+   read dup if evaluate else 2drop ." File not found!" then
 ;
 
 cr

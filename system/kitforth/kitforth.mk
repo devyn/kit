@@ -13,9 +13,11 @@
 
 KFORTH_OBJECTS := $(patsubst %.c,build/%.o,$(wildcard system/kitforth/*.c))
 KFORTH_OBJECTS += $(patsubst %.S,build/%.o,$(wildcard system/kitforth/*.S))
-KFORTH_OBJECTS += $(patsubst %.fs,build/%.fs.o,$(wildcard system/kitforth/*.fs))
+KFORTH_OBJECTS += build/system/kitforth/boot.fs.o
 
-all-kitforth: build/system/bin/kitforth
+SYSTEM_FORTH := $(patsubst %.fs,build/%.fs,$(wildcard system/kitforth/*.fs))
+
+all-kitforth: build/system/bin/kitforth ${SYSTEM_FORTH}
 
 clean-kitforth:
 	rm -rf build/system/kitforth
@@ -48,3 +50,6 @@ system/kitforth/%.fs.c: system/kitforth/%.fs build/system/kitforth/.dir
 		> $@
 
 system/kitforth/%.fs:
+
+build/system/kitforth/%.fs: system/kitforth/%.fs
+	cp $< $@

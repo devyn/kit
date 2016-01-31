@@ -59,6 +59,16 @@ dump_stub:
   call dump
   NEXT
 
+.global evaluate_stub
+evaluate_stub:
+  mov 0(%rbx), %rsi
+  mov 8(%rbx), %rdi
+  add $16, %rbx
+  mov %rbx, dp
+  call evaluate
+  mov dp, %rbx
+  NEXT
+
 .global add
 add: # ( n m -- n+m )
   mov 0(%rbx), %rax
