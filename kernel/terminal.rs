@@ -360,11 +360,8 @@ impl Terminal for Vga {
 
 impl fmt::Write for Vga {
     fn write_char(&mut self, ch: char) -> fmt::Result {
-        let mut buf = [0u8, 4];
-
-        let size = try!(ch.encode_utf8(&mut buf).ok_or(fmt::Error));
-
-        try!(self.write_raw_bytes(&buf[0..size]));
+        let mut buf = [0; 4];
+        try!(self.write_raw_bytes(ch.encode_utf8(&mut buf).as_bytes()));
         try!(self.flush());
         Ok(())
     }
@@ -583,11 +580,8 @@ impl<T: Terminal> Terminal for Ansi<T> {
 
 impl<T: Terminal> fmt::Write for Ansi<T> {
     fn write_char(&mut self, ch: char) -> fmt::Result {
-        let mut buf = [0u8, 4];
-
-        let size = try!(ch.encode_utf8(&mut buf).ok_or(fmt::Error));
-
-        try!(self.write_raw_bytes(&buf[0..size]));
+        let mut buf = [0; 4];
+        try!(self.write_raw_bytes(ch.encode_utf8(&mut buf).as_bytes()));
         try!(self.flush());
         Ok(())
     }

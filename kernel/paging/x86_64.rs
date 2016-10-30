@@ -28,7 +28,7 @@ use constants::{KERNEL_OFFSET, KERNEL_LOW_START, KERNEL_LOW_END};
 
 use super::generic::{self, Page, PagesetExt, PageType};
 
-static PAGE_SIZE: usize = 4096;
+const PAGE_SIZE: usize = 4096;
 
 /// This is the only safe way to get the physical address of a kernel pointer
 /// during paging operations.

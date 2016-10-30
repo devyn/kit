@@ -18,9 +18,9 @@
 #![crate_name="kernel"]
 #![crate_type="lib"]
 
-#![feature(lang_items, asm, box_syntax, step_by, ptr_as_ref)]
+#![feature(lang_items, asm, box_syntax, step_by)]
 #![feature(unicode, box_patterns, alloc, collections)]
-#![feature(iter_arith, repr_simd)]
+#![feature(iter_arith, repr_simd, drop_types_in_const)]
 
 #![allow(improper_ctypes)]
 
@@ -142,10 +142,6 @@ pub extern fn kernel_main() -> ! {
     }
 
     unreachable!();
-}
-
-#[lang = "stack_exhausted"]
-extern fn stack_exhausted() {
 }
 
 #[lang = "eh_personality"]

@@ -10,90 +10,219 @@
  *
  ******************************************************************************/
 
-//! Kernel memory management.
+//! Physical memory management and kernel heap.
 
-use paging;
+use core::mem;
+use core::cmp::Ordering;
+use collections::{Vec, BTreeMap, BinaryHeap};
 
-use c_ffi::{size_t, uint64_t, c_void};
+use paging::{Pageset, GenericPageset};
+use multiboot::MmapEntry;
+use process::Id as ProcessId;
+
+/// The first "safe" physical address. Memory below this is not likely to be
+/// safe for general use, and may include parts of the kernel image among other
+/// things.
+const SAFE_BOUNDARY: usize = 0x400000;
+
+const INITIAL_HEAP_LENGTH: usize = 131072;
+
+extern {
+    static mut MEMORY_INITIAL_HEAP: [u8; INITIAL_HEAP_LENGTH];
+}
+
+static mut KERNEL_HEAP: KernelHeap = KernelHeap::InitialHeap(0);
+
+enum KernelHeap {
+    InitialHeap(usize),
+    LargeHeap(HeapState)
+}
+
+struct HeapState {
+    start: *const u8,
+    end: *const u8,
+    length: usize,
+    can_grow: bool
+}
+
+static mut REGIONS: Option<BTreeMap<PageNumber, Region>> = None;
+static mut FREE_REGIONS: Option<BinaryHeap<FreeRegion>> = None;
+
+type PageNumber = usize;
+type PageCount = usize;
+
+struct PhysicalMemoryState {
+    regions: BTreeMap<PageNumber, Region>,
+    free_regions: BinaryHeap<FreeRegion>
+}
+
+struct Region {
+    start: PageNumber,
+    length: PageCount,
+    users: Vec<ProcessId>
+}
+
+#[derive(PartialEq, Eq)]
+struct FreeRegion {
+    start: PageNumber,
+    length: PageCount
+}
+
+impl PartialOrd for FreeRegion {
+    fn partial_cmp(&self, other: &FreeRegion) -> Option<Ordering> {
+        Some(self.cmp(other))
+    }
+}
+
+impl Ord for FreeRegion {
+    fn cmp(&self, other: &FreeRegion) -> Ordering {
+        if self.length == other.length {
+            self.start.cmp(&other.start)
+        } else {
+            self.length.cmp(&other.length)
+        }
+    }
+}
+
+// remove owner on drop, if no more users then add free region
+pub struct PhysicalMemory {
+    start: PageNumber,
+    length: PageCount,
+    owner: ProcessId
+}
 
 /// Loads the memory map information into the region tree in order to know where
 /// in physical memory it's safe to allocate fresh pages.
 pub unsafe fn initialize(mmap_buffer: *const u8, mmap_length: u32) {
-    ffi::memory_initialize(mmap_buffer, mmap_length)
+    let mut current_mmap = mmap_buffer;
+    let mmap_end = mmap_buffer.offset(mmap_length as isize);
+
+    let page_size = Pageset::page_size();
+
+    let mut free_regions = BinaryHeap::with_capacity(16);
+
+    while current_mmap < mmap_end {
+        let entry_ptr: *const MmapEntry = mem::transmute(current_mmap);
+        let entry = entry_ptr.as_ref().unwrap();
+
+        current_mmap = current_mmap.offset(entry.size as isize + 4);
+
+        let addr = entry.addr as usize;
+        let len  = entry.len  as usize;
+
+        // Align physical base address to page size.
+        let mut physical_base =
+            if addr % page_size != 0 {
+                (addr / page_size + 1) * page_size
+            } else {
+                addr
+            };
+
+        // Remove remainder from length and count pages.
+        let mut pages = (len - (addr % page_size)) / page_size;
+
+        // If the base starts before SAFE_BOUNDARY, remove the pages before that
+        // (and make sure we still have pages left).
+        if physical_base < SAFE_BOUNDARY {
+            let diff = (SAFE_BOUNDARY - physical_base) / page_size;
+
+            if diff < pages {
+                physical_base += diff * page_size;
+                pages         -= diff;
+            } else {
+                continue; // skip this entry
+            }
+        }
+
+        // If the entry is marked as available and has at least one page, add it
+        // to the free regions.
+        if entry.is_available() && pages > 0 {
+            free_regions.push(FreeRegion {
+                start: physical_base / page_size,
+                length: pages
+            });
+        }
+    }
+
+    FREE_REGIONS = Some(free_regions);
 }
 
-/// Enables the 'large' (non-static) heap. Requires paging to have been
-/// initialized first.
-pub fn enable_large_heap() {
-    assert!(paging::initialized());
+const LARGE_HEAP_START: usize = 0xffff_ffff_8100_0000;
+const BUFZONE_SIZE: usize = 0x4000;
 
-    unsafe { ffi::memory_enable_large_heap(); }
-}
-
-/// Allocate from the heap.
 pub unsafe fn allocate(size: usize, align: usize) -> *mut u8 {
-    let ptr = ffi::memory_alloc_aligned(size as size_t, align as size_t);
+    match KERNEL_HEAP {
+        KernelHeap::InitialHeap(ref mut counter) =>
+            initial_heap_allocate(counter, size, align),
+        KernelHeap::LargeHeap(ref mut state) =>
+            large_heap_allocate(state, size, align)
+    }
+}
 
-    if ptr.is_null() {
-        panic!("out of memory");
+pub unsafe fn deallocate(_ptr: *mut u8, _size: usize, _align: usize) {
+    // TODO
+}
+
+fn initial_heap_allocate(counter: &mut usize, size: usize, align: usize)
+                         -> *mut u8 {
+
+    let mut new_counter = *counter;
+
+    // Align the counter to the requested alignment
+    if new_counter % align != 0 {
+        new_counter += align - (new_counter % align);
     }
 
-    ptr as *mut u8
+    if new_counter + size >= INITIAL_HEAP_LENGTH {
+        panic!("out of memory in initial heap!");
+    }
+
+    let ptr = unsafe { (&mut MEMORY_INITIAL_HEAP[new_counter]) as *mut u8 };
+
+    *counter = new_counter + size;
+
+    ptr
 }
 
-/// Deallocate to the heap.
-pub unsafe fn deallocate(ptr: *mut u8, _size: usize, _align: usize) {
-    ffi::memory_free(ptr as *mut c_void);
+fn large_heap_allocate(state: &mut HeapState, size: usize, align: usize)
+                       -> *mut u8 {
+    unimplemented!()
 }
 
-/// Acquire a contiguous physical memory region at most `pages` long.
-///
-/// Returns `None` if are no remaining free physical memory regions.
-///
-/// Otherwise, returns `Some((paddr, acq_pages))` where `paddr` is the first
-/// physical address, and `acq_pages` is the number of actual pages acquired
-/// equal to or less than the requested `pages`.
+pub fn enable_large_heap() {
+    unimplemented!()
+}
+
 pub fn acquire_region(pages: usize) -> Option<(usize, usize)> {
-    let mut paddr: uint64_t = 0;
-
-    let acq_pages = unsafe {
-        ffi::memory_free_region_acquire(pages as uint64_t, &mut paddr)
-    };
-
-    if acq_pages == 0 {
-        None
-    } else {
-        Some((paddr as usize, acq_pages as usize))
-    }
+    unimplemented!()
 }
 
-/// Release a contiguous physical memory region to the pool for allocation
-/// later.
 pub fn release_region(paddr: usize, pages: usize) {
-    unsafe {
-        ffi::memory_free_region_release(paddr as uint64_t, pages as uint64_t)
-    }
+    unimplemented!()
 }
 
-/// C interface. See `kit/kernel/include/memory.h`.
+/// C foreign interface.
 pub mod ffi {
-    use c_ffi::{size_t, uint64_t, c_void};
+    use super::*;
 
-    extern {
-        pub fn memory_initialize(mmap_buffer: *const u8, mmap_length: u32);
+    #[no_mangle]
+    pub unsafe extern fn memory_alloc_aligned(size: u64, align: u64)
+                                              -> *mut u8 {
+        allocate(size as usize, align as usize)
+    }
 
-        pub fn memory_enable_large_heap();
+    #[no_mangle]
+    pub unsafe extern fn memory_alloc(size: u64) -> *mut u8 {
+        memory_alloc_aligned(size, 1)
+    }
 
-        pub fn memory_alloc_aligned(size: size_t, alignment: size_t)
-                                    -> *mut c_void;
+    #[no_mangle]
+    pub unsafe extern fn memory_free(ptr: *mut u8) {
+        deallocate(ptr, 0, 0)
+    }
 
-        pub fn memory_free(pointer: *mut c_void);
-
-        pub fn memory_free_region_acquire(pages: uint64_t,
-                                          physical_base: *mut uint64_t)
-                                          -> uint64_t;
-
-        pub fn memory_free_region_release(physical_base: uint64_t,
-                                          pages: uint64_t);
+    #[no_mangle]
+    pub extern fn memory_get_total_free() -> u64 {
+        unimplemented!()
     }
 }

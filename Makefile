@@ -63,7 +63,7 @@ build/kit.iso: resources/grub.cfg build/kernel.elf build/system.kit
 	cp resources/grub.cfg build/isodir/boot/grub/grub.cfg
 	cp build/kernel.elf build/isodir/boot/kernel.elf
 	cp build/system.kit build/isodir/boot/system.kit
-	grub-mkimage --format=i386-pc --output=build/core.img \
+	grub-mkimage --format=i386-pc --output=build/core.img -p '/boot/grub' \
 		--config=build/isodir/boot/grub/grub.cfg biosdisk iso9660 normal multiboot
 	cat ${GRUB_LIB}/i386-pc/cdboot.img build/core.img > build/isodir/grub.img
 	rm build/core.img

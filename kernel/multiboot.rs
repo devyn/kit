@@ -275,6 +275,12 @@ pub struct MmapEntry {
     pub kind: u32,
 }
 
+impl MmapEntry {
+    pub fn is_available(&self) -> bool {
+        self.kind == MEMORY_AVAILABLE
+    }
+}
+
 #[repr(C)]
 #[derive(Debug)]
 pub struct Module {

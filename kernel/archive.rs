@@ -45,7 +45,9 @@ impl Archive {
 }
 
 pub fn system() -> Archive {
-    Archive { header: ffi::archive_system }
+    Archive {
+        header: unsafe { ffi::archive_system }
+    }
 }
 
 /// C interface. See `kit/kernel/include/archive.h`.
