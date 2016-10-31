@@ -13,10 +13,12 @@
 //! Physical memory management and kernel heap.
 
 use core::mem;
-use core::cmp::Ordering;
+use core::cmp::{min, Ordering};
 use collections::{Vec, BTreeMap, BinaryHeap};
 
-use paging::{Pageset, GenericPageset};
+use paging::{self, kernel_pageset, Pageset};
+use paging::{GenericPageset, PagesetExt, PageType};
+
 use multiboot::MmapEntry;
 use process::Id as ProcessId;
 
@@ -33,38 +35,44 @@ extern {
 
 static mut KERNEL_HEAP: KernelHeap = KernelHeap::InitialHeap(0);
 
+#[derive(Debug)]
 enum KernelHeap {
     InitialHeap(usize),
     LargeHeap(HeapState)
 }
 
+#[derive(Debug)]
 struct HeapState {
-    start: *const u8,
-    end: *const u8,
+    start: *mut u8,
+    end: *mut u8,
     length: usize,
+    regions: Vec<(PhysicalAddress, PageCount)>,
     can_grow: bool
 }
 
-static mut REGIONS: Option<BTreeMap<PageNumber, Region>> = None;
+static mut ALLOC_REGIONS: Option<BTreeMap<PhysicalAddress, AllocRegionState>> = None;
 static mut FREE_REGIONS: Option<BinaryHeap<FreeRegion>> = None;
 
-type PageNumber = usize;
-type PageCount = usize;
+static mut TOTAL_FREE: PageCount = 0;
 
-struct PhysicalMemoryState {
-    regions: BTreeMap<PageNumber, Region>,
-    free_regions: BinaryHeap<FreeRegion>
-}
+pub type PhysicalAddress = usize;
+pub type PageCount = usize;
 
-struct Region {
-    start: PageNumber,
+#[derive(Debug)]
+struct AllocRegionState {
     length: PageCount,
-    users: Vec<ProcessId>
+    users: Vec<RegionUser>
 }
 
-#[derive(PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+pub enum RegionUser {
+    Kernel,
+    Process(ProcessId)
+}
+
+#[derive(Debug, PartialEq, Eq)]
 struct FreeRegion {
-    start: PageNumber,
+    start: PhysicalAddress,
     length: PageCount
 }
 
@@ -79,16 +87,9 @@ impl Ord for FreeRegion {
         if self.length == other.length {
             self.start.cmp(&other.start)
         } else {
-            self.length.cmp(&other.length)
+            other.length.cmp(&self.length)
         }
     }
-}
-
-// remove owner on drop, if no more users then add free region
-pub struct PhysicalMemory {
-    start: PageNumber,
-    length: PageCount,
-    owner: ProcessId
 }
 
 /// Loads the memory map information into the region tree in order to know where
@@ -138,13 +139,16 @@ pub unsafe fn initialize(mmap_buffer: *const u8, mmap_length: u32) {
         // to the free regions.
         if entry.is_available() && pages > 0 {
             free_regions.push(FreeRegion {
-                start: physical_base / page_size,
+                start: physical_base,
                 length: pages
             });
         }
     }
 
+    TOTAL_FREE = free_regions.iter().fold(0, |s, r| s + r.length);
+
     FREE_REGIONS = Some(free_regions);
+    ALLOC_REGIONS = Some(BTreeMap::new());
 }
 
 const LARGE_HEAP_START: usize = 0xffff_ffff_8100_0000;
@@ -163,42 +167,174 @@ pub unsafe fn deallocate(_ptr: *mut u8, _size: usize, _align: usize) {
     // TODO
 }
 
-fn initial_heap_allocate(counter: &mut usize, size: usize, align: usize)
-                         -> *mut u8 {
-
-    let mut new_counter = *counter;
-
-    // Align the counter to the requested alignment
-    if new_counter % align != 0 {
-        new_counter += align - (new_counter % align);
+fn align_addr(mut addr: usize, align: usize) -> usize {
+    if addr % align != 0 {
+        addr += align - (addr % align);
     }
+    addr
+}
+
+unsafe fn initial_heap_allocate(counter: &mut usize, size: usize, align: usize)
+                                -> *mut u8 {
+
+    let new_counter = align_addr(*counter, align);
 
     if new_counter + size >= INITIAL_HEAP_LENGTH {
         panic!("out of memory in initial heap!");
     }
 
-    let ptr = unsafe { (&mut MEMORY_INITIAL_HEAP[new_counter]) as *mut u8 };
+    let ptr = (&mut MEMORY_INITIAL_HEAP[new_counter]) as *mut u8;
 
     *counter = new_counter + size;
 
     ptr
 }
 
-fn large_heap_allocate(state: &mut HeapState, size: usize, align: usize)
-                       -> *mut u8 {
+unsafe fn large_heap_allocate(state: &mut HeapState, size: usize, align: usize)
+                              -> *mut u8 {
+
+    let start = state.start as usize;
+
+    if state.can_grow {
+        // Avoid recursively growing the heap
+        state.can_grow = false;
+
+        // The maximum amount of room we will need to align is (align - 1)
+        // bytes, so reserve that just in case.
+        //
+        // We can't predict what the alignment will be after the
+        // kernel_acquire_and_map() call, since mapping pages sometimes requires
+        // memory allocation, but it should always fit within the BUFZONE_SIZE.
+        let min_end = start + state.length +
+            (align - 1) + size + BUFZONE_SIZE;
+
+        if min_end >= state.end as usize {
+            let page_size = Pageset::page_size();
+            let needed_bytes = min_end - state.end as usize;
+            let mut needed_pages = needed_bytes / page_size;
+
+            if needed_bytes % page_size != 0 {
+                needed_pages += 1;
+            }
+
+            kernel_acquire_and_map(state.end, needed_pages, &mut state.regions);
+
+            asm!("nop" :::: "volatile");
+
+            state.end =
+                (state.end as usize + (needed_pages * page_size)) as *mut u8;
+        }
+
+        state.can_grow = true;
+    } else {
+        let new_addr = align_addr(start + state.length, align);
+
+        if new_addr + size >= state.end as usize {
+            panic!("ran out of bufzone memory while trying to get more memory");
+        }
+    }
+
+    state.length = align_addr(start + state.length, align) - start;
+
+    let alloc_addr = (start + state.length) as *mut u8;
+
+    state.length += size;
+
+    alloc_addr
+}
+
+pub unsafe fn enable_large_heap() {
+    assert!(paging::initialized());
+
+    if let KernelHeap::LargeHeap(_) = KERNEL_HEAP {
+        // Already enabled, don't need to do anything.
+        return;
+    }
+
+    let bufzone_pages = BUFZONE_SIZE/Pageset::page_size();
+
+    let mut regions = vec![];
+
+    kernel_acquire_and_map(
+        LARGE_HEAP_START as *mut u8, bufzone_pages, &mut regions);
+
+    KERNEL_HEAP = KernelHeap::LargeHeap(HeapState {
+        start:    LARGE_HEAP_START as *mut u8,
+        end:      (LARGE_HEAP_START + BUFZONE_SIZE) as *mut u8,
+        length:   0,
+        regions:  regions,
+        can_grow: true
+    });
+}
+
+pub fn acquire_region(owner: RegionUser, pages: PageCount)
+                      -> Option<(PhysicalAddress, PageCount)> {
+    let page_size = Pageset::page_size();
+
+    unsafe {
+        let free_regions = FREE_REGIONS.as_mut()
+            .expect("memory::initialize() not called");
+
+        let alloc_regions = ALLOC_REGIONS.as_mut().unwrap();
+
+        if TOTAL_FREE < pages {
+            return None;
+        }
+
+        if let Some(free_region) = free_regions.pop() {
+            if free_region.length > pages {
+                free_regions.push(FreeRegion {
+                    start: free_region.start + (pages * page_size),
+                    length: free_region.length - pages
+                });
+            }
+
+            let captured_length = min(free_region.length, pages);
+
+            alloc_regions.insert(free_region.start, AllocRegionState {
+                length: captured_length,
+                users: vec![owner]
+            });
+
+            TOTAL_FREE -= captured_length;
+
+            Some((free_region.start, captured_length))
+        } else {
+            None
+        }
+    }
+}
+
+pub fn release_region(user: RegionUser, paddr: PhysicalAddress) {
     unimplemented!()
 }
 
-pub fn enable_large_heap() {
-    unimplemented!()
-}
+fn kernel_acquire_and_map(vaddr: *mut u8,
+                          pages: PageCount,
+                          regions: &mut Vec<(PhysicalAddress, PageCount)>) {
+    let page_size = Pageset::page_size();
 
-pub fn acquire_region(pages: usize) -> Option<(usize, usize)> {
-    unimplemented!()
-}
+    let mut cur_vaddr = vaddr as usize;
+    let mut cur_pages = pages;
 
-pub fn release_region(paddr: usize, pages: usize) {
-    unimplemented!()
+    while cur_pages > 0 {
+        let (got_paddr, got_pages) =
+            acquire_region(RegionUser::Kernel, cur_pages)
+                .expect("not enough memory for kernel");
+
+        unsafe {
+            kernel_pageset().map_pages_with_type(
+                cur_vaddr,
+                (got_paddr..).step_by(page_size).take(got_pages),
+                PageType::default().writable()
+            ).expect("unable to map acquired pages into kernel space")
+        }
+
+        cur_vaddr += got_pages * page_size;
+        cur_pages -= got_pages;
+
+        regions.push((got_paddr, got_pages));
+    }
 }
 
 /// C foreign interface.

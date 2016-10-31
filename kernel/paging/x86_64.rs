@@ -765,10 +765,9 @@ impl InnerPageDirectory for Pd {
     }
 
     fn update_entry(&mut self, index: usize) {
-        // We have to use kernel_pageset_unsafe() because this could be the
-        // kernel pageset we're updating, and we have no other way to grab the
-        // physical address.
-        
+        // We have to use safe_lookup() because this could be the
+        // kernel pageset we're updating.
+
         if let Some(ref pt) = self.pts[index] {
             let mut entry: u64 = 0x7; // present, writable, user
 

@@ -26,7 +26,7 @@ use error;
 
 use paging::{self, Pageset, PagesetExt, RcPageset, PageType};
 use paging::generic::Pageset as GenericPageset;
-use memory;
+use memory::{self, RegionUser};
 use scheduler;
 use syscall;
 use util::copy_memory;
@@ -449,7 +449,8 @@ impl Process {
 
         while mapped < pages {
             let (paddr_start, acq_pages) =
-                try!(memory::acquire_region(pages - mapped)
+                try!(memory::acquire_region(RegionUser::Process(self.id),
+                                            pages - mapped)
                      .ok_or(Error::OutOfMemory(mapped)));
 
             let paddr_end = paddr_start + acq_pages * page_size;
@@ -488,9 +489,8 @@ impl Process {
                     if paddr_end == paddr - page_size {
                         paddr_range = Some((paddr_start, paddr));
                     } else {
-                        let r_pages = (paddr_end - paddr_start)/page_size;
-
-                        memory::release_region(paddr_start, r_pages);
+                        memory::release_region(RegionUser::Process(self.id),
+                                               paddr_start);
 
                         paddr_range = Some((paddr, paddr));
                     }
@@ -502,10 +502,8 @@ impl Process {
             None
         }).map_err(|e| Error::from(e)));
 
-        if let Some((paddr_start, paddr_end)) = paddr_range {
-            let r_pages = (paddr_end - paddr_start)/page_size;
-
-            memory::release_region(paddr_start, r_pages);
+        if let Some((paddr_start, _paddr_end)) = paddr_range {
+            memory::release_region(RegionUser::Process(self.id), paddr_start);
         }
 
         Ok(())

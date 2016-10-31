@@ -262,7 +262,7 @@ impl Info {
 pub static MEMORY_AVAILABLE: u32 = 1;
 pub static MEMORY_RESERVED: u32 = 2;
 
-#[repr(C)]
+#[repr(C, packed)]
 #[derive(Debug)]
 pub struct MmapEntry {
     pub size: u32,
