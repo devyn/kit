@@ -25,7 +25,10 @@ use process::Id as ProcessId;
 /// The first "safe" physical address. Memory below this is not likely to be
 /// safe for general use, and may include parts of the kernel image among other
 /// things.
-const SAFE_BOUNDARY: usize = 0x400000;
+///
+/// 0x0 to SAFE_BOUNDARY are identity-mapped starting at 0xffff_ffff_8000_0000,
+/// so we avoid that region
+const SAFE_BOUNDARY: usize = 0x800000;
 
 const INITIAL_HEAP_LENGTH: usize = 131072;
 
