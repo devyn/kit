@@ -28,6 +28,7 @@ typedef struct PACKED archive_entry
 {
   uint64_t  offset;
   uint64_t  length;
+  uint64_t  checksum;
   uint64_t  name_length;
   char      name; // array
 } archive_entry_t;
@@ -61,7 +62,7 @@ static inline archive_entry_t *archive_next(archive_iterator_t *iterator)
     iterator->remaining--;
 
     iterator->current = (archive_entry_t *)
-      (((char *) entry) + 24 + entry->name_length);
+      (((char *) entry) + 32 + entry->name_length);
 
     return entry;
   }
@@ -79,6 +80,8 @@ bool archive_initialize(uint64_t modules_count, multiboot_module_t *modules);
 
 bool archive_get(archive_header_t *header, const char *entry_name,
     char **buffer, uint64_t *length);
+
+bool archive_verify(archive_entry_t *entry, uint8_t *buffer);
 
 int64_t archive_utils_spawn(const char *filename, int argc,
     const char *const *argv);

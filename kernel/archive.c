@@ -57,9 +57,37 @@ bool archive_get(archive_header_t *header, const char *entry_name,
       *buffer = ((char *) header) + entry->offset;
       *length = entry->length;
 
+      if (!archive_verify(entry, (uint8_t *) *buffer)) {
+        DEBUG_MESSAGE("entry verification failed!");
+      }
+
       return true;
     }
   }
 
   return false;
+}
+
+bool archive_verify(archive_entry_t *entry, uint8_t *buffer) {
+  uint64_t checksum = 0;
+
+  uint64_t word = 0;
+  int count = 0;
+
+  for (size_t i = 0; i < entry->length; i++) {
+    word |= ((uint64_t) buffer[i]) << (count * 8);
+
+    if (++count == 8) {
+      checksum ^= word;
+      word = 0;
+      count = 0;
+    }
+  }
+
+  if (entry->checksum != checksum) {
+    DEBUG_FORMAT("entry checksum %lx != calculated checksum %lx",
+        entry->checksum, checksum);
+  }
+
+  return entry->checksum == checksum;
 }
