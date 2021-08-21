@@ -17,7 +17,7 @@ You'll need to have the following installed:
 - GRUB 2
 - cdrkit
 - Ruby
-- Rust nightly (1.4)
+- Rust nightly (1.56)
 - clang
 - QEMU
 
