@@ -19,17 +19,17 @@ pub unsafe fn initialize() {
 
 /// Enable interrupts.
 pub unsafe fn enable() {
-    asm!("sti" :::: "volatile");
+    asm!("sti");
 }
 
 /// Disable interrupts.
 pub unsafe fn disable() {
-    asm!("cli" :::: "volatile");
+    asm!("cli");
 }
 
 /// Wait for an interrupt.
 pub unsafe fn wait() {
-    asm!("sti; hlt; cli" :::: "volatile");
+    asm!("sti; hlt; cli");
 }
 
 /// C interface. See `kit/kernel/include/interrupt.h`.

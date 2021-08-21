@@ -73,7 +73,7 @@ static void execute(char *line, uint64_t lineno)
 
         for (size_t i = 0; i < command.args.len; i++)
         {
-          printf(" %s", command.args.ptr[i]);
+          printf(" %s", (char *) command.args.ptr[i]);
         }
 
         putchar('\n');

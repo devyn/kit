@@ -95,105 +95,105 @@ int memcmp(const void *s1, const void *s2, size_t n)
 
   return 0;
 }
-
-void __morestack()
-{
-  static const char morestack_msg[18] =
-    {'m',0xF0,'o',0xF0,'r',0xF0,'e',0xF0,'s',0xF0,
-     't',0xF0,'a',0xF0,'c',0xF0,'k',0xF0};
-
-  memcpy((void *) (0xffffffff800B8000L + (80 * 24 * 2)),
-         (const void *) morestack_msg, 18);
-  cli();
-  while (1) hlt();
-}
-
-void __stub(const char *fn)
-{
-  DEBUG_FORMAT("%s", fn); cli(); while (1) hlt();
-}
-
-void *__rust_allocate(size_t size, size_t align) {
-  return memory_alloc_aligned(size, align);
-}
-
-void __rust_deallocate(void *pointer, UNUSED size_t old_size,
-    UNUSED size_t align) {
-  memory_free(pointer);
-}
-
-void *__rust_reallocate(void *pointer, size_t old_size, size_t size,
-    size_t align) {
-  // No reallocation yet, so just allocate a new buffer and copy
-  void *new_pointer = memory_alloc_aligned(size, align);
-
-  if (new_pointer == NULL) {
-    return NULL;
-  }
-
-  size_t copy_size;
-
-  if (size < old_size) {
-    copy_size = size;
-  } else {
-    copy_size = old_size;
-  }
-
-  memcpy(new_pointer, pointer, copy_size);
-
-  memory_free(pointer);
-
-  return new_pointer;
-}
-
-size_t __rust_reallocate_inplace(UNUSED void *pointer, UNUSED size_t old_size,
-    size_t size, UNUSED size_t align) {
-  return size;
-}
-
-size_t __rust_usable_size(size_t size, UNUSED size_t align) {
-  return size;
-}
-
-void __rust_stats_print() {
-  uint64_t pages = memory_get_total_free();
-
-  terminal_printf(
-    "--- MEMORY STATS ---\n"
-    " free:      %lu pages (%lu MiB)\n"
-    "--- END MEMORY STATS ---\n",
-
-    pages, pages / 256
-  );
-}
-
-// Floating point stuff
-void trunc()       { __stub(__func__); }
-void truncf()      { __stub(__func__); }
-void fmod()        { __stub(__func__); }
-void fmodf()       { __stub(__func__); }
-void exp()         { __stub(__func__); }
-void expf()        { __stub(__func__); }
-void exp2()        { __stub(__func__); }
-void exp2f()       { __stub(__func__); }
-void log()         { __stub(__func__); }
-void logf()        { __stub(__func__); }
-void log2()        { __stub(__func__); }
-void log2f()       { __stub(__func__); }
-void log10()       { __stub(__func__); }
-void log10f()      { __stub(__func__); }
-void pow()         { __stub(__func__); }
-void powf()        { __stub(__func__); }
-void floor()       { __stub(__func__); }
-void floorf()      { __stub(__func__); }
-void ceil()        { __stub(__func__); }
-void ceilf()       { __stub(__func__); }
-void round()       { __stub(__func__); }
-void roundf()      { __stub(__func__); }
-void fma()         { __stub(__func__); }
-void fmaf()        { __stub(__func__); }
-void __powisf2()   { __stub(__func__); }
-void __powidf2()   { __stub(__func__); }
-
-// XXX: What is this?
-void _Unwind_Resume() { __stub(__func__); }
+//
+//void __morestack()
+//{
+//  static const char morestack_msg[18] =
+//    {'m',0xF0,'o',0xF0,'r',0xF0,'e',0xF0,'s',0xF0,
+//     't',0xF0,'a',0xF0,'c',0xF0,'k',0xF0};
+//
+//  memcpy((void *) (0xffffffff800B8000L + (80 * 24 * 2)),
+//         (const void *) morestack_msg, 18);
+//  cli();
+//  while (1) hlt();
+//}
+//
+//void __stub(const char *fn)
+//{
+//  DEBUG_FORMAT("%s", fn); cli(); while (1) hlt();
+//}
+//
+//void *__rust_allocate(size_t size, size_t align) {
+//  return memory_alloc_aligned(size, align);
+//}
+//
+//void __rust_deallocate(void *pointer, UNUSED size_t old_size,
+//    UNUSED size_t align) {
+//  memory_free(pointer);
+//}
+//
+//void *__rust_reallocate(void *pointer, size_t old_size, size_t size,
+//    size_t align) {
+//  // No reallocation yet, so just allocate a new buffer and copy
+//  void *new_pointer = memory_alloc_aligned(size, align);
+//
+//  if (new_pointer == NULL) {
+//    return NULL;
+//  }
+//
+//  size_t copy_size;
+//
+//  if (size < old_size) {
+//    copy_size = size;
+//  } else {
+//    copy_size = old_size;
+//  }
+//
+//  memcpy(new_pointer, pointer, copy_size);
+//
+//  memory_free(pointer);
+//
+//  return new_pointer;
+//}
+//
+//size_t __rust_reallocate_inplace(UNUSED void *pointer, UNUSED size_t old_size,
+//    size_t size, UNUSED size_t align) {
+//  return size;
+//}
+//
+//size_t __rust_usable_size(size_t size, UNUSED size_t align) {
+//  return size;
+//}
+//
+//void __rust_stats_print() {
+//  uint64_t pages = memory_get_total_free();
+//
+//  terminal_printf(
+//    "--- MEMORY STATS ---\n"
+//    " free:      %lu pages (%lu MiB)\n"
+//    "--- END MEMORY STATS ---\n",
+//
+//    pages, pages / 256
+//  );
+//}
+//
+//// Floating point stuff
+//void trunc()       { __stub(__func__); }
+//void truncf()      { __stub(__func__); }
+//void fmod()        { __stub(__func__); }
+//void fmodf()       { __stub(__func__); }
+//void exp()         { __stub(__func__); }
+//void expf()        { __stub(__func__); }
+//void exp2()        { __stub(__func__); }
+//void exp2f()       { __stub(__func__); }
+//void log()         { __stub(__func__); }
+//void logf()        { __stub(__func__); }
+//void log2()        { __stub(__func__); }
+//void log2f()       { __stub(__func__); }
+//void log10()       { __stub(__func__); }
+//void log10f()      { __stub(__func__); }
+//void pow()         { __stub(__func__); }
+//void powf()        { __stub(__func__); }
+//void floor()       { __stub(__func__); }
+//void floorf()      { __stub(__func__); }
+//void ceil()        { __stub(__func__); }
+//void ceilf()       { __stub(__func__); }
+//void round()       { __stub(__func__); }
+//void roundf()      { __stub(__func__); }
+//void fma()         { __stub(__func__); }
+//void fmaf()        { __stub(__func__); }
+//void __powisf2()   { __stub(__func__); }
+//void __powidf2()   { __stub(__func__); }
+//
+//// XXX: What is this?
+//void _Unwind_Resume() { __stub(__func__); }

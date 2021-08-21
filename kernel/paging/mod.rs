@@ -18,7 +18,7 @@ use core::mem;
 use alloc::rc::Rc;
 use alloc::boxed::Box;
 
-use c_ffi::c_void;
+use crate::c_ffi::c_void;
 
 pub mod generic;
 
@@ -118,7 +118,7 @@ pub mod ffi {
     use core::ptr;
     use core::mem;
 
-    use c_ffi::c_void;
+    use crate::c_ffi::c_void;
 
     use alloc::rc::Rc;
 

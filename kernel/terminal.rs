@@ -124,7 +124,7 @@ pub trait Terminal: fmt::Write {
     /// May not `flush()`, if applicable.
     fn write_raw_bytes(&mut self, bytes: &[u8]) -> fmt::Result {
         for byte in bytes {
-            try!(self.write_raw_byte(*byte));
+            self.write_raw_byte(*byte)?;
         }
 
         Ok(())
@@ -192,7 +192,7 @@ impl Vga {
 
     fn update_cursor(&mut self) {
         unsafe fn outb(byte: u8, port: u16) {
-            asm!("out %al, %dx" :: "{ax}" (byte), "{dx}" (port) :: "volatile");
+            asm!("out %al, %dx", in("al") byte, in("dx") port, options(att_syntax));
         }
 
         let pos: u16 = ((self.row * self.width) + self.col) as u16;
@@ -251,7 +251,7 @@ impl Vga {
 
                 // XXX: SSE memory operations fail on memory-mapped I/O in KVM,
                 // so inhibit vectorization
-                unsafe { asm!("" :::: "volatile"); }
+                unsafe { asm!("nop"); }
             }
         }
 
@@ -284,7 +284,7 @@ impl Terminal for Vga {
 
                 // XXX: SSE memory operations fail on memory-mapped I/O in KVM,
                 // so inhibit vectorization
-                unsafe { asm!("" :::: "volatile"); }
+                unsafe { asm!("nop"); }
             }
         }
 
@@ -361,14 +361,14 @@ impl Terminal for Vga {
 impl fmt::Write for Vga {
     fn write_char(&mut self, ch: char) -> fmt::Result {
         let mut buf = [0; 4];
-        try!(self.write_raw_bytes(ch.encode_utf8(&mut buf).as_bytes()));
-        try!(self.flush());
+        self.write_raw_bytes(ch.encode_utf8(&mut buf).as_bytes())?;
+        self.flush()?;
         Ok(())
     }
 
     fn write_str(&mut self, s: &str) -> fmt::Result {
-        try!(self.write_raw_bytes(s.as_bytes()));
-        try!(self.flush());
+        self.write_raw_bytes(s.as_bytes())?;
+        self.flush()?;
         Ok(())
     }
 }
@@ -472,8 +472,8 @@ impl<T: Terminal> Ansi<T> {
                     self.bold = false;
                 },
 
-                30...37 => { fg = ANSI_ATTR_TABLE[(attr - 30) as usize]; },
-                40...47 => { bg = ANSI_ATTR_TABLE[(attr - 40) as usize]; },
+                30..=37 => { fg = ANSI_ATTR_TABLE[(attr - 30) as usize]; },
+                40..=47 => { bg = ANSI_ATTR_TABLE[(attr - 40) as usize]; },
 
                 _ => ()
             }
@@ -551,7 +551,7 @@ impl<T: Terminal> Terminal for Ansi<T> {
             },
 
             AnsiState::Csi(_,_,_) => match byte {
-                b'0'...b'9' => {
+                b'0'..=b'9' => {
                     self.state.csi_digit(byte - b'0');
                     Ok(())
                 },
@@ -581,14 +581,14 @@ impl<T: Terminal> Terminal for Ansi<T> {
 impl<T: Terminal> fmt::Write for Ansi<T> {
     fn write_char(&mut self, ch: char) -> fmt::Result {
         let mut buf = [0; 4];
-        try!(self.write_raw_bytes(ch.encode_utf8(&mut buf).as_bytes()));
-        try!(self.flush());
+        self.write_raw_bytes(ch.encode_utf8(&mut buf).as_bytes())?;
+        self.flush()?;
         Ok(())
     }
 
     fn write_str(&mut self, s: &str) -> fmt::Result {
-        try!(self.write_raw_bytes(s.as_bytes()));
-        try!(self.flush());
+        self.write_raw_bytes(s.as_bytes())?;
+        self.flush()?;
         Ok(())
     }
 }
@@ -596,7 +596,7 @@ impl<T: Terminal> fmt::Write for Ansi<T> {
 static mut CONSOLE: Option<Ansi<Vga>> = None;
 
 /// Get the current global console.
-pub fn console() -> &'static mut Terminal {
+pub fn console() -> &'static mut dyn Terminal {
     unsafe {
         if CONSOLE.is_none() {
             CONSOLE = Some(Ansi::new(Vga::new(
@@ -614,7 +614,7 @@ pub mod ffi {
     use core::mem;
     use core::slice;
 
-    use c_ffi::{c_char, size_t};
+    use crate::c_ffi::{c_char, size_t};
 
     #[no_mangle]
     pub extern fn terminal_initialize() {

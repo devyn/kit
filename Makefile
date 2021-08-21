@@ -13,7 +13,7 @@
 
 CC    = clang
 AS    = as
-RUSTC = rustc
+CARGO = cargo
 LD    = ld
 
 export CPATH=system/libc/include

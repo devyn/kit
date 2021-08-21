@@ -74,7 +74,7 @@ static inline archive_entry_t *archive_next(archive_iterator_t *iterator)
 
 #define ARCHIVE_SYSTEM_NAME "system.kit"
 
-archive_header_t *archive_system;
+extern archive_header_t *archive_system;
 
 bool archive_initialize(uint64_t modules_count, multiboot_module_t *modules);
 

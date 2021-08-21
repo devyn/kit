@@ -16,7 +16,7 @@ use core::iter::{repeat, StepBy};
 use core::cell::RefCell;
 use core::ops;
 
-use error::Error;
+use crate::error::Error;
 
 use alloc::rc::Rc;
 
@@ -88,7 +88,7 @@ pub trait PagesetExt<'a>: Pageset<'a> {
     }
 
     fn range(vaddr_start: usize, vaddr_end: usize)
-             -> StepBy<usize, ops::Range<usize>> {
+             -> StepBy<ops::Range<usize>> {
         (vaddr_start..vaddr_end).step_by(Self::page_size())
     }
 

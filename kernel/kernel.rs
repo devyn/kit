@@ -18,18 +18,18 @@
 #![crate_name="kernel"]
 #![crate_type="lib"]
 
-#![feature(lang_items, asm, box_syntax, step_by)]
-#![feature(unicode, box_patterns, alloc, collections)]
-#![feature(repr_simd, drop_types_in_const)]
+#![feature(lang_items, asm, box_syntax, alloc_error_handler)]
+#![feature(box_patterns, panic_info_message)]
+#![feature(repr_simd)]
 
 #![allow(improper_ctypes)]
 
 #![no_std]
 
 // These rust libs are specifically configured for Kit.
-extern crate alloc;
-extern crate rustc_unicode;
-#[macro_use] extern crate collections;
+#[macro_use] extern crate alloc;
+
+use core::panic::PanicInfo;
 
 pub mod terminal;
 pub mod constants;
@@ -144,21 +144,21 @@ pub extern fn kernel_main() -> ! {
     unreachable!();
 }
 
-#[lang = "eh_personality"]
-extern fn eh_personality() {
-}
-
-#[lang = "panic_fmt"]
-extern fn panic_fmt(fmt: core::fmt::Arguments,
-                    file: &'static str,
-                    line: usize) -> ! {
-
+#[panic_handler]
+fn panic_handler(panic_info: &PanicInfo) -> ! {
     let _ = console().set_color(Color::White, Color::Red);
 
-    let _ = write!(console(), "\nKernel panic in {}:{}:\n  {}\n\n",
-                   file, line, fmt);
+    let _ = write!(console(), "\nKernel panic");
+
+    if let Some(location) = panic_info.location() {
+        let _ = write!(console(), " in {}", location);
+    }
+
+    if let Some(message) = panic_info.message() {
+        let _ = write!(console(), ": {}", message);
+    }
 
     unsafe {
-        loop { asm!("cli; hlt" :::: "volatile"); }
+        loop { asm!("cli; hlt"); }
     }
 }

@@ -14,10 +14,10 @@
 
 use core::cell::RefCell;
 use alloc::boxed::Box;
-use collections::VecDeque;
+use alloc::collections::VecDeque;
 
-use process::{self, RcProcess};
-use interrupt;
+use crate::process::{self, RcProcess};
+use crate::interrupt;
 
 struct GlobalState {
     run_queue: VecDeque<RcProcess>,
@@ -214,8 +214,8 @@ pub unsafe fn tick() {
 
 /// C interface. See `kit/kernel/include/scheduler.h`.
 pub mod ffi {
-    use process;
-    use c_ffi::{c_int, uint32_t};
+    use crate::process;
+    use crate::c_ffi::{c_int, uint32_t};
 
     #[no_mangle]
     pub extern fn scheduler_wake(pid: uint32_t) -> c_int {

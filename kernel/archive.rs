@@ -15,8 +15,8 @@
 use core::slice;
 use core::ptr;
 
-use multiboot;
-use c_ffi::CStr;
+use crate::multiboot;
+use crate::c_ffi::CStr;
 
 pub unsafe fn initialize(modules: *const multiboot::Module,
                          modules_count: u32) -> bool {
@@ -52,18 +52,15 @@ pub fn system() -> Archive {
 
 /// C interface. See `kit/kernel/include/archive.h`.
 pub mod ffi {
-    use multiboot;
-    use archive::utils;
+    use crate::multiboot;
+    use crate::archive::utils;
 
-    use c_ffi::{c_int, c_char, int64_t, CStr};
+    use crate::c_ffi::{c_int, c_char, int64_t, CStr, c_void};
 
-    use collections::Vec;
+    use alloc::vec::Vec;
 
     #[repr(C)]
-    pub enum ArchiveHeader {
-        __variant1,
-        __variant2,
-    }
+    pub struct ArchiveHeader(c_void); // data undefined
 
     extern {
         pub static archive_system: *const ArchiveHeader;
@@ -102,11 +99,11 @@ pub mod ffi {
 
 /// Archive utilities.
 pub mod utils {
-    use archive;
-    use process::{self, Process};
-    use elf::Elf;
-    use scheduler;
-    use c_ffi::CStr;
+    use crate::archive;
+    use crate::process::{self, Process};
+    use crate::elf::Elf;
+    use crate::scheduler;
+    use crate::c_ffi::CStr;
 
     #[derive(Debug)]
     pub enum SpawnError {
@@ -129,11 +126,11 @@ pub mod utils {
 
         let system = archive::system();
 
-        let data = try!(system.get(filename).ok_or(FileNotFound));
+        let data = system.get(filename).ok_or(FileNotFound)?;
 
-        let elf = try!(Elf::new(data).ok_or(ElfVerifyError));
+        let elf = Elf::new(data).ok_or(ElfVerifyError)?;
 
-        let exec = try!(elf.as_executable().ok_or(ElfNotExecutable));
+        let exec = elf.as_executable().ok_or(ElfNotExecutable)?;
 
         let process = Process::create(filename);
 
@@ -142,9 +139,9 @@ pub mod utils {
         {
             let mut process = process.borrow_mut();
 
-            try!(process.load(&exec).map_err(|_| ExecLoadError));
+            process.load(&exec).map_err(|_| ExecLoadError)?;
 
-            try!(process.set_args(argv).map_err(|_| SetArgsError));
+            process.set_args(argv).map_err(|_| SetArgsError)?;
 
             process.run();
         }

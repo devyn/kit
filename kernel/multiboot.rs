@@ -36,8 +36,8 @@
 
 use core::mem;
 
-use c_ffi::CStr;
-use constants::translate_low_addr;
+use crate::c_ffi::CStr;
+use crate::constants::translate_low_addr;
 
 /// How many bytes from the start of the file we search for the header.
 pub static SEARCH: usize                 = 8192;
@@ -263,7 +263,7 @@ pub static MEMORY_AVAILABLE: u32 = 1;
 pub static MEMORY_RESERVED: u32 = 2;
 
 #[repr(C, packed)]
-#[derive(Debug)]
+#[derive(Debug, Clone, Copy)]
 pub struct MmapEntry {
     pub size: u32,
     pub addr: u64,

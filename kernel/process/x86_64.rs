@@ -12,7 +12,8 @@
 
 //! x86-64 architecture-specific process logic and hardware state.
 
-use memory;
+use crate::memory;
+
 use core::isize;
 use core::ptr;
 

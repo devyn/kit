@@ -20,7 +20,7 @@ use core::marker::PhantomData;
 use core::fmt::{self, Display, Debug};
 use core::str;
 
-use collections::String;
+use alloc::string::String;
 
 pub type size_t = usize;
 

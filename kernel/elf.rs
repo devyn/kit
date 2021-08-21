@@ -14,9 +14,9 @@
 
 use core::slice;
 
-use process::{self, Process, Image};
-use paging::{self, PageType};
-use util::{copy_memory, zero_memory};
+use crate::process::{self, Process, Image};
+use crate::paging::{self, PageType};
+use crate::util::{copy_memory, zero_memory};
 
 static MAGIC: &'static [u8] = b"\x7fELF";
 
@@ -332,7 +332,7 @@ unsafe fn phdr_load<'a>(phdr: ElfProgramHeader<'a>,
     if phdr.writable   { page_type = page_type.writable(); }
     if phdr.executable { page_type = page_type.executable(); }
 
-    try!(process.map_allocate(phdr.mem_offset, phdr.mem_size, page_type));
+    process.map_allocate(phdr.mem_offset, phdr.mem_size, page_type)?;
 
     // Access the memory directly via a slice into userspace.
     let memory = slice::from_raw_parts_mut(

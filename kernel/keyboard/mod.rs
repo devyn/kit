@@ -14,7 +14,7 @@
 
 use core::fmt;
 
-use error::Error;
+use crate::error::Error;
 
 pub mod ps2;
 

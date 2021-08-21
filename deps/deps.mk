@@ -11,22 +11,17 @@
 #
 ################################################################################
 
-include deps/kernel_deps.mk
 include deps/system_deps.mk
 
 build/deps/.dir: build/.dir
 	mkdir -p build/deps
 	touch build/deps/.dir
 
-all-deps: deps/rust/.dir all-kernel-deps all-system-deps
+all-deps: all-system-deps
 
-clean-deps: clean-kernel-deps clean-system-deps
+clean-deps: clean-system-deps
 
 clean-dep-sources:
 	rm -rf deps/rust
-
-deps/rust/.dir:
-	git clone --depth 1 https://github.com/rust-lang/rust.git deps/rust
-	touch deps/rust/.dir
 
 .PHONY: all-deps clean-deps clean-dep-sources

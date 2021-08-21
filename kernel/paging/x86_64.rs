@@ -16,19 +16,24 @@ use core::ops::Range;
 use core::mem;
 use core::fmt;
 use core::ptr;
-use core::slice;
 
-use error;
+use crate::error;
 
 use alloc::boxed::Box;
-use memory;
-use util::zero_memory;
 
-use constants::{KERNEL_OFFSET, KERNEL_LOW_START, KERNEL_LOW_END};
+use crate::constants::{KERNEL_OFFSET, KERNEL_LOW_START, KERNEL_LOW_END};
 
 use super::generic::{self, Page, PagesetExt, PageType};
 
 const PAGE_SIZE: usize = 4096;
+
+macro_rules! assert_page_aligned {
+    ($value:expr) => {
+        if $value & (PAGE_SIZE - 1) != 0 {
+            panic!("Expected address 0x{:x} to be page aligned, but it isn't", $value);
+        }
+    }
+}
 
 /// This is the only safe way to get the physical address of a kernel pointer
 /// during paging operations.
@@ -57,6 +62,9 @@ fn safe_lookup<T>(ptr: *const T) -> Option<usize> {
     }
 }
 
+#[repr(align(4096))]
+struct PageAligned<T>(pub T);
+
 pub struct Pageset {
     cr3:    u64,
     pml4:   Box<Pml4>,
@@ -70,18 +78,22 @@ impl<'a> generic::Pageset<'a> for Pageset {
 
     fn new() -> Pageset {
         let pml4  = Pml4::alloc(User);
-        let paddr = safe_lookup(&*pml4).
+        let paddr = safe_lookup(&pml4.entries).
             expect("failed to find (User) pml4's physical address");
         let cr3   = paddr as u64;
+
+        assert_page_aligned!(paddr);
 
         Pageset { cr3: cr3, pml4: pml4, kernel: false }
     }
 
     fn new_kernel() -> Pageset {
         let pml4  = Pml4::alloc(Kernel);
-        let paddr = safe_lookup(&*pml4)
+        let paddr = safe_lookup(&pml4.entries)
             .expect("failed to find (Kernel) pml4's physical address");
         let cr3   = paddr as u64;
+
+        assert_page_aligned!(paddr);
 
         let mut pageset = Pageset { cr3: cr3, pml4: pml4, kernel: true };
 
@@ -103,11 +115,7 @@ impl<'a> generic::Pageset<'a> for Pageset {
             self.pml4.copy_latest_from_kernel();
         }
 
-        asm!("mov $0, %cr3"
-             :
-             : "r" (self.cr3)
-             : "memory"
-             : "volatile");
+        asm!("mov {}, %cr3", in(reg) self.cr3, options(att_syntax));
     }
 
     fn page_size() -> usize { PAGE_SIZE }
@@ -488,11 +496,7 @@ impl ModifyWhile for Pt {
 
         fn invlpg(vaddr: usize) {
             unsafe {
-                asm!("invlpg ($0)"
-                     :
-                     : "r" (vaddr)
-                     : "memory"
-                     : "volatile");
+                asm!("invlpg ({})", in(reg) vaddr, options(att_syntax));
             }
         }
 
@@ -553,19 +557,17 @@ impl Pml4Kind {
     }
 }
 
-#[repr(packed)]
 struct Pml4 {
-    entries:  [u64; 512],
+    entries:  PageAligned<[u64; 512]>,
     pdpts:    [Option<Box<Pdpt>>; 256],
     kind:     Pml4Kind,
     kversion: usize,
 }
 
 impl Pml4 {
-    #![allow(dead_code)]
     fn new(kind: Pml4Kind) -> Pml4 {
         Pml4 {
-            entries:  [0; 512],
+            entries:  PageAligned([0; 512]),
             pdpts:    unsafe { mem::zeroed() },
             kind:     kind,
             kversion: match kind { Kernel => 1, User => 0 },
@@ -573,15 +575,7 @@ impl Pml4 {
     }
 
     fn alloc(kind: Pml4Kind) -> Box<Pml4> {
-        // XXX: Rust issue #23273 prevents us from doing something nice here
-        // Box::with_alignment(PAGE_SIZE, Pml4::new(kind))
-
-        unsafe {
-            let mut pml4: Box<Pml4> = zeroed_aligned_box(PAGE_SIZE);
-            pml4.kind = kind;
-            pml4.kversion = match kind { Kernel => 1, User => 0 };
-            pml4
-        }
+        box Pml4::new(kind)
     }
 
     /// Returns the PML4 index for the given virtual address if and only if the
@@ -605,7 +599,7 @@ impl Pml4 {
             assert!(self.kind == User);
         }
 
-        let original = self.entries[index];
+        let original = self.entries.0[index];
 
         if let Some(ref pdpt) = self.pdpts[index % 256] {
             let mut entry: u64 = if index >= 256 {
@@ -614,17 +608,19 @@ impl Pml4 {
                 0x7 // present, writable, user
             };
 
-            let paddr = safe_lookup(&**pdpt)
+            let paddr = safe_lookup(&pdpt.entries)
                 .expect("failed to find pdpt's physical address");
+
+            assert_page_aligned!(paddr);
 
             entry.set_bits(12..48, (paddr >> 12) as u64);
 
-            self.entries[index] = entry;
+            self.entries.0[index] = entry;
         } else {
-            self.entries[index] = 0;
+            self.entries.0[index] = 0;
         }
 
-        if self.kind == Kernel && original != self.entries[index] {
+        if self.kind == Kernel && original != self.entries.0[index] {
             self.kversion += 1;
         }
     }
@@ -636,7 +632,7 @@ impl Pml4 {
 
         if self.kversion != kernel.pml4.kversion {
             for index in 256..512 {
-                self.entries[index] = kernel.pml4.entries[index];
+                self.entries.0[index] = kernel.pml4.entries.0[index];
             }
 
             self.kversion = kernel.pml4.kversion;
@@ -660,16 +656,14 @@ impl PageDirectory for Pml4 {
     }
 }
 
-#[repr(packed)]
 pub struct Pdpt {
-    entries: [u64; 512],
+    entries: PageAligned<[u64; 512]>,
     pds:     [Option<Box<Pd>>; 512],
 }
 
 impl Pdpt {
-    #![allow(dead_code)]
     fn new() -> Pdpt {
-        Pdpt { entries: [0; 512], pds: unsafe { mem::zeroed() } }
+        Pdpt { entries: PageAligned([0; 512]), pds: unsafe { mem::zeroed() } }
     }
 }
 
@@ -685,12 +679,7 @@ impl PageDirectory for Pdpt {
 
 impl InnerPageDirectory for Pdpt {
     fn alloc() -> Box<Pdpt> {
-        // XXX: Rust issue #23273 prevents us from doing something nice here
-        // Box::with_alignment(PAGE_SIZE, Pdpt::new())
-
-        unsafe {
-            zeroed_aligned_box(PAGE_SIZE)
-        }
+        box Pdpt::new()
     }
 
     fn within_same(vaddr1: usize, vaddr2: usize) -> bool {
@@ -710,28 +699,28 @@ impl InnerPageDirectory for Pdpt {
         if let Some(ref pd) = self.pds[index] {
             let mut entry: u64 = 0x7; // present, writable, user
 
-            let paddr = safe_lookup(&**pd)
+            let paddr = safe_lookup(&pd.entries)
                 .expect("failed to find pd's physical address");
+
+            assert_page_aligned!(paddr);
 
             entry.set_bits(12..48, (paddr >> 12) as u64);
 
-            self.entries[index] = entry;
+            self.entries.0[index] = entry;
         } else {
-            self.entries[index] = 0;
+            self.entries.0[index] = 0;
         }
     }
 }
 
-#[repr(packed)]
 pub struct Pd {
-    entries: [u64; 512],
+    entries: PageAligned<[u64; 512]>,
     pts:     [Option<Box<Pt>>; 512],
 }
 
 impl Pd {
-    #![allow(dead_code)]
     fn new() -> Pd {
-        Pd { entries: [0; 512], pts: unsafe { mem::zeroed() } }
+        Pd { entries: PageAligned([0; 512]), pts: unsafe { mem::zeroed() } }
     }
 }
 
@@ -747,12 +736,7 @@ impl PageDirectory for Pd {
 
 impl InnerPageDirectory for Pd {
     fn alloc() -> Box<Pd> {
-        // XXX: Rust issue #23273 prevents us from doing something nice here
-        // Box::with_alignment(PAGE_SIZE, Pd::new())
-
-        unsafe {
-            zeroed_aligned_box(PAGE_SIZE)
-        }
+        box Pd::new()
     }
 
     fn within_same(vaddr1: usize, vaddr2: usize) -> bool {
@@ -771,40 +755,35 @@ impl InnerPageDirectory for Pd {
         if let Some(ref pt) = self.pts[index] {
             let mut entry: u64 = 0x7; // present, writable, user
 
-            let paddr = safe_lookup(&**pt)
+            let paddr = safe_lookup(&pt.entries)
                 .expect("failed to find pt's physical address");
+
+            assert_page_aligned!(paddr);
 
             entry.set_bits(12..48, (paddr >> 12) as u64);
 
-            self.entries[index] = entry;
+            self.entries.0[index] = entry;
         } else {
-            self.entries[index] = 0;
+            self.entries.0[index] = 0;
         }
     }
 }
 
-#[repr(packed)]
 pub struct Pt {
-    entries: [u64; 512]
+    entries: PageAligned<[u64; 512]>
 }
 
 impl Pt {
-    #![allow(dead_code)]
     fn new() -> Pt {
-        Pt { entries: [0; 512] }
+        Pt { entries: PageAligned([0; 512]) }
     }
 
     fn alloc() -> Box<Pt> {
-        // XXX: Rust issue #23273 prevents us from doing something nice here
-        // Box::with_alignment(PAGE_SIZE, Pt::new())
-
-        unsafe {
-            zeroed_aligned_box(PAGE_SIZE)
-        }
+        box Pt::new()
     }
 
     fn get(&self, index: usize) -> Page<usize> {
-        self.entries.get(index).and_then(|entry| {
+        self.entries.0.get(index).and_then(|entry| {
             let present  = 0;
             let writable = 1;
             let user     = 2;
@@ -823,7 +802,7 @@ impl Pt {
     }
 
     fn set(&mut self, index: usize, page: Page<usize>) {
-        self.entries[index] =
+        self.entries.0[index] =
             if let Some((paddr, page_type)) = page {
                 let writable = 1;
                 let user     = 2;
@@ -840,16 +819,4 @@ impl Pt {
                 0
             };
     }
-}
-
-unsafe fn zeroed_aligned_box<T>(alignment: usize) -> Box<T> {
-    if alignment % 16 != 0 {
-        panic!("Bad alignment: {}", alignment);
-    }
-
-    let ptr = memory::allocate(mem::size_of::<T>(), alignment);
-
-    zero_memory(slice::from_raw_parts_mut(ptr, mem::size_of::<T>()));
-
-    Box::from_raw(ptr as *mut T)
 }

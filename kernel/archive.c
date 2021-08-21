@@ -16,6 +16,8 @@
 #include "string.h"
 #include "debug.h"
 
+archive_header_t *archive_system;
+
 bool archive_initialize(uint64_t modules_count, multiboot_module_t *modules)
 {
   for (uint32_t i = 0; i < modules_count; i++)

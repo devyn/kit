@@ -10,5 +10,6 @@ tools/*
 *.img
 
 build/
+target/
 deps/rust/
 tags

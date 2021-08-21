@@ -20,16 +20,18 @@ use core::mem;
 
 use alloc::boxed::Box;
 use alloc::rc::Rc;
-use collections::{Vec, BTreeMap, String};
+use alloc::vec::Vec;
+use alloc::string::String;
+use alloc::collections::BTreeMap;
 
-use error;
+use crate::error;
 
-use paging::{self, Pageset, PagesetExt, RcPageset, PageType};
-use paging::generic::Pageset as GenericPageset;
-use memory::{self, RegionUser};
-use scheduler;
-use syscall;
-use util::copy_memory;
+use crate::paging::{self, Pageset, PagesetExt, RcPageset, PageType};
+use crate::paging::generic::Pageset as GenericPageset;
+use crate::memory::{self, RegionUser};
+use crate::scheduler;
+use crate::syscall;
+use crate::util::copy_memory;
 
 pub mod x86_64;
 pub use self::x86_64 as target;
@@ -328,7 +330,7 @@ impl Process {
         let vaddr = target::ARGS_TOP_ADDR - args_size;
         let vaddr = vaddr - vaddr % page_size;
 
-        try!(self.map_allocate(vaddr, args_size, PageType::default()));
+        self.map_allocate(vaddr, args_size, PageType::default())?;
 
         unsafe {
             // Swap in process pageset.
@@ -449,17 +451,17 @@ impl Process {
 
         while mapped < pages {
             let (paddr_start, acq_pages) =
-                try!(memory::acquire_region(RegionUser::Process(self.id),
+                memory::acquire_region(RegionUser::Process(self.id),
                                             pages - mapped)
-                     .ok_or(Error::OutOfMemory(mapped)));
+                     .ok_or(Error::OutOfMemory(mapped))?;
 
             let paddr_end = paddr_start + acq_pages * page_size;
 
-            try!(pageset.map_pages_with_type(
+            pageset.map_pages_with_type(
                     vaddr,
                     (paddr_start..paddr_end).step_by(page_size),
                     page_type.user())
-                 .map_err(|e| Error::from(e)));
+                 .map_err(|e| Error::from(e))?;
 
             mapped += acq_pages;
         }
@@ -483,7 +485,7 @@ impl Process {
         // Release contiguous physical regions.
         let mut paddr_range = None;
 
-        try!(pageset.modify_pages(vaddr, pages, |page| {
+        pageset.modify_pages(vaddr, pages, |page| {
             if let Some((paddr, _)) = page {
                 if let Some((paddr_start, paddr_end)) = paddr_range.take() {
                     if paddr_end == paddr - page_size {
@@ -500,7 +502,7 @@ impl Process {
             }
 
             None
-        }).map_err(|e| Error::from(e)));
+        })?;
 
         if let Some((paddr_start, _paddr_end)) = paddr_range {
             memory::release_region(RegionUser::Process(self.id), paddr_start);
@@ -535,12 +537,12 @@ impl Process {
             let base = self.heap_base + old_heap_pages * page_size;
             let size = (new_heap_pages - old_heap_pages) * page_size;
 
-            try!(self.map_allocate(base, size, PageType::default().writable()));
+            self.map_allocate(base, size, PageType::default().writable())?;
         } else if new_heap_pages < old_heap_pages {
             let base = self.heap_base + new_heap_pages * page_size;
             let size = (old_heap_pages - new_heap_pages) * page_size;
 
-            try!(self.unmap_deallocate(base, size));
+            self.unmap_deallocate(base, size)?;
         }
 
         self.heap_length = new_heap_length;
@@ -586,7 +588,7 @@ impl error::Error for Error {
         }
     }
 
-    fn cause(&self) -> Option<&error::Error> {
+    fn cause(&self) -> Option<&dyn error::Error> {
         match *self {
             Error::PagingError(ref paging_error) => Some(paging_error),
             _ => None
@@ -596,10 +598,10 @@ impl error::Error for Error {
 
 impl fmt::Display for Error {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        try!(f.write_str(error::Error::description(self)));
+        f.write_str(error::Error::description(self))?;
 
         if let Some(cause) = error::Error::cause(self) {
-            try!(write!(f, ": {}", cause));
+            write!(f, ": {}", cause)?;
         }
 
         Ok(())
@@ -613,13 +615,13 @@ impl From<paging::Error> for Error {
 }
 
 pub trait Image {
-    fn load_into(&self, &mut Process) -> Result<(), Error>;
+    fn load_into(&self, process: &mut Process) -> Result<(), Error>;
 }
 
 /// C interface. See `kit/kernel/include/process.h`.
 pub mod ffi {
-    use c_ffi::*;
-    use scheduler;
+    use crate::c_ffi::*;
+    use crate::scheduler;
 
     #[no_mangle]
     pub extern fn process_current_id() -> uint32_t {

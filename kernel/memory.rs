@@ -14,13 +14,15 @@
 
 use core::mem;
 use core::cmp::{min, Ordering};
-use collections::{Vec, BTreeMap, BinaryHeap};
+use core::alloc::{GlobalAlloc, Layout};
+use alloc::vec::Vec;
+use alloc::collections::{BTreeMap, BinaryHeap};
 
-use paging::{self, kernel_pageset, Pageset};
-use paging::{GenericPageset, PagesetExt, PageType};
+use crate::paging::{self, kernel_pageset, Pageset};
+use crate::paging::{GenericPageset, PagesetExt, PageType};
 
-use multiboot::MmapEntry;
-use process::Id as ProcessId;
+use crate::multiboot::MmapEntry;
+use crate::process::Id as ProcessId;
 
 /// The first "safe" physical address. Memory below this is not likely to be
 /// safe for general use, and may include parts of the kernel image among other
@@ -36,12 +38,30 @@ extern {
     static mut MEMORY_INITIAL_HEAP: [u8; INITIAL_HEAP_LENGTH];
 }
 
+#[global_allocator]
 static mut KERNEL_HEAP: KernelHeap = KernelHeap::InitialHeap(0);
 
 #[derive(Debug)]
 enum KernelHeap {
     InitialHeap(usize),
     LargeHeap(HeapState)
+}
+
+// Support for Rust library allocation using the kernel heap
+unsafe impl GlobalAlloc for KernelHeap {
+    unsafe fn alloc(&self, layout: Layout) -> *mut u8 {
+        allocate(layout.size(), layout.align())
+    }
+
+    unsafe fn dealloc(&self, ptr: *mut u8, layout: Layout) {
+        deallocate(ptr, layout.size(), layout.align())
+    }
+}
+
+// What to do on an allocation error
+#[alloc_error_handler]
+fn handle_alloc_error(layout: Layout) -> ! {
+    panic!("Memory allocation failed: {:?}", layout);
 }
 
 #[derive(Debug)]
@@ -222,7 +242,7 @@ unsafe fn large_heap_allocate(state: &mut HeapState, size: usize, align: usize)
 
             kernel_acquire_and_map(state.end, needed_pages, &mut state.regions);
 
-            asm!("nop" :::: "volatile");
+            asm!("nop"); // barrier for compiler assumptions. needed?
 
             state.end =
                 (state.end as usize + (needed_pages * page_size)) as *mut u8;
