@@ -31,6 +31,8 @@
 
 use core::panic::PanicInfo;
 
+#[macro_use] pub mod sync;
+
 pub mod terminal;
 pub mod constants;
 pub mod multiboot;
@@ -130,18 +132,30 @@ pub extern fn kernel_main() -> ! {
         process::initialize();
     }
 
+    let pid;
+
     {
         let cmdline = unsafe { mb_info.cmdline().unwrap() };
 
         if !cmdline.is_empty() {
-            archive::utils::spawn(cmdline, &[cmdline.as_bytes()]).unwrap();
-            unsafe { scheduler::enter(); }
+            pid = archive::utils::spawn(
+                cmdline, &[cmdline.as_bytes()]).unwrap();
+
+            process::wait(pid);
         } else {
             panic!("No initial program specified on kernel command line!");
         }
     }
 
-    unreachable!();
+    // In case init exits
+    {
+        let process = process::by_id(pid).unwrap();
+
+        panic!("Initial process ({}:{}) exited with code {}",
+            pid,
+            process.borrow().name(),
+            process.borrow().exit_status().unwrap());
+    }
 }
 
 #[panic_handler]

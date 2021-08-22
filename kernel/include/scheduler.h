@@ -18,6 +18,8 @@
 
 #include "process.h"
 
+int scheduler_initialized();
+
 /**
  * When scheduler_tick() returns, process_current is guaranteed to be the same
  * as it was before, but many things may have happened in between. Thus, the

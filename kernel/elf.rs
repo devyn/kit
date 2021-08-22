@@ -14,7 +14,7 @@
 
 use core::slice;
 
-use crate::process::{self, Process, Image};
+use crate::process::{self, Process, Image, ProcessMem};
 use crate::paging::{self, PageType};
 use crate::util::{copy_memory, zero_memory};
 
@@ -297,19 +297,20 @@ impl<'a> Image for Executable<'a> {
                  -> Result<(), process::Error> {
         let mut result = Ok(());
 
-        process.set_entry_point(self.elf64_le.entry());
-
         unsafe {
             // Load the process's pageset, making sure to restore the previous
             // one after.
+            let mem = process.mem().unwrap();
+            let new_pageset = mem.borrow().pageset();
+
             let original_pageset = paging::current_pageset();
-            paging::set_current_pageset(Some(process.pageset()));
+            paging::set_current_pageset(Some(new_pageset));
 
             // Must not return directly from this loop. Set result and break if
             // necessary.
             for phdr in self.elf64_le.program_headers() {
                 if phdr.region_type == RegionType::Load {
-                    result = phdr_load(phdr, process);
+                    result = phdr_load(phdr, &mut *mem.borrow_mut());
                 }
 
                 if result.is_err() { break }
@@ -319,12 +320,14 @@ impl<'a> Image for Executable<'a> {
             paging::set_current_pageset(original_pageset);
         }
 
+        process.set_entry_point(self.elf64_le.entry());
+
         result
     }
 }
 
 unsafe fn phdr_load<'a>(phdr: ElfProgramHeader<'a>,
-                        process: &mut Process)
+                        mem: &mut ProcessMem)
                         -> Result<(), process::Error> {
 
     let mut page_type = PageType::default();
@@ -332,7 +335,7 @@ unsafe fn phdr_load<'a>(phdr: ElfProgramHeader<'a>,
     if phdr.writable   { page_type = page_type.writable(); }
     if phdr.executable { page_type = page_type.executable(); }
 
-    process.map_allocate(phdr.mem_offset, phdr.mem_size, page_type)?;
+    mem.map_allocate(phdr.mem_offset, phdr.mem_size, page_type)?;
 
     // Access the memory directly via a slice into userspace.
     let memory = slice::from_raw_parts_mut(

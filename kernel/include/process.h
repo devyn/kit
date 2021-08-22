@@ -37,4 +37,6 @@ void process_exit(int status);
 
 int process_signal(process_id_t pid, int signal);
 
+void process_print_processes();
+
 #endif

@@ -158,3 +158,7 @@ archive_header_t *syscall_mmap_archive()
 
   return (archive_header_t *) 0x00000ace00000000;
 }
+
+void syscall_print_processes() {
+    process_print_processes();
+}

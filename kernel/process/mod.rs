@@ -32,6 +32,7 @@ use crate::memory::{self, RegionUser};
 use crate::scheduler;
 use crate::syscall;
 use crate::util::copy_memory;
+use crate::sync::WaitQueue;
 
 pub mod x86_64;
 pub use self::x86_64 as target;
@@ -46,10 +47,21 @@ pub enum State {
     Dead,
 }
 
+impl State {
+    pub fn short_description(&self) -> &'static str {
+        match *self {
+            State::Loading  => "Load",
+            State::Running  => "Run",
+            State::Sleeping => "Slp",
+            State::Dead     => "Dead",
+        }
+    }
+}
+
 struct GlobalState {
+    kernel_process: RcProcess,
+    current_process: RcProcess,
     process_tree: BTreeMap<Id, RcProcess>,
-    current_process: Option<RcProcess>,
-    noproc_hw_state: *mut target::HwState,
     next_id: Id,
 }
 
@@ -65,10 +77,29 @@ pub unsafe fn initialize() {
         panic!("process module already initialized");
     }
 
+    // The kernel process does not have its own memory space, so when switching
+    // between kernel processes 
+    let kernel_process = Rc::new(RefCell::new(Process {
+        id:          0, // only process that can have ID 0
+        pgid:        0, // all kernel subprocesses share this value too
+        name:        Rc::new("kernel".into()),
+        state:       State::Running,
+        hw_state:    Box::into_raw(box target::HwState::new()),
+        mem:         None,
+        exit_status: 0,
+        exit_wait:   WaitQueue::new(),
+    }));
+
+    let current_process = kernel_process.clone();
+
+    let mut process_tree = BTreeMap::new();
+
+    process_tree.insert(kernel_process.borrow().id, kernel_process.clone());
+
     GLOBAL_STATE = Some(Box::into_raw(box RefCell::new(GlobalState {
-        process_tree: BTreeMap::new(),
-        current_process: None,
-        noproc_hw_state: Box::into_raw(box target::HwState::new()),
+        kernel_process,
+        current_process,
+        process_tree,
         next_id: 1,
     })));
 
@@ -85,16 +116,32 @@ fn global_state<'a>() -> &'a RefCell<GlobalState> {
     }
 }
 
-/// Get the current process, if applicable.
-///
-/// During initialization, this may be None.
-pub fn current() -> Option<RcProcess> {
-    global_state().borrow_mut().current_process.clone()
+/// Get the kernel process (ID=0).
+pub fn kernel() -> RcProcess {
+    global_state().borrow().kernel_process.clone()
+}
+
+/// Get the current process.
+pub fn current() -> RcProcess {
+    global_state().borrow().current_process.clone()
 }
 
 /// Get a process by ID.
 pub fn by_id(id: Id) -> Option<RcProcess> {
     global_state().borrow().process_tree.get(&id).map(|r| r.clone())
+}
+
+/// Get the processes sharing a PGID.
+pub fn by_pgid(pgid: Id) -> Vec<RcProcess> {
+    global_state().borrow().process_tree.values()
+        .filter(|proc| proc.borrow().pgid == pgid)
+        .map(|proc| proc.clone())
+        .collect()
+}
+
+/// Get all processes.
+pub fn all() -> Vec<RcProcess> {
+    global_state().borrow().process_tree.values().cloned().collect()
 }
 
 /// Change the current process (immediately).
@@ -112,35 +159,18 @@ pub unsafe fn switch_to(process: RcProcess) {
 
     let old_process = current();
 
-    let old_hw_state = match old_process {
-        Some(old_process) => old_process.borrow().hw_state,
-        None              => global_state().borrow().noproc_hw_state
-    };
-
+    let old_hw_state = old_process.borrow().hw_state;
     let new_hw_state = process.borrow().hw_state;
 
-    paging::set_current_pageset(Some(process.borrow().pageset()));
+    // Don't switch pageset for processes that don't have a memory space.
+    //
+    // This allows kernel processes to have lighter context switching - the
+    // kernel pageset is always accessible anyway.
+    if let Some(pageset) = process.borrow().pageset() {
+        paging::set_current_pageset(Some(pageset));
+    }
 
-    global_state().borrow_mut().current_process = Some(process);
-
-    // Do the magic!
-    process_hw_switch(old_hw_state, new_hw_state);
-}
-
-// Use scheduler::exit() instead
-#[doc(hidden)]
-pub unsafe fn switch_to_noproc() {
-    let old_process = match current() {
-        Some(old_process) => old_process,
-        None              => return
-    };
-
-    let old_hw_state = old_process.borrow().hw_state;
-    let new_hw_state = global_state().borrow().noproc_hw_state;
-
-    paging::set_current_pageset(None);
-
-    global_state().borrow_mut().current_process = None;
+    global_state().borrow_mut().current_process = process;
 
     // Do the magic!
     process_hw_switch(old_hw_state, new_hw_state);
@@ -154,17 +184,23 @@ pub type RcProcess = Rc<RefCell<Process>>;
 
 pub struct Process {
     id:          Id,
-    name:        String,
+
+    /// Process group: subprocesses spawned from the same process will have the
+    /// same PGID. Exit() will cause all processes with that PGID to exit.
+    pgid:        Id,
+    name:        Rc<String>,
     state:       State,
-    pageset:     RcPageset,
     hw_state:    *mut target::HwState,
-    heap_base:   usize,
-    heap_length: usize,
+
+    /// Information about the memory space of the process.
+    ///
+    /// Can be shared between processes.
+    mem:         Option<RcProcessMem>,
+
     exit_status: i32,
 
-    /// List of processes waiting for us to exit. Not ideal, but will likely be
-    /// replaced by the host model.
-    pub waiting: Vec<Id>,
+    /// Wait queue for exit event.
+    exit_wait:   WaitQueue,
 }
 
 impl Process {
@@ -181,23 +217,53 @@ impl Process {
     pub fn create<S>(name: S) -> RcProcess where S: Into<String> {
         let id = Process::next_id();
 
-        let mut process = Process {
+        let mut process_mem = ProcessMem {
             id:          id,
-            name:        name.into(),
-            state:       State::Loading,
             pageset:     Pageset::alloc(),
-            hw_state:    Box::into_raw(box target::HwState::new()),
             heap_base:   target::HEAP_BASE_ADDR,
             heap_length: 0,
-            exit_status: 0,
-            waiting:     vec![],
         };
 
         // FIXME? This assumes a downward growing stack, like x86
-        process.map_allocate(
+        process_mem.map_allocate(
             target::STACK_BASE_ADDR - target::STACK_SIZE,
             target::STACK_SIZE,
             PageType::default().writable()).unwrap();
+
+        let process = Process {
+            id:          id,
+            pgid:        id,
+            name:        Rc::new(name.into()),
+            state:       State::Loading,
+            hw_state:    Box::into_raw(box target::HwState::new()),
+            mem:         Some(Rc::new(RefCell::new(process_mem))),
+            exit_status: 0,
+            exit_wait:   WaitQueue::new(),
+        };
+
+        let rc_process = Rc::new(RefCell::new(process));
+
+        global_state().borrow_mut().process_tree.insert(id, rc_process.clone());
+
+        rc_process
+    }
+
+    /// Creates a process sharing the same memory space and pgid.
+    pub fn create_subprocess(&self) -> RcProcess {
+        let id = Process::next_id();
+
+        assert!(!self.is_dead());
+
+        let process = Process {
+            id: id,
+            pgid: self.pgid,
+            name: self.name.clone(),
+            state: State::Loading,
+            hw_state: Box::into_raw(box target::HwState::new()),
+            mem: self.mem.clone(),
+            exit_status: 0,
+            exit_wait: WaitQueue::new(),
+        };
 
         let rc_process = Rc::new(RefCell::new(process));
 
@@ -210,36 +276,28 @@ impl Process {
         self.id
     }
 
+    pub fn pgid(&self) -> Id {
+        self.pgid
+    }
+
     pub fn name(&self) -> &str {
         &*self.name
+    }
+
+    pub fn set_name<S>(&mut self, name: S) where S: Into<String> {
+        self.name = Rc::new(name.into());
     }
 
     pub fn state(&self) -> State {
         self.state
     }
 
-    pub fn pageset(&self) -> RcPageset {
-        self.pageset.clone()
+    pub fn mem(&self) -> Option<RcProcessMem> {
+        self.mem.as_ref().map(|rc| rc.clone())
     }
 
-    pub fn heap_base(&self) -> usize {
-        self.heap_base
-    }
-
-    pub fn heap_length(&self) -> usize {
-        self.heap_length
-    }
-
-    pub fn heap_end(&self) -> usize {
-        let page_size = <Pageset as GenericPageset>::page_size();
-
-        let mut heap_end = self.heap_base + self.heap_length;
-
-        if heap_end % page_size != 0 {
-            heap_end += page_size - (heap_end % page_size);
-        }
-
-        heap_end
+    pub fn pageset(&self) -> Option<RcPageset> {
+        self.mem.as_ref().map(|rc| rc.borrow().pageset.clone())
     }
 
     pub fn is_running(&self) -> bool {
@@ -308,65 +366,18 @@ impl Process {
     pub fn set_args(&mut self, args: &[&[u8]]) -> Result<(), Error> {
         assert!(self.state == State::Loading);
 
-        // Special case: if there are no args, just set HwState.
-        if args.is_empty() {
+        if let Some(ref mem) = self.mem {
+            let params = mem.borrow_mut().setup_args(args)?;
+
             unsafe {
-                self.hw_state_mut().set_args(None);
-            }
-            return Ok(());
-        }
-
-        // Args length must fit within an i32.
-        assert!(args.len() <= i32::MAX as usize);
-
-        // Size of all args + size of null bytes at end of each arg + size of
-        // pointer table
-        let args_size =
-            args.iter().map(|a| a.len()).sum::<usize>() + args.len() +
-            mem::size_of::<usize>() * args.len();
-
-        let page_size = <Pageset as GenericPageset>::page_size();
-
-        let vaddr = target::ARGS_TOP_ADDR - args_size;
-        let vaddr = vaddr - vaddr % page_size;
-
-        self.map_allocate(vaddr, args_size, PageType::default())?;
-
-        unsafe {
-            // Swap in process pageset.
-            // Careful: must reset to old pageset after!
-            let old_pageset = paging::current_pageset();
-            paging::set_current_pageset(Some(self.pageset()));
-
-            // Set pointer table and copy args.
-            let ptr_table: &mut [usize] =
-                slice::from_raw_parts_mut(vaddr as *mut usize, args.len());
-
-            let mut next_ptr =
-                vaddr + ptr_table.len() * mem::size_of::<usize>();
-
-            for (index, arg) in args.iter().enumerate() {
-                let arg_dest: &mut [u8] =
-                    slice::from_raw_parts_mut(next_ptr as *mut u8,
-                                              arg.len() + 1);
-
-                ptr_table[index] = next_ptr;
-
-                copy_memory(arg, arg_dest);
-
-                arg_dest[arg.len()] = 0;
-
-                next_ptr += arg.len() + 1;
+                self.hw_state_mut().set_args(params);
             }
 
-            // Reset to old pageset.
-            paging::set_current_pageset(old_pageset);
-
-            // Put args in HwState in preparation to run the program.
-            self.hw_state_mut().set_args(Some((args.len() as i32, vaddr)));
+            Ok(())
+        } else {
+            panic!("Can't set_args because process doesn't have its own \
+                memory space");
         }
-
-        Ok(())
     }
 
     pub fn set_entry_point(&mut self, vaddr: usize) {
@@ -428,6 +439,58 @@ impl Process {
     pub fn exit(&mut self, exit_status: i32) {
         self.state = State::Dead;
         self.exit_status = exit_status;
+    }
+}
+
+impl PartialEq for Process {
+    fn eq(&self, other: &Process) -> bool {
+        self.id == other.id
+    }
+}
+
+impl Eq for Process { }
+
+impl Drop for Process {
+    fn drop(&mut self) {
+        unsafe {
+            Box::from_raw(self.hw_state).deallocate()
+        }
+    }
+}
+
+pub type RcProcessMem = Rc<RefCell<ProcessMem>>;
+
+pub struct ProcessMem {
+    id:          Id,
+    pageset:     RcPageset,
+    heap_base:   usize,
+    heap_length: usize,
+}
+
+impl ProcessMem {
+
+    pub fn heap_base(&self) -> usize {
+        self.heap_base
+    }
+
+    pub fn heap_length(&self) -> usize {
+        self.heap_length
+    }
+
+    pub fn heap_end(&self) -> usize {
+        let page_size = <Pageset as GenericPageset>::page_size();
+
+        let mut heap_end = self.heap_base + self.heap_length;
+
+        if heap_end % page_size != 0 {
+            heap_end += page_size - (heap_end % page_size);
+        }
+
+        heap_end
+    }
+
+    pub fn pageset(&self) -> RcPageset {
+        self.pageset.clone()
     }
 
     /// Allocates at least enough pages at `vaddr` to contain `size`.
@@ -549,21 +612,68 @@ impl Process {
 
         Ok(())
     }
-}
 
-impl PartialEq for Process {
-    fn eq(&self, other: &Process) -> bool {
-        self.id == other.id
-    }
-}
+    /// Sets up args in the memory space, and returns the parameters that should
+    /// be passed to the entry point.
+    ///
+    /// See [HwState::set_args]
+    pub fn setup_args(&mut self, args: &[&[u8]])
+        -> Result<Option<(i32, usize)>, Error> {
 
-impl Eq for Process { }
-
-impl Drop for Process {
-    fn drop(&mut self) {
-        unsafe {
-            Box::from_raw(self.hw_state).deallocate()
+        // Special case: if there are no args, just set HwState.
+        if args.is_empty() {
+            return Ok(None);
         }
+
+        // Args length must fit within an i32.
+        assert!(args.len() <= i32::MAX as usize);
+
+        // Size of all args + size of null bytes at end of each arg + size of
+        // pointer table
+        let args_size =
+            args.iter().map(|a| a.len()).sum::<usize>() + args.len() +
+            mem::size_of::<usize>() * args.len();
+
+        let page_size = <Pageset as GenericPageset>::page_size();
+
+        let vaddr = target::ARGS_TOP_ADDR - args_size;
+        let vaddr = vaddr - vaddr % page_size;
+
+        self.map_allocate(vaddr, args_size, PageType::default())?;
+
+        unsafe {
+            // Swap in process pageset.
+            // Careful: must reset to old pageset after!
+            let old_pageset = paging::current_pageset();
+            paging::set_current_pageset(Some(self.pageset()));
+
+            // Set pointer table and copy args.
+            let ptr_table: &mut [usize] =
+                slice::from_raw_parts_mut(vaddr as *mut usize, args.len());
+
+            let mut next_ptr =
+                vaddr + ptr_table.len() * mem::size_of::<usize>();
+
+            for (index, arg) in args.iter().enumerate() {
+                let arg_dest: &mut [u8] =
+                    slice::from_raw_parts_mut(next_ptr as *mut u8,
+                                              arg.len() + 1);
+
+                ptr_table[index] = next_ptr;
+
+                copy_memory(arg, arg_dest);
+
+                arg_dest[arg.len()] = 0;
+
+                next_ptr += arg.len() + 1;
+            }
+
+            // Reset to old pageset.
+            paging::set_current_pageset(old_pageset);
+        }
+
+        // Return parameters that should be put in HwState
+        Ok(Some((args.len() as i32, vaddr)))
     }
 }
 
@@ -572,6 +682,7 @@ pub enum Error {
     PagingError(paging::Error),
     OutOfMemory(usize),
     Overflow,
+    UnknownPid(Id),
 }
 
 impl error::Error for Error {
@@ -585,6 +696,9 @@ impl error::Error for Error {
 
             Error::Overflow =>
                 "An integer overflow occurred (parameter too big/small?)",
+
+            Error::UnknownPid(_) =>
+                "Unknown process id",
         }
     }
 
@@ -618,66 +732,68 @@ pub trait Image {
     fn load_into(&self, process: &mut Process) -> Result<(), Error>;
 }
 
+pub fn exit(status: i32) -> ! {
+    {
+        let rc_process = current();
+
+        let mut process = rc_process.borrow_mut();
+
+        assert!(process.id != 0, "attempted to exit({}) kernel!", status);
+
+        process.exit(status);
+
+        // Notify wait queue
+        process.exit_wait.awaken_all();
+    }
+
+    unsafe { scheduler::tick(); }
+
+    panic!("returned to process {} after exit", current().borrow().id);
+}
+
+pub fn wait(id: Id) -> Result<(), Error> {
+    let queue = by_id(id).ok_or(Error::UnknownPid(id))?
+        .borrow().exit_wait.clone();
+
+    wait!(by_id(id).map(|p| p.borrow().is_dead()).unwrap_or(true), [queue]);
+
+    Ok(())
+}
+
+pub fn sleep() {
+    // Set our state to sleep and then yield to the scheduler.
+    current().borrow_mut().sleep();
+    unsafe { scheduler::tick(); }
+}
+
 /// C interface. See `kit/kernel/include/process.h`.
 pub mod ffi {
     use crate::c_ffi::*;
-    use crate::scheduler;
 
     #[no_mangle]
     pub extern fn process_current_id() -> uint32_t {
-        if let Some(process) = super::current() {
-            process.borrow().id
-        } else {
-            0
-        }
+        super::current().borrow().id
     }
 
     #[no_mangle]
     pub unsafe extern fn process_exit(status: c_int) -> ! {
-        if let Some(process) = super::current() {
-            process.borrow_mut().exit(status);
-
-            if process.borrow().id == 1 {
-                panic!("initial process ({}, {}) exited with status {}",
-                       process.borrow().id,
-                       process.borrow().name,
-                       status);
-            }
-
-            // Let waiting processes know
-            for &pid in &process.borrow().waiting {
-                if let Some(process_waiting) = super::by_id(pid) {
-                    let _ = scheduler::awaken(process_waiting);
-                }
-            }
-
-            scheduler::tick();
-            unreachable!();
-        } else {
-            panic!("C called process_exit() but there is no current process");
-        }
+        super::exit(status);
     }
 
     #[no_mangle]
     pub unsafe extern fn process_signal(pid: uint32_t, signal: c_int) -> c_int {
         if let Some(process) = super::by_id(pid) {
             // Case 1: this is the current process, so just exit
-            if let Some(current_process) = super::current() {
-                if current_process.borrow().id == process.borrow().id {
-                    process_exit(signal);
-                    // the function will not return!
-                }
+            if super::current().borrow().id == process.borrow().id {
+                super::exit(signal);
+                // the function will not return!
             }
 
             // Case 2: we're telling another process to exit.
             process.borrow_mut().exit(signal);
 
             // Let waiting processes know
-            for &pid in &process.borrow().waiting {
-                if let Some(process_waiting) = super::by_id(pid) {
-                    let _ = scheduler::awaken(process_waiting);
-                }
-            }
+            process.borrow().exit_wait.awaken_all();
 
             1
         } else {
@@ -690,43 +806,55 @@ pub mod ffi {
     pub unsafe extern fn process_wait_exit_status(pid: uint32_t,
                                                   status: *mut c_int)
                                                   -> c_int {
-        let current_process = super::current()
-            .expect("C called process_wait_exit_status() but there is
-                     no current process");
-
-        if let Some(process) = super::by_id(pid) {
-            let exit_status = process.borrow().exit_status();
-
-            if let Some(exit_status) = exit_status {
-                // TODO: remove process from wait list
+        if super::wait(pid).is_ok() {
+            if let Some(rc_process) = super::by_id(pid) {
+                let exit_status = rc_process.borrow().exit_status()
+                    .expect("wait() returned but process is not dead");
 
                 *status = exit_status;
-                return 0;
+                0
             } else {
-                process.borrow_mut().waiting
-                    .push(current_process.borrow().id());
-
-                current_process.borrow_mut().sleep();
-                scheduler::tick();
-
-                return process_wait_exit_status(pid, status);
+                -1
             }
         } else {
-            return -1;
+            -1
         }
     }
 
     //void *process_adjust_heap(int64_t amount);
     #[no_mangle]
     pub unsafe extern fn process_adjust_heap(amount: int64_t) -> *mut c_void {
-        let current_process = super::current()
-            .expect("C called process_adjust_heap() but there is
-                     no current process");
+        let current_process = super::current();
 
-        current_process.borrow_mut().adjust_heap(amount as isize).unwrap();
+        let rc_mem = current_process.borrow_mut().mem()
+            .expect("Current process has no memory associated with it");
 
-        let heap_end = current_process.borrow().heap_end() as *mut c_void;
+        let mut mem = rc_mem.borrow_mut();
+
+        mem.adjust_heap(amount as isize).unwrap();
+
+        let heap_end = mem.heap_end() as *mut c_void;
 
         heap_end
+    }
+
+    /// FIXME: just for demo
+    #[no_mangle]
+    pub extern fn process_print_processes() {
+        use crate::terminal::console;
+
+        let processes = super::all();
+
+        let _ = writeln!(console(), "ID    PGID  STATE NAME");
+
+        for rc_process in processes {
+            let process = rc_process.borrow();
+
+            let _ = writeln!(console(), "{:<5} {:<5} {:<5} {}",
+                process.id(),
+                process.pgid(),
+                process.state().short_description(),
+                process.name());
+        }
     }
 }

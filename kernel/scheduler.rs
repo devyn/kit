@@ -57,36 +57,6 @@ pub fn entered() -> bool {
     initialized() && global_state().borrow().entered
 }
 
-/// Enter the scheduler loop.
-///
-/// This function will not return until the last process dies.
-///
-/// # Panics
-///
-/// Panics if we are already in the scheduler loop.
-pub unsafe fn enter() {
-    assert!(!global_state().borrow().entered, "scheduler already entered");
-
-    global_state().borrow_mut().entered = true;
-    tick();
-    global_state().borrow_mut().entered = false;
-}
-
-/// Exit the scheduler loop.
-///
-/// This function may not return unless the scheduler loop is entered again,
-/// which probably won't happen.
-///
-/// # Panics
-///
-/// Panics unless called from within the scheduler loop.
-pub unsafe fn exit() {
-    assert!(entered(), "tried to exit scheduler loop from outside scheduler
-                        loop");
-
-    process::switch_to_noproc();
-}
-
 /// Pushes a process on to the end of the run queue.
 ///
 /// # Panics
@@ -139,9 +109,9 @@ pub fn awaken(process: RcProcess) -> Result<bool, process::State> {
 ///
 /// # Panics
 ///
-/// Panics if the scheduler loop has not been entered.
+/// Panics if the scheduler has not been initialized.
 pub unsafe fn tick() {
-    assert!(entered(), "tick() called outside scheduler loop");
+    assert!(initialized(), "tick() called before scheduler initialized");
 
     // If the scheduler is currently sleeping, don't do anything;
     // another instance of `tick()` is already waiting for an event and will
@@ -151,21 +121,6 @@ pub unsafe fn tick() {
     }
 
     let current_process = process::current();
-
-    // If there's no current process (we are coming from the kernel), just
-    // switch to the first process on the queue. If the queue is empty, do
-    // nothing and return.
-    if current_process.is_none() {
-        let first_process = global_state().borrow_mut().run_queue.pop_front();
-
-        if let Some(process) = first_process {
-            process::switch_to(process);
-        }
-
-        return;
-    }
-
-    let current_process = current_process.unwrap();
 
     while global_state().borrow().run_queue.is_empty() {
         let current_process_is_running = current_process.borrow().is_running();
@@ -232,18 +187,16 @@ pub mod ffi {
 
     #[no_mangle]
     pub unsafe extern fn scheduler_sleep() {
-        let current_process = process::current()
-            .expect("tried to call scheduler_sleep() without a process");
+        process::sleep();
+    }
 
-        current_process.borrow_mut().sleep();
-
-        super::tick();
+    #[no_mangle]
+    pub unsafe extern fn scheduler_initialized() -> c_int {
+        super::initialized() as c_int
     }
 
     #[no_mangle]
     pub unsafe extern fn scheduler_tick() {
-        if super::entered() {
-            super::tick();
-        }
+        super::tick();
     }
 }
