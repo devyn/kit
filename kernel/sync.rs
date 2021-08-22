@@ -11,5 +11,7 @@
  ******************************************************************************/
 
 #[macro_use] pub mod wait;
+pub mod spinlock;
 
 pub use wait::WaitQueue;
+pub use spinlock::{Spinlock, CriticalSpinlock};

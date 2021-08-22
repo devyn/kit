@@ -15,6 +15,7 @@
 use core::mem;
 use core::cmp::{min, Ordering};
 use core::alloc::{GlobalAlloc, Layout};
+
 use alloc::vec::Vec;
 use alloc::collections::{BTreeMap, BinaryHeap};
 
@@ -23,6 +24,8 @@ use crate::paging::{GenericPageset, PagesetExt, PageType};
 
 use crate::multiboot::MmapEntry;
 use crate::process::Id as ProcessId;
+
+use crate::sync::CriticalSpinlock;
 
 /// The first "safe" physical address. Memory below this is not likely to be
 /// safe for general use, and may include parts of the kernel image among other
@@ -69,14 +72,17 @@ struct HeapState {
     start: *mut u8,
     end: *mut u8,
     length: usize,
-    regions: Vec<(PhysicalAddress, PageCount)>,
-    can_grow: bool
+    regions: CriticalSpinlock<Vec<(PhysicalAddress, PageCount)>>,
 }
 
-static mut ALLOC_REGIONS: Option<BTreeMap<PhysicalAddress, AllocRegionState>> = None;
-static mut FREE_REGIONS: Option<BinaryHeap<FreeRegion>> = None;
+#[derive(Debug)]
+struct RegionState {
+    alloc_regions: BTreeMap<PhysicalAddress, AllocRegionState>,
+    free_regions: BinaryHeap<FreeRegion>,
+    total_free: PageCount,
+}
 
-static mut TOTAL_FREE: PageCount = 0;
+static mut REGION_STATE: Option<CriticalSpinlock<RegionState>> = None;
 
 pub type PhysicalAddress = usize;
 pub type PageCount = usize;
@@ -168,10 +174,11 @@ pub unsafe fn initialize(mmap_buffer: *const u8, mmap_length: u32) {
         }
     }
 
-    TOTAL_FREE = free_regions.iter().fold(0, |s, r| s + r.length);
-
-    FREE_REGIONS = Some(free_regions);
-    ALLOC_REGIONS = Some(BTreeMap::new());
+    REGION_STATE = Some(CriticalSpinlock::new(RegionState {
+        total_free: free_regions.iter().fold(0, |s, r| s + r.length),
+        free_regions,
+        alloc_regions: BTreeMap::new(),
+    }));
 }
 
 const LARGE_HEAP_START: usize = 0xffff_ffff_8100_0000;
@@ -216,19 +223,18 @@ unsafe fn initial_heap_allocate(counter: &mut usize, size: usize, align: usize)
 unsafe fn large_heap_allocate(state: &mut HeapState, size: usize, align: usize)
                               -> *mut u8 {
 
-    let start = state.start as usize;
+    // Note: there are parts in here where allocations can happen. Avoid taking
+    // values from state between when these allocations could happen.
 
-    if state.can_grow {
-        // Avoid recursively growing the heap
-        state.can_grow = false;
-
+    // Don't even try to run any allocation if we're already doing an operation.
+    if let Some(mut regions) = state.regions.try_lock() {
         // The maximum amount of room we will need to align is (align - 1)
         // bytes, so reserve that just in case.
         //
         // We can't predict what the alignment will be after the
         // kernel_acquire_and_map() call, since mapping pages sometimes requires
         // memory allocation, but it should always fit within the BUFZONE_SIZE.
-        let min_end = start + state.length +
+        let min_end = state.start as usize + state.length +
             (align - 1) + size + BUFZONE_SIZE;
 
         if min_end >= state.end as usize {
@@ -240,26 +246,36 @@ unsafe fn large_heap_allocate(state: &mut HeapState, size: usize, align: usize)
                 needed_pages += 1;
             }
 
-            kernel_acquire_and_map(state.end, needed_pages, &mut state.regions);
+            // Warning: allocation possible here.
+            let result = 
+                kernel_acquire_and_map(state.end, needed_pages, &mut *regions);
 
-            asm!("nop"); // barrier for compiler assumptions. needed?
+            // If we get an error, still add whatever number of pages we could
+            // allocate
+            let allocated_pages = match result {
+                Ok(()) => needed_pages,
+                Err(some_pages) => some_pages
+            };
 
             state.end =
-                (state.end as usize + (needed_pages * page_size)) as *mut u8;
-        }
-
-        state.can_grow = true;
-    } else {
-        let new_addr = align_addr(start + state.length, align);
-
-        if new_addr + size >= state.end as usize {
-            panic!("ran out of bufzone memory while trying to get more memory");
+                (state.end as usize + (allocated_pages * page_size)) as *mut u8;
         }
     }
+
+    // It's possible that we failed to actually acquire the pages we need, but
+    // try to proceed anyway and hope the buffer zone is enough:
+
+    let start = state.start as usize;
 
     state.length = align_addr(start + state.length, align) - start;
 
     let alloc_addr = (start + state.length) as *mut u8;
+
+    // It's possible that even after our best attempt to allocate more memory,
+    // we still don't have enough. In that case we have to panic.
+    if (start + state.length + size) >= state.end as usize {
+        panic!("ran out of bufzone memory");
+    }
 
     state.length += size;
 
@@ -274,19 +290,22 @@ pub unsafe fn enable_large_heap() {
         return;
     }
 
-    let bufzone_pages = BUFZONE_SIZE/Pageset::page_size();
+    let bufzone_pages = BUFZONE_SIZE / Pageset::page_size();
 
     let mut regions = vec![];
 
     kernel_acquire_and_map(
-        LARGE_HEAP_START as *mut u8, bufzone_pages, &mut regions);
+        LARGE_HEAP_START as *mut u8,
+        bufzone_pages,
+        &mut regions,
+    )
+    .expect("Failed to initialize large heap bufzone");
 
     KERNEL_HEAP = KernelHeap::LargeHeap(HeapState {
-        start:    LARGE_HEAP_START as *mut u8,
-        end:      (LARGE_HEAP_START + BUFZONE_SIZE) as *mut u8,
-        length:   0,
-        regions:  regions,
-        can_grow: true
+        start: LARGE_HEAP_START as *mut u8,
+        end: (LARGE_HEAP_START + BUFZONE_SIZE) as *mut u8,
+        length: 0,
+        regions: CriticalSpinlock::new(regions),
     });
 }
 
@@ -294,19 +313,19 @@ pub fn acquire_region(owner: RegionUser, pages: PageCount)
                       -> Option<(PhysicalAddress, PageCount)> {
     let page_size = Pageset::page_size();
 
-    unsafe {
-        let free_regions = FREE_REGIONS.as_mut()
-            .expect("memory::initialize() not called");
+    // Safety: initialized once
+    let state_lock = unsafe { 
+        REGION_STATE.as_ref().expect("memory::initialize() not called")
+    };
 
-        let alloc_regions = ALLOC_REGIONS.as_mut().unwrap();
-
-        if TOTAL_FREE < pages {
+    if let Some(mut state) = state_lock.try_lock() {
+        if state.total_free < pages {
             return None;
         }
 
-        if let Some(free_region) = free_regions.pop() {
+        if let Some(free_region) = state.free_regions.pop() {
             if free_region.length > pages {
-                free_regions.push(FreeRegion {
+                state.free_regions.push(FreeRegion {
                     start: free_region.start + (pages * page_size),
                     length: free_region.length - pages
                 });
@@ -314,17 +333,20 @@ pub fn acquire_region(owner: RegionUser, pages: PageCount)
 
             let captured_length = min(free_region.length, pages);
 
-            alloc_regions.insert(free_region.start, AllocRegionState {
+            state.alloc_regions.insert(free_region.start, AllocRegionState {
                 length: captured_length,
                 users: vec![owner]
             });
 
-            TOTAL_FREE -= captured_length;
+            state.total_free -= captured_length;
 
             Some((free_region.start, captured_length))
         } else {
             None
         }
+    } else {
+        // Nested calls to acquire_region are not allowed.
+        None
     }
 }
 
@@ -332,9 +354,13 @@ pub fn release_region(user: RegionUser, paddr: PhysicalAddress) {
     unimplemented!()
 }
 
-fn kernel_acquire_and_map(vaddr: *mut u8,
-                          pages: PageCount,
-                          regions: &mut Vec<(PhysicalAddress, PageCount)>) {
+/// Returns the number of pages successfully allocated on error
+fn kernel_acquire_and_map(
+    vaddr: *mut u8,
+    pages: PageCount,
+    regions: &mut Vec<(PhysicalAddress, PageCount)>,
+) -> Result<(), PageCount> {
+
     let page_size = Pageset::page_size();
 
     let mut cur_vaddr = vaddr as usize;
@@ -342,15 +368,19 @@ fn kernel_acquire_and_map(vaddr: *mut u8,
 
     while cur_pages > 0 {
         let (got_paddr, got_pages) =
-            acquire_region(RegionUser::Kernel, cur_pages)
-                .expect("not enough memory for kernel");
+            match acquire_region(RegionUser::Kernel, cur_pages) {
+                Some(x) => x,
+                None => return Err(pages - cur_pages)
+            };
 
         unsafe {
-            kernel_pageset().map_pages_with_type(
-                cur_vaddr,
-                (got_paddr..).step_by(page_size).take(got_pages),
-                PageType::default().writable()
-            ).expect("unable to map acquired pages into kernel space")
+            kernel_pageset()
+                .map_pages_with_type(
+                    cur_vaddr,
+                    (got_paddr..).step_by(page_size).take(got_pages),
+                    PageType::default().writable(),
+                )
+                .expect("unable to map acquired pages into kernel space")
         }
 
         cur_vaddr += got_pages * page_size;
@@ -358,6 +388,8 @@ fn kernel_acquire_and_map(vaddr: *mut u8,
 
         regions.push((got_paddr, got_pages));
     }
+
+    Ok(())
 }
 
 /// C foreign interface.

@@ -32,6 +32,7 @@
 use core::panic::PanicInfo;
 
 #[macro_use] pub mod sync;
+#[macro_use] pub mod util;
 
 pub mod terminal;
 pub mod constants;
@@ -47,7 +48,6 @@ pub mod scheduler;
 pub mod syscall;
 pub mod c_ffi;
 pub mod error;
-pub mod util;
 
 use terminal::*;
 
@@ -141,7 +141,7 @@ pub extern fn kernel_main() -> ! {
             pid = archive::utils::spawn(
                 cmdline, &[cmdline.as_bytes()]).unwrap();
 
-            process::wait(pid);
+            process::wait(pid).unwrap();
         } else {
             panic!("No initial program specified on kernel command line!");
         }

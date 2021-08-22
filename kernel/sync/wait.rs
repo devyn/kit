@@ -33,7 +33,7 @@ impl WaitQueue {
         for &pid in self.q.borrow().iter() {
             if let Some(process) = process::by_id(pid) {
                 if process.borrow().is_alive() {
-                    scheduler::awaken(process);
+                    scheduler::awaken(process).unwrap();
                 }
             }
         }
