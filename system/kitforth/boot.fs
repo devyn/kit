@@ -84,9 +84,11 @@
 \ limit index DO code... LOOP
 \ limit index DO code... n +LOOP
 
+\ always executes loop once
 : do ( limit index -- )
    0 postpone 2>r <mark
 ; immediate
+\ checks condition first, skips executing loop if already true
 : ?do ( limit index -- )
    postpone 2>r
    postpone 2r@
@@ -180,6 +182,24 @@
 : ." ( -- ) postpone s" postpone type ; immediate
 : .( ( -- ) [char] ) parse type ; immediate
 
+\ C compatible strings
+: cs" ( -- addr )
+   [char] " parse \ get input string
+   state if \ if compiling:
+      \ see s" word, it's basically the same but we have an extra zero
+      \ guaranteed
+      postpone (string)
+      dup 1 + cp, \ account for the extra zero char
+      cp swap dup 1 + aligned 1 cells / 0 ?do 0 cp, loop move
+      postpone drop \ length is not used
+   else
+      dup 1 + allocate drop swap
+      2dup 2>r move
+      2r> 2dup + 0 swap c! \ make sure to zero out the last byte
+      drop \ length is not used
+   then
+; immediate
+
 \ Compare two strings.
 \ If the first string < the second string, returns -1.
 \ If the first string > the second string, returns 1.
@@ -225,10 +245,12 @@
    system.kit cell+ @
 ;
 : archive-entry0 ( -- addr )
-   system.kit 2 cells +
+   system.kit 2 cells + \ offset of first entry
 ;
 : archive-next ( addr -- next-addr )
-   2 cells + dup @ + cell+
+   3 cells + \ skip to name length field
+   dup @ + \ add name length
+   cell+ \ plus length of name length field itself
 ;
 : archive-entry.offset ( addr -- n )
    @
@@ -237,7 +259,8 @@
    cell+ @
 ;
 : archive-entry.name ( addr -- c-addr u )
-   2 cells + dup @ swap cell+ swap
+   3 cells + dup @ \ read name length ( name-length-addr length )
+   swap cell+ swap \ increment first pointer to start of name
 ;
 : archive-entry.body ( addr -- c-addr u )
    dup archive-entry.length >r
@@ -271,6 +294,35 @@
 ;
 : xxd ( c-addr u -- )
    read dup if dump else 2drop ." File not found!" then
+;
+: ps ( -- )
+   cr 0 9 syscall drop
+;
+: spawn ( cstring... argc name-cstring -- pid )
+   >r dup >r \ deal with args for now (cstring... argc)
+   dup \ (cstring... argc argc)
+   1+ cells allocate drop \ (cstring... argc argv-ptr)
+   dup >r swap \ create argv array
+   \ (cstring... argv-ptr argc)
+   0 ?do
+      \ (cstring... argv-ptr)
+      dup -rot \ copy pointer over the cstring in the stack
+      \ (cstring... argv-ptr cstring argv-ptr)
+      !        \ store cstring to the ptr
+      \ (cstring... argv-ptr)
+      cell+    \ increment the ptr for next loop
+   loop \ put strings in argv array
+   drop \ ()
+   r> r> r> \ (argv argc name)
+   3 5 syscall
+;
+: wait ( pid -- exitcode )
+   >r
+   999 sp@ \ address to put exit code in. 999 if we failed
+   r>
+   2 6 syscall \ ( &exitcode pid -- err )
+   drop
+   \ exit code should be on stack
 ;
 
 \ Including Forth source.

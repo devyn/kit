@@ -67,6 +67,8 @@ extern void cp_comma_stub();
 extern void branch();
 extern void branch_if_zero();
 
+extern void get_stack_ptr();
+
 extern void display();
 extern void emit();
 extern void in_char();

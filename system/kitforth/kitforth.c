@@ -270,6 +270,8 @@ void init_dict() {
   append_primitive("branch",    &branch);
   append_primitive("?branch",   &branch_if_zero);
 
+  append_primitive("sp@",       &get_stack_ptr);
+
   append_primitive(".",         &display);
   append_primitive("emit",      &emit);
   append_primitive("char",      &in_char);
@@ -293,7 +295,7 @@ void init_dict() {
   append_constant("true", ~0);
 
   append_constant("(here)",  (uint64_t) &here);
-  append_constant("(there)", (uint64_t) there);
+  append_constant("(there)", (uint64_t) &there);
 
   // None of these should ever be invoked directly.
   append_primitive("(push)", &push);

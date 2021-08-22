@@ -407,6 +407,13 @@ branch_if_zero: # ( flag -- ); set ip to following number if flag is zero
   mov %rax, %rbp
   jmp *(%rbp)
 
+.global get_stack_ptr
+get_stack_ptr: # ( -- stackptr )
+  mov %rbx, %rcx
+  sub $8, %rbx
+  mov %rcx, (%rbx)
+  NEXT
+
 .global display
 display: # ( x -- )
   mov (%rbx), %rdi
