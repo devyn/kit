@@ -11,21 +11,9 @@
 #
 ################################################################################
 
+.include "constants.S"
+
 .section .data
-
-# GDT-related constants
-.set USER_CD32_SEL, 0x1b
-.set USER_DATA_SEL, 0x23
-.set USER_CD64_SEL, 0x2b
-
-# Current process HwState pointer
-.global process_hwstate
-process_hwstate: .quad 0
-
-# HwState offsets
-.set HWSTATE_KSTACK_BASE,    0x00
-.set HWSTATE_KSTACK_POINTER, 0x08
-.set HWSTATE_REGISTERS,      0x10
 
 .section .text
 
@@ -49,7 +37,7 @@ process_hw_prepare:
   mov %rsp, tss_stack
 
   # Load the current process's registers' base address into R15.
-  mov (process_hwstate), %r15
+  mov %gs:CPULOCAL_HWSTATE, %r15
   add $HWSTATE_REGISTERS, %r15
 
   # Put SS, RSP, EFLAGS, CS, RIP on the stack
@@ -94,8 +82,7 @@ process_hw_prepare:
   mov $USER_DATA_SEL, %ax
   mov %ax, %ds
   mov %ax, %es
-  mov %ax, %fs
-  mov %ax, %gs
+  swapgs
 
   pop %rax
 
@@ -128,16 +115,14 @@ process_hw_switch:
 
   # Save stack
   mov %rsp,             HWSTATE_KSTACK_POINTER(%rdi)
-  mov rust_stack_limit, %rbp
   mov %rbp,             HWSTATE_KSTACK_BASE(%rdi)
 
   # Switch stacks
   mov HWSTATE_KSTACK_POINTER(%rsi), %rsp
   mov HWSTATE_KSTACK_BASE(%rsi),    %rbp
-  mov %rbp,                         rust_stack_limit
 
-  # Set process_hwstate
-  mov %rsi, process_hwstate
+  # Set current hwstate to new one
+  mov %rsi, %gs:CPULOCAL_HWSTATE
 
   # Return into process_switch() on other stack
   pop %r15

@@ -11,24 +11,11 @@
 #
 ################################################################################
 
+.include "constants.S"
+
 .section .rodata
 
 .set INTERRUPT_STACK_SIZE, 192
-
-# GDT-related constants
-.set KERNEL_CODE_SEL, 0x08
-.set KERNEL_DATA_SEL, 0x10
-
-# Virtual memory offset
-.set KERNEL_VMA, 0xffffffff80000000
-
-# FS.base MSR (required to set to ignore Rust stack checks)
-.set IA32_FS_BASE, 0xc0000100
-
-# HwState offsets
-.set HWSTATE_KSTACK_BASE,    0x00
-.set HWSTATE_KSTACK_POINTER, 0x08
-.set HWSTATE_REGISTERS,      0x10
 
 .section .text
 
@@ -182,12 +169,16 @@ interrupt_isr_stub_common:
   mov %ds, %ax
   push %rax
 
+  # SWAPGS to kernel if we came from user code
+  test $0x3, %ax
+  jz  .LnoSwapGS
+  swapgs
+
+.LnoSwapGS:
   # Load kernel data selector
   mov $KERNEL_DATA_SEL, %ax
   mov %ax, %ds
   mov %ax, %es
-  mov %ax, %fs
-  mov %ax, %gs
   mov %ax, %ss # to replace the hacky NULL selector one
 
   # Initialize FS.base.
@@ -216,9 +207,8 @@ interrupt_isr_stub_common:
   # the data selectors to what they were originally in the user case.
   #
   # Otherwise, skip the following.
-  mov $KERNEL_DATA_SEL, %bx
-  cmp %ax, %bx
-  je  1f
+  test $0x3, %ax
+  jz  .LnoSaveStack
 
   # This is what the stack pointer will be after iret.
   lea (INTERRUPT_STACK_SIZE - 8)(%rsp), %rbx
@@ -227,7 +217,7 @@ interrupt_isr_stub_common:
   mov %rbx, tss_stack
 
   # And the process's HwState.
-  mov process_hwstate,         %rdi
+  mov %gs:CPULOCAL_HWSTATE,    %rdi
   add $HWSTATE_KSTACK_POINTER, %rdi
 
   mov %rbx, (%rdi)
@@ -235,10 +225,9 @@ interrupt_isr_stub_common:
   # Restore the data selector
   mov %ax, %ds
   mov %ax, %es
-  mov %ax, %fs
-  mov %ax, %gs
+  swapgs
 
-1:
+.LnoSaveStack:
   # Restore general purpose registers
   POPAQ
 

@@ -16,23 +16,14 @@
 #
 ################################################################################
 
+.include "constants.S"
+
 # Declare constants used for creating a multiboot header.
 .set ALIGN,    1<<0             # align loaded modules on page boundaries
 .set MEMINFO,  1<<1             # provide memory map
 .set FLAGS,    ALIGN | MEMINFO  # this is the Multiboot 'flag' field
 .set MAGIC,    0x1BADB002       # 'magic number' lets bootloader find the header
 .set CHECKSUM, -(MAGIC + FLAGS) # checksum of above, to prove we are multiboot
-
-# Virtual memory offset
-.set KERNEL_VMA, 0xffffffff80000000
-
-# GDT-related constants
-.set KERNEL_CODE_SEL, 0x08
-.set KERNEL_DATA_SEL, 0x10
-.set   USER_CD32_SEL, 0x1b
-.set   USER_DATA_SEL, 0x23
-.set   USER_CD64_SEL, 0x2b
-.set KERNEL_TSS_SEL,  0x30
 
 # Declare a header as in the Multiboot Standard. We put this into a special
 # section so we can force the header to be in the start of the final program.

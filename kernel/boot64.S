@@ -11,28 +11,11 @@
 #
 ################################################################################
 
-.section .rodata
-
-# FPU init word (div by zero + invalid operand cause exceptions)
-FPU_INIT: .word 0x37a
-
-# SSE init dword (same config)
-SSE_INIT: .long 0x1d00
-
-# GDT-related constants
-.set KERNEL_CODE_SEL, 0x08
-.set KERNEL_DATA_SEL, 0x10
-.set KERNEL_TSS_SEL,  0x30
-
-# Virtual memory offset
-.set KERNEL_VMA, 0xffffffff80000000
-
-# FS.base MSR (required to set to ignore Rust stack checks)
-.set IA32_FS_BASE, 0xc0000100
+.include "constants.S"
 
 .section .data
 
-# Must be pointed to by %fs:0x70
+# Must be pointed to by %fs:0x70 (still used?)
 .global rust_stack_limit
 rust_stack_limit: .quad (KERNEL_VMA + stack_bottom)
 
@@ -48,8 +31,6 @@ _bootstrap64:
   movw $KERNEL_DATA_SEL, %ax
   movw %ax, %ds
   movw %ax, %es
-  movw %ax, %fs
-  movw %ax, %gs
   movw %ax, %ss
 
   # Add KERNEL_VMA to the GDT's base
@@ -114,6 +95,13 @@ _bootstrap64:
   # Initialize FS.base.
   mov    $IA32_FS_BASE, %ecx
   movabs $(rust_stack_limit - 0x70), %rdx
+  mov    %edx, %eax
+  shr    $32, %rdx
+  wrmsr
+
+  # Initialize GS.base
+  mov    $IA32_GS_BASE, %ecx
+  movabs $CPU0_LOCAL_DATA, %rdx
   mov    %edx, %eax
   shr    $32, %rdx
   wrmsr

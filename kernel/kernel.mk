@@ -57,7 +57,7 @@ build/kernel.elf: ${KERNEL_OBJECTS} kernel/scripts/link.ld
 
 build/kernel/%.o: kernel/%.S build/kernel/.dir
 	@${ECHO_AS} $@
-	@${AS} ${ASFLAGS} ${KERNEL_ASFLAGS} $< -o $@
+	@${AS} ${ASFLAGS} ${KERNEL_ASFLAGS} -I kernel/include $< -o $@
 
 build/kernel/%.o: kernel/%.c build/kernel/.dir
 	@${ECHO_CC} $@

@@ -11,22 +11,7 @@
 #
 ################################################################################
 
-.section .bss
-
-.set KERNEL_DATA_SEL, 0x10
-.set   USER_DATA_SEL, 0x23
-
-# Virtual memory offset
-.set KERNEL_VMA, 0xffffffff80000000
-
-# FS.base MSR (required to set to ignore Rust stack checks)
-.set IA32_FS_BASE, 0xc0000100
-
-# HwState offsets
-.set HWSTATE_KSTACK_POINTER, 0x08
-.set HWSTATE_REGISTERS,      0x10
-
-rax_temp: .skip 8
+.include "constants.S"
 
 .section .rodata
 
@@ -40,63 +25,77 @@ SSE_INIT: .long 0x1d00
 
 .global syscall_handler
 syscall_handler:
-  # Temporarily save RAX in our temp space. We have to use SS for now.
-  mov %rax, %ss:rax_temp
+  # Immediately swap to kernel GS in order to get per-CPU data
+  swapgs
+
+  # Temporarily save instruction pointer (rcx) in our temp space.
+  mov %rcx, %gs:CPULOCAL_SCRATCH
 
   # Set the data segments for the kernel (SS is already set).
-  mov $KERNEL_DATA_SEL, %ax
-  mov %ax, %ds
-  mov %ax, %es
-  mov %ax, %fs
-  mov %ax, %gs
+  mov $KERNEL_DATA_SEL, %cx
+  mov %cx, %ds
+  mov %cx, %es
 
-  # Load the current process's registers' base address into RAX.
-  mov process_hwstate, %rax
-  add $HWSTATE_REGISTERS, %rax
+  # Load the current process's registers' base address into RCX.
+  mov %gs:CPULOCAL_HWSTATE, %rcx
+  add $HWSTATE_REGISTERS, %rcx
 
   # Save the process's register set.
   # Clear RCX and R11 (they are clobbered by syscalls).
-  movq $0,    0x08(%rax)
-  mov  %rdx,  0x10(%rax)
-  mov  %rbx,  0x18(%rax)
-  mov  %rsp,  0x20(%rax)
-  mov  %rbp,  0x28(%rax)
-  mov  %rsi,  0x30(%rax)
-  mov  %rdi,  0x38(%rax)
-  mov  %r8,   0x40(%rax)
-  mov  %r9,   0x48(%rax)
-  mov  %r10,  0x50(%rax)
-  movq $0,    0x58(%rax)
-  mov  %r12,  0x60(%rax)
-  mov  %r13,  0x68(%rax)
-  mov  %r14,  0x70(%rax)
-  mov  %r15,  0x78(%rax)
-  mov  %rcx,  0x80(%rax) # RCX  -> RIP
-  mov  %r11d, 0x88(%rax) # R11D -> EFLAGS
+  mov  %rax,  0x00(%rcx)
+  movq $0,    0x08(%rcx) # rcx
+  mov  %rdx,  0x10(%rcx)
+  mov  %rbx,  0x18(%rcx)
+  mov  %rsp,  0x20(%rcx)
+  mov  %rbp,  0x28(%rcx)
+  mov  %rsi,  0x30(%rcx)
+  mov  %rdi,  0x38(%rcx)
+  mov  %r8,   0x40(%rcx)
+  mov  %r9,   0x48(%rcx)
+  mov  %r10,  0x50(%rcx)
+  movq $0,    0x58(%rcx) # r11
+  mov  %r12,  0x60(%rcx)
+  mov  %r13,  0x68(%rcx)
+  mov  %r14,  0x70(%rcx)
+  mov  %r15,  0x78(%rcx)
+  mov  %r11d, 0x88(%rcx) # R11D -> EFLAGS
 
-  # Reload our old RAX into R12 now that we've cleared it up, and then save it.
-  mov rax_temp, %r12
-  mov %r12,     0x00(%rax)
+  # Store the saved instruction pointer (RCX)
+  mov  %gs:CPULOCAL_SCRATCH, %r12
+  mov  %r12,  0x80(%rcx)
 
   # Save the FXSAVE data (x87/SSE regs etc.)
-  fxsave64 0x90(%rax)
+  fxsave64 0x90(%rcx)
+
+  # Restore the kernel stack.
+  mov %gs:CPULOCAL_HWSTATE, %rsp
+  mov HWSTATE_KSTACK_BASE(%rsp), %rbp
+  mov HWSTATE_KSTACK_POINTER(%rsp), %rsp
+
+  # Initialize FS.base. (preserve rax, rdx)
+  mov %rax, %r12
+  mov %rdx, %r13
+  mov    $IA32_FS_BASE, %ecx
+  movabs $(rust_stack_limit - 0x70), %rdx
+  mov    %edx, %eax
+  shr    $32, %rdx
+  wrmsr
+  mov %r13, %rdx
+  mov %r12, %rax
 
   # Restore kernel FP settings
   fldcw (FPU_INIT)
   ldmxcsr (SSE_INIT)
 
-  # Load the stack for ring 0 from the TSS.
-  mov tss_stack, %rsp
-
   # Let's see if the syscall is within the valid range:
-  mov syscall_table_size, %r13
-  cmp %r13, %r12
+  mov syscall_table_size, %r12
+  cmp %r12, %rax
   jae .LoutOfRange
 
   # It is, so let's make sure that the entry exists in the table:
-  mov  $syscall_table,  %r13
-  mov  (%r13, %r12, 8), %r13
-  test %r13, %r13
+  mov  $syscall_table,  %r12
+  mov  (%r12, %rax, 8), %r12
+  test %r12, %r12
   jz   .LnotInTable
 
   # Excellent.
@@ -107,23 +106,12 @@ syscall_handler:
   # that's what Linux uses.
   mov %r10, %rcx
 
-  # Set FS.base (necessary for Rust).
-  push   %rcx
-  push   %rdx
-  mov    $IA32_FS_BASE, %ecx
-  movabs $(rust_stack_limit - 0x70), %rdx
-  mov    %edx, %eax
-  shr    $32, %rdx
-  wrmsr
-  pop    %rdx
-  pop    %rcx
-
   # Now, let's prepare the stack to call:
   mov %rsp, %rbp
   and $-16, %rsp
 
   # And do the call.
-  call *%r13
+  call *%r12
 
   # Reset the stack.
   mov %rbp, %rsp
@@ -133,7 +121,7 @@ syscall_handler:
   # that. First, let's save the stack:
   mov %rsp, tss_stack
 
-  mov process_hwstate, %r15
+  mov %gs:CPULOCAL_HWSTATE, %r15
   mov %rsp, HWSTATE_KSTACK_POINTER(%r15)
 
   # Add the registers offset to R15 for when we save those.
@@ -146,8 +134,7 @@ syscall_handler:
   mov $USER_DATA_SEL, %bx
   mov %bx, %ds
   mov %bx, %es
-  mov %bx, %fs
-  mov %bx, %gs
+  swapgs
 
   # From now on we have to use SS. Now other registers:
   mov %ss:0x80(%r15), %rcx  # RIP

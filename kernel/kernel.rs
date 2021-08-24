@@ -36,6 +36,7 @@ use core::panic::PanicInfo;
 
 pub mod terminal;
 pub mod constants;
+pub mod cpu;
 pub mod multiboot;
 pub mod memory;
 pub mod interrupt;
