@@ -14,7 +14,6 @@
 
 use crate::memory;
 
-use core::isize;
 use core::ptr;
 use core::mem;
 
@@ -141,6 +140,8 @@ impl KernelHwState {
     /// Push a value onto the stack. The stack pointer advanced by the size of
     /// `T` and then aligned as required for `T`.
     ///
+    /// Because the value will be sent to another thread, it must be `Send`.
+    ///
     /// # Unsafety
     ///
     /// As this modifies the kernel stack directly, this could cause a violation
@@ -149,7 +150,9 @@ impl KernelHwState {
     ///
     /// The kernel stack set must also be mapped to valid, nonoverlapping
     /// memory.
-    pub unsafe fn push_stack<T>(&mut self, arg: T) {
+    pub unsafe fn push_stack<T>(&mut self, arg: T) 
+        where T: Send {
+
         // Alignment must be power of two. This should be guaranteed, but I
         // didn't see that the Rust docs guarantee it.
         let align = mem::align_of::<T>();
