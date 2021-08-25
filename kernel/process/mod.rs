@@ -146,15 +146,10 @@ pub fn all() -> Vec<RcProcess> {
 
 /// Change the current process (immediately).
 ///
-/// # Unsafety
-///
-/// Unsafe because the entire call stack must be reentrant. Execution of another
-/// process could allow a lot of things to change before this function returns.
-///
 /// # Panics
 ///
 /// Panics if the process to switch to is not in the `Running` state.
-pub unsafe fn switch_to(process: RcProcess) {
+pub fn switch_to(process: RcProcess) {
     assert!(process.borrow().is_running());
 
     let old_process = current();
@@ -167,21 +162,46 @@ pub unsafe fn switch_to(process: RcProcess) {
     // This allows kernel processes to have lighter context switching - the
     // kernel pageset is always accessible anyway.
     if let Some(pageset) = process.borrow().pageset() {
-        paging::set_current_pageset(Some(pageset));
+        // Safety: we got the pageset from another process, so it shouldn't be
+        // anything weird
+        unsafe {
+            paging::set_current_pageset(Some(pageset));
+        }
     }
 
     global_state().borrow_mut().current_process = process;
 
     // Do the magic!
-    process_hw_switch(old_hw_state, new_hw_state);
+    unsafe {
+        process_hw_switch(old_hw_state, new_hw_state);
+    }
 }
 
 extern {
     fn process_hw_switch(old: *mut target::HwState, new: *mut target::HwState);
+    fn process_hw_enter_user();
+    fn process_hw_enter_kernel();
+}
+
+fn new_user_hw_state() -> Box<target::HwState> {
+    let mut hw_state = target::HwState::new();
+
+    unsafe {
+        // Use the user setup routine to jump to user code on switch
+        hw_state.kernel_mut()
+            .set_instruction_pointer(process_hw_enter_user as usize);
+
+        // Set the stack pointer for the user code.
+        hw_state.user_mut()
+            .set_stack_pointer(target::STACK_BASE_ADDR);
+    }
+
+    Box::new(hw_state)
 }
 
 pub type RcProcess = Rc<RefCell<Process>>;
 
+#[derive(Debug)]
 pub struct Process {
     id:          Id,
 
@@ -235,7 +255,7 @@ impl Process {
             pgid:        id,
             name:        Rc::new(name.into()),
             state:       State::Loading,
-            hw_state:    Box::into_raw(box target::HwState::new()),
+            hw_state:    Box::into_raw(new_user_hw_state()),
             mem:         Some(Rc::new(RefCell::new(process_mem))),
             exit_status: 0,
             exit_wait:   WaitQueue::new(),
@@ -259,7 +279,7 @@ impl Process {
             pgid: self.pgid,
             name: self.name.clone(),
             state: State::Loading,
-            hw_state: Box::into_raw(box target::HwState::new()),
+            hw_state: Box::into_raw(new_user_hw_state()),
             mem: self.mem.clone(),
             exit_status: 0,
             exit_wait: WaitQueue::new(),
@@ -363,14 +383,45 @@ impl Process {
         image.load_into(self)
     }
 
+    /// Setup the process to start executing an arbitrary kernel function.
+    ///
+    /// The function will receive exactly one argument, which can be passed
+    /// here.
+    ///
+    /// If creating kernel threads to run Rust code, see
+    /// [process::spawn_kthread].
+    ///
+    /// # Unsafety
+    ///
+    /// An arbitrary C function may be executed by scheduling this process after
+    /// calling this, which may have unsafe behavior.
+    pub unsafe fn load_kernel_fn(
+        &mut self,
+        ptr: unsafe extern "C" fn (usize) -> i32,
+        arg: usize
+    ) {
+        assert_eq!(self.state, State::Loading);
+
+        // Safety: hwstate exclusive ownership due to Loading state
+        //
+        // Contract as defined by the unsafety of this function, for
+        // set_instruction_pointer and set_argument
+        let kstate = self.hw_state_mut().kernel_mut();
+
+        kstate.set_instruction_pointer(process_hw_enter_kernel as usize);
+        kstate.push_stack(arg);
+        kstate.push_stack(ptr);
+    }
+
     pub fn set_args(&mut self, args: &[&[u8]]) -> Result<(), Error> {
-        assert!(self.state == State::Loading);
+        assert_eq!(self.state, State::Loading);
 
         if let Some(ref mem) = self.mem {
             let params = mem.borrow_mut().setup_args(args)?;
 
+            // Safety: hwstate exclusive ownership due to Loading state
             unsafe {
-                self.hw_state_mut().set_args(params);
+                self.hw_state_mut().user_mut().set_args(params);
             }
 
             Ok(())
@@ -381,10 +432,11 @@ impl Process {
     }
 
     pub fn set_entry_point(&mut self, vaddr: usize) {
-        assert!(self.state == State::Loading);
+        assert_eq!(self.state, State::Loading);
 
+        // Safety: hwstate exclusive ownership due to Loading state
         unsafe {
-            self.hw_state_mut().set_instruction_pointer(vaddr);
+            self.hw_state_mut().user_mut().set_instruction_pointer(vaddr);
         }
     }
 
@@ -400,7 +452,7 @@ impl Process {
     /// indicate the presence of a bug. If you expect that the process might not
     /// be `Loading`, you should check its state first.
     pub fn run(&mut self) {
-        assert!(self.state == State::Loading,
+        assert_eq!(self.state, State::Loading,
                 "Tried to run a non-Loading process");
 
         self.state = State::Running;
@@ -453,13 +505,14 @@ impl Eq for Process { }
 impl Drop for Process {
     fn drop(&mut self) {
         unsafe {
-            Box::from_raw(self.hw_state).deallocate()
+            drop(Box::from_raw(self.hw_state))
         }
     }
 }
 
 pub type RcProcessMem = Rc<RefCell<ProcessMem>>;
 
+#[derive(Debug)]
 pub struct ProcessMem {
     id:          Id,
     pageset:     RcPageset,

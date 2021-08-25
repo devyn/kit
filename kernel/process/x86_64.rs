@@ -16,8 +16,10 @@ use crate::memory;
 
 use core::isize;
 use core::ptr;
+use core::mem;
 
-#[repr(C)]
+/// A complete set of registers
+#[repr(C, align(16))]
 #[derive(Debug)]
 pub struct Registers {
     rax:     usize,       // 0x00
@@ -39,7 +41,10 @@ pub struct Registers {
     rip:     usize,       // 0x80
     eflags:  u32,         // 0x88
     fxsave:  [SSEReg; 32] // 0x90
+    // 0x290
 }
+
+assert_eq_size!(Registers, [u8; 0x290]);
 
 impl Default for Registers {
     fn default() -> Registers {
@@ -50,73 +55,154 @@ impl Default for Registers {
             r12: 0, r13: 0, r14: 0, r15: 0,
             rip: 0,
             eflags: 0,
-            fxsave: [
-                SSEReg(0,0,0,0), SSEReg(0,0,0,0),
-                SSEReg(0,0,0,0), SSEReg(0,0,0,0),
-                SSEReg(0,0,0,0), SSEReg(0,0,0,0),
-                SSEReg(0,0,0,0), SSEReg(0,0,0,0),
-                SSEReg(0,0,0,0), SSEReg(0,0,0,0),
-                SSEReg(0,0,0,0), SSEReg(0,0,0,0),
-                SSEReg(0,0,0,0), SSEReg(0,0,0,0),
-                SSEReg(0,0,0,0), SSEReg(0,0,0,0),
-                SSEReg(0,0,0,0), SSEReg(0,0,0,0),
-                SSEReg(0,0,0,0), SSEReg(0,0,0,0),
-                SSEReg(0,0,0,0), SSEReg(0,0,0,0),
-                SSEReg(0,0,0,0), SSEReg(0,0,0,0),
-                SSEReg(0,0,0,0), SSEReg(0,0,0,0),
-                SSEReg(0,0,0,0), SSEReg(0,0,0,0),
-                SSEReg(0,0,0,0), SSEReg(0,0,0,0),
-                SSEReg(0,0,0,0), SSEReg(0,0,0,0),
-            ]
+            fxsave: [SSEReg::default(); 32]
         }
     }
 }
 
-#[repr(simd)]
-#[derive(Debug)]
+#[repr(simd, align(16))]
+#[derive(Debug, Default, Clone, Copy)]
 pub struct SSEReg(u32, u32, u32, u32);
 
-pub static ARGS_TOP_ADDR:   usize = 0x0000_7fee_ffff_ffff;
-pub static STACK_BASE_ADDR: usize = 0x0000_7fff_ffff_f000;
-pub static HEAP_BASE_ADDR:  usize = 0x0000_0001_0000_0000;
+pub const ARGS_TOP_ADDR:   usize = 0x0000_7fee_ffff_ffff;
+pub const STACK_BASE_ADDR: usize = 0x0000_7fff_ffff_f000;
+pub const HEAP_BASE_ADDR:  usize = 0x0000_0001_0000_0000;
 
-pub static STACK_SIZE:      usize = 8192;
+pub const STACK_SIZE:      usize = 8192;
 
 /// The hardware state of a process. Usually mutated by foreign code.
-///
-/// On x86_64, includes the kernel stack pointer and base, as well as the
-/// registers.
-#[repr(C)]
+#[repr(C, align(16))]
 #[derive(Debug)]
 pub struct HwState {
-    kstack_base:    *mut u8,    // offset 0x00
-    kstack_pointer: *mut u8,    // offset 0x08
-    registers:      Registers,  // offset 0x10
-}
-
-static KSTACK_SIZE: usize = 8192;
-static KSTACK_ALIGN: usize = 16;
-
-extern {
-    fn process_hw_prepare(stack_pointer: *mut u8) -> *mut u8;
+    kernel: KernelHwState, // offset 0x00
+    user: UserHwState,     // offset 0x50
 }
 
 impl HwState {
     pub fn new() -> HwState {
-        unsafe {
-            let kstack = memory::allocate(KSTACK_SIZE, KSTACK_ALIGN);
+        HwState {
+            kernel: KernelHwState::new(),
+            user: UserHwState::new(),
+        }
+    }
 
-            debug_assert!(KSTACK_SIZE < isize::MAX as usize);
+    pub fn kernel(&self) -> &KernelHwState {
+        &self.kernel
+    }
 
-            HwState {
-                kstack_base:    kstack,
-                kstack_pointer: process_hw_prepare(
-                                    kstack.offset(KSTACK_SIZE as isize)),
-                registers:      Registers {
-                    rsp: STACK_BASE_ADDR,
-                    ..Registers::default()
-                },
+    pub fn kernel_mut(&mut self) -> &mut KernelHwState {
+        &mut self.kernel
+    }
+
+    pub fn user(&self) -> &UserHwState {
+        &self.user
+    }
+
+    pub fn user_mut(&mut self) -> &mut UserHwState {
+        &mut self.user
+    }
+}
+
+/// The kernel part of the hardware state
+#[repr(C, align(16))]
+#[derive(Debug)]
+pub struct KernelHwState {
+    kstack: *mut u8,            // 0x00
+    registers: KernelRegisters, // 0x10
+}
+
+assert_eq_size!(KernelHwState, [u8; 0x50]);
+
+impl KernelHwState {
+    fn new() -> KernelHwState {
+        let kstack = memory::allocate_kernel_stack();
+
+        KernelHwState {
+            kstack,
+            registers: KernelRegisters {
+                rsp: kstack as usize,
+                rbp: kstack as usize,
+                ..KernelRegisters::default()
             }
+        }
+    }
+
+    /// Set the address to jump to on process switch.
+    ///
+    /// # Unsafety
+    ///
+    /// This can result in any code (safe or unsafe) being executed at kernel
+    /// level, and dereference of invalid addresses, so it's up to the caller to
+    /// ensure the value provided will do something safe.
+    pub unsafe fn set_instruction_pointer(&mut self, ip: usize) {
+        self.registers.rip = ip;
+    }
+
+    /// Push a value onto the stack. The stack pointer advanced by the size of
+    /// `T` and then aligned as required for `T`.
+    ///
+    /// # Unsafety
+    ///
+    /// As this modifies the kernel stack directly, this could cause a violation
+    /// of expectations. It's up to the caller to ensure the instruction pointer
+    /// is set to a place that can handle the argument passed.
+    ///
+    /// The kernel stack set must also be mapped to valid, nonoverlapping
+    /// memory.
+    pub unsafe fn push_stack<T>(&mut self, arg: T) {
+        // Alignment must be power of two. This should be guaranteed, but I
+        // didn't see that the Rust docs guarantee it.
+        let align = mem::align_of::<T>();
+        debug_assert_eq!(align & (align - 1), 0);
+
+        // Subtract size
+        self.registers.rsp -= mem::size_of::<T>();
+
+        // Align downward
+        self.registers.rsp &= !(align - 1);
+
+        // Put the value in
+        *(self.registers.rsp as *mut T) = arg;
+    }
+}
+
+impl Drop for KernelHwState {
+    fn drop(&mut self) {
+        // TODO: free the kernel stack
+    }
+}
+
+/// The registers here are chosen because they are those required to be
+/// preserved between calls by the ABI. A process switch just looks like a call.
+#[repr(C, align(16))]
+#[derive(Debug, Default, Clone)]
+struct KernelRegisters {
+    rip: usize, // 0x00
+    rsp: usize, // 0x08
+    rbp: usize, // 0x10
+    rbx: usize, // 0x18
+    r12: usize, // 0x20
+    r13: usize, // 0x28
+    r14: usize, // 0x30
+    r15: usize, // 0x38
+    // 0x40
+}
+
+assert_eq_size!(KernelRegisters, [u8; 0x40]);
+
+/// The userland part of the hardware state.
+#[repr(C, align(16))]
+#[derive(Debug)]
+pub struct UserHwState {
+    registers: Registers,
+}
+
+assert_eq_size!(UserHwState, [u8; 0x290]);
+
+impl UserHwState {
+    fn new() -> UserHwState {
+        UserHwState {
+            registers: Registers::default(),
         }
     }
 
@@ -138,15 +224,9 @@ impl HwState {
         self.registers.rip = vaddr;
     }
 
-    /// Call this instead of dropping directly.
-    ///
-    /// Memory for this is completely managed by Rust, and the `repr(C)` is
-    /// just so that the asm code can predictably access the fields.
-    /// However, Rust doesn't let us just implement `Drop` on a `repr(C)`
-    /// without complaining.
-    pub fn deallocate(self) {
-        unsafe {
-            memory::deallocate(self.kstack_base, KSTACK_SIZE, KSTACK_ALIGN);
-        }
+    /// Set the stack pointer to the given address.
+    pub fn set_stack_pointer(&mut self, vaddr: usize) {
+        self.registers.rsp = vaddr;
+        self.registers.rbp = vaddr;
     }
 }

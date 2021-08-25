@@ -71,6 +71,16 @@ pub struct Pageset {
     kernel: bool,
 }
 
+impl fmt::Debug for Pageset {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        f.debug_struct("Pageset")
+            .field("cr3", &self.cr3)
+            .field("pml4", &(&*self.pml4 as *const Pml4))
+            .field("kernel", &self.kernel)
+            .finish()
+    }
+}
+
 impl<'a> generic::Pageset<'a> for Pageset {
     type Paddr = usize;
     type Iter  = Iter<'a>;

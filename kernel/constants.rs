@@ -14,13 +14,13 @@
 
 /// The offset of the identity map from zero, which contains the initial kernel
 /// image.
-pub static KERNEL_OFFSET: usize = 0xffffffff80000000;
+pub const KERNEL_OFFSET: usize = 0xffffffff80000000;
 
 /// Start of the initial ('low') identity mapped region.
-pub static KERNEL_LOW_START: u32 = 0x00000000;
+pub const KERNEL_LOW_START: u32 = 0x00000000;
 
 /// End of the initial ('low') identity mapped region.
-pub static KERNEL_LOW_END:   u32 = 0x00800000;
+pub const KERNEL_LOW_END:   u32 = 0x01000000;
 
 /// Get a usable constant pointer in kernel space from a low address.
 ///

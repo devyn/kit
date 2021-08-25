@@ -18,7 +18,6 @@
 #include <stdint.h>
 
 #include "config.h"
-#include "rbtree.h"
 #include "memory.h"
 
 /* Pageset (management helper) */

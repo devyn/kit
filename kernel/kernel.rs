@@ -29,6 +29,8 @@
 // These rust libs are specifically configured for Kit.
 #[macro_use] extern crate alloc;
 
+#[macro_use] extern crate static_assertions;
+
 use core::panic::PanicInfo;
 
 #[macro_use] pub mod sync;

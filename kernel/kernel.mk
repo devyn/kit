@@ -11,7 +11,7 @@
 #
 ################################################################################
 
-KERNEL_CFLAGS=-O3 -g -std=c99 -pedantic -Wall -Wextra -Werror -ffreestanding \
+KERNEL_CFLAGS=-O1 -g -std=c99 -pedantic -Wall -Wextra -Werror -ffreestanding \
               -fno-exceptions -fno-omit-frame-pointer -mcmodel=kernel \
               -march=core2 -mtune=generic -mno-red-zone -mno-mmx -mno-sse3 \
               -mno-ssse3 -mno-3dnow
@@ -20,7 +20,7 @@ KERNEL_ASFLAGS=-march=generic64
 KERNEL_RUSTFLAGS=-C debuginfo=2 -C target-cpu=generic \
 					-C target-feature=-sse3,-ssse3,-3dnow \
 					-C no-redzone -C code-model=kernel \
-					-C relocation-model=static -C opt-level=2 -C panic=abort
+					-C relocation-model=static -C opt-level=1 -C panic=abort
 
 ifeq ($(CC),clang)
 	KERNEL_CFLAGS+=-target x86_64-pc-none-elf
@@ -37,7 +37,9 @@ all-kernel: build/kernel.elf
 doc-kernel: build/doc/kernel/.dir
 
 clean-kernel:
-	rm -rf build/kernel
+	cd kernel && ${CARGO} clean --target-dir=../build/kernel/target
+	rm -f build/kernel/*.o
+	rm -f build/kernel/*.a
 	rm -f build/kernel.elf
 
 .PHONY: all-kernel doc-kernel clean-kernel

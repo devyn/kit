@@ -17,28 +17,38 @@
 
 .section .text
 
-# Rust: (stack_pointer: *mut u8) -> *mut u8
-.global process_hw_prepare
-process_hw_prepare:
-  xchg %rdi, %rsp
-  pushq $.Lbootstrap # return address
-  pushq $0
-  pushq $0
-  pushq $0
-  pushq $0
-  pushq $0
-  pushq $0
-  xchg %rdi, %rsp
-  mov  %rdi, %rax
-  retq
+# Prepares to go to kernel code.
+#
+# Requires two arguments passed on the stack: rip (function to call),
+# rdi (argument)
+#
+# The function to call is basically expected to be:
+#
+#   int procedure(size_t arg)
+#
+# The return of the function is the exit code for process_exit, which the entry
+# point will call automatically after return.
+.global process_hw_enter_kernel
+process_hw_enter_kernel:
+  pop %rcx
+  pop %rdi
+  call *%rcx
+  mov %eax, %edi
+  call process_exit
+.Lunreachable:
+  cli
+  hlt
+  jmp .Lunreachable
 
-.Lbootstrap:
+# Prepares to go to user code.
+.global process_hw_enter_user
+process_hw_enter_user:
   # Save our current stack to the TSS.
   mov %rsp, tss_stack
 
   # Load the current process's registers' base address into R15.
   mov %gs:CPULOCAL_HWSTATE, %r15
-  add $HWSTATE_REGISTERS, %r15
+  add $HWSTATE_USER_REGISTERS, %r15
 
   # Put SS, RSP, EFLAGS, CS, RIP on the stack
   pushq $USER_DATA_SEL # SS
@@ -105,30 +115,33 @@ process_hw_switch:
   # Disable interrupts, though they probably should be disabled already anyway.
   cli
 
-  # System V ABI requirements
-  push %rbp
-  push %rbx
-  push %r12
-  push %r13
-  push %r14
-  push %r15
+  # Put return address (RIP) at R9
+  pop %r9
 
-  # Save stack
-  mov %rsp,             HWSTATE_KSTACK_POINTER(%rdi)
-  mov %rbp,             HWSTATE_KSTACK_BASE(%rdi)
+  # Save old kernel registers
+  #
+  # System V ABI requirements dictate this limited set as callee-preserved
+  mov %r9,  (HWSTATE_KERN_REGISTERS+0x00)(%rdi)
+  mov %rsp, (HWSTATE_KERN_REGISTERS+0x08)(%rdi)
+  mov %rbp, (HWSTATE_KERN_REGISTERS+0x10)(%rdi)
+  mov %rbx, (HWSTATE_KERN_REGISTERS+0x18)(%rdi)
+  mov %r12, (HWSTATE_KERN_REGISTERS+0x20)(%rdi)
+  mov %r13, (HWSTATE_KERN_REGISTERS+0x28)(%rdi)
+  mov %r14, (HWSTATE_KERN_REGISTERS+0x30)(%rdi)
+  mov %r15, (HWSTATE_KERN_REGISTERS+0x38)(%rdi)
 
-  # Switch stacks
-  mov HWSTATE_KSTACK_POINTER(%rsi), %rsp
-  mov HWSTATE_KSTACK_BASE(%rsi),    %rbp
+  # Load new kernel registers
+  mov (HWSTATE_KERN_REGISTERS+0x00)(%rsi), %r9
+  mov (HWSTATE_KERN_REGISTERS+0x08)(%rsi), %rsp
+  mov (HWSTATE_KERN_REGISTERS+0x10)(%rsi), %rbp
+  mov (HWSTATE_KERN_REGISTERS+0x18)(%rsi), %rbx
+  mov (HWSTATE_KERN_REGISTERS+0x20)(%rsi), %r12
+  mov (HWSTATE_KERN_REGISTERS+0x28)(%rsi), %r13
+  mov (HWSTATE_KERN_REGISTERS+0x30)(%rsi), %r14
+  mov (HWSTATE_KERN_REGISTERS+0x38)(%rsi), %r15
 
   # Set current hwstate to new one
   mov %rsi, %gs:CPULOCAL_HWSTATE
 
-  # Return into process_switch() on other stack
-  pop %r15
-  pop %r14
-  pop %r13
-  pop %r12
-  pop %rbx
-  pop %rbp
-  retq
+  # Jump to previously saved instruction pointer
+  jmp *%r9

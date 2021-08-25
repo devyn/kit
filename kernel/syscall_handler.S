@@ -38,7 +38,7 @@ syscall_handler:
 
   # Load the current process's registers' base address into RCX.
   mov %gs:CPULOCAL_HWSTATE, %rcx
-  add $HWSTATE_REGISTERS, %rcx
+  add $HWSTATE_USER_REGISTERS, %rcx
 
   # Save the process's register set.
   # Clear RCX and R11 (they are clobbered by syscalls).
@@ -69,8 +69,8 @@ syscall_handler:
 
   # Restore the kernel stack.
   mov %gs:CPULOCAL_HWSTATE, %rsp
-  mov HWSTATE_KSTACK_BASE(%rsp), %rbp
-  mov HWSTATE_KSTACK_POINTER(%rsp), %rsp
+  mov HWSTATE_KERN_RBP(%rsp), %rbp
+  mov HWSTATE_KERN_RSP(%rsp), %rsp
 
   # Initialize FS.base. (preserve rax, rdx)
   mov %rax, %r12
@@ -122,10 +122,11 @@ syscall_handler:
   mov %rsp, tss_stack
 
   mov %gs:CPULOCAL_HWSTATE, %r15
-  mov %rsp, HWSTATE_KSTACK_POINTER(%r15)
+  mov %rbp, HWSTATE_KERN_RBP(%r15)
+  mov %rsp, HWSTATE_KERN_RSP(%r15)
 
   # Add the registers offset to R15 for when we save those.
-  add $HWSTATE_REGISTERS, %r15
+  add $HWSTATE_USER_REGISTERS, %r15
 
   # Restore the FXSAVE data.
   fxrstor64 0x90(%r15)

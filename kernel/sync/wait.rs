@@ -18,7 +18,7 @@ use core::cell::RefCell;
 use crate::process;
 use crate::scheduler;
 
-#[derive(Clone)]
+#[derive(Debug, Clone)]
 pub struct WaitQueue {
     q: Rc<RefCell<VecDeque<process::Id>>>,
 }

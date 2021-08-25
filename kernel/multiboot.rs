@@ -40,71 +40,71 @@ use crate::c_ffi::CStr;
 use crate::constants::translate_low_addr;
 
 /// How many bytes from the start of the file we search for the header.
-pub static SEARCH: usize                 = 8192;
+pub const SEARCH: usize                 = 8192;
 
 /// The magic field should contain this.
-pub static H_MAGIC: u32                  = 0x1BADB002;
+pub const H_MAGIC: u32                  = 0x1BADB002;
 
 /// This should be in %eax.
-pub static BOOTLOADER_MAGIC: u32         = 0x2BADB002;
+pub const BOOTLOADER_MAGIC: u32         = 0x2BADB002;
 
 /// The bits in the required part of flags field we don't support.
-pub static UNSUPPORTED: u32              = 0x0000fffc;
+pub const UNSUPPORTED: u32              = 0x0000fffc;
 
 /// Alignment of multiboot modules.
-pub static MOD_ALIGN: u32                = 0x00001000;
+pub const MOD_ALIGN: u32                = 0x00001000;
 
 /// Alignment of the multiboot info structure.
-pub static INFO_ALIGN: u32               = 0x00000004;
+pub const INFO_ALIGN: u32               = 0x00000004;
 
 /// Flags set in the 'flags' member of the multiboot header.
 pub mod header_flags {
     /// Align all boot modules on i386 page (4KB) boundaries.
-    pub static PAGE_ALIGN: u32          = 0x00000001;
+    pub const PAGE_ALIGN: u32          = 0x00000001;
 
     /// Must pass memory information to OS.
-    pub static MEMORY_INFO: u32         = 0x00000002;
+    pub const MEMORY_INFO: u32         = 0x00000002;
 
     /// Must pass video information to OS.
-    pub static VIDEO_MODE: u32          = 0x00000004;
+    pub const VIDEO_MODE: u32          = 0x00000004;
 
     /// This flag indicates the use of the address fields in the header.
-    pub static AOUT_KLUDGE: u32         = 0x00010000;
+    pub const AOUT_KLUDGE: u32         = 0x00010000;
 }
 
 /// Flags to be set in the 'flags' member of the multiboot info structure.
 pub mod info_flags {
     /// is there basic lower/upper memory information?
-    pub static MEMORY: u32              = 0x00000001;
+    pub const MEMORY: u32              = 0x00000001;
     /// is there a boot device set?
-    pub static BOOTDEV: u32             = 0x00000002;
+    pub const BOOTDEV: u32             = 0x00000002;
     /// is the command-line defined?
-    pub static CMDLINE: u32             = 0x00000004;
+    pub const CMDLINE: u32             = 0x00000004;
     /// are there modules to do something with?
-    pub static MODS: u32                = 0x00000008;
+    pub const MODS: u32                = 0x00000008;
 
     /// is there a symbol table loaded?
-    pub static AOUT_SYMS: u32           = 0x00000010;
+    pub const AOUT_SYMS: u32           = 0x00000010;
     /// is there an ELF section header table?
-    pub static ELF_SHDR: u32            = 0x00000020;
+    pub const ELF_SHDR: u32            = 0x00000020;
 
     /// is there a full memory map?
-    pub static MEM_MAP: u32             = 0x00000040;
+    pub const MEM_MAP: u32             = 0x00000040;
 
     /// Is there drive info?
-    pub static DRIVE_INFO: u32          = 0x00000080;
+    pub const DRIVE_INFO: u32          = 0x00000080;
 
     /// Is there a config table?
-    pub static CONFIG_TABLE: u32        = 0x00000100;
+    pub const CONFIG_TABLE: u32        = 0x00000100;
 
     /// Is there a boot loader name?
-    pub static BOOT_LOADER_NAME: u32    = 0x00000200;
+    pub const BOOT_LOADER_NAME: u32    = 0x00000200;
 
     /// Is there a APM table?
-    pub static APM_TABLE: u32           = 0x00000400;
+    pub const APM_TABLE: u32           = 0x00000400;
 
     /// Is there video information?
-    pub static VIDEO_INFO: u32          = 0x00000800;
+    pub const VIDEO_INFO: u32          = 0x00000800;
 }
 
 #[repr(C)]
@@ -259,8 +259,8 @@ impl Info {
     }
 }
 
-pub static MEMORY_AVAILABLE: u32 = 1;
-pub static MEMORY_RESERVED: u32 = 2;
+pub const MEMORY_AVAILABLE: u32 = 1;
+pub const MEMORY_RESERVED: u32 = 2;
 
 #[repr(C, packed)]
 #[derive(Debug, Clone, Copy)]

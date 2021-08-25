@@ -217,8 +217,8 @@ interrupt_isr_stub_common:
   mov %rbx, tss_stack
 
   # And the process's HwState.
-  mov %gs:CPULOCAL_HWSTATE,    %rdi
-  add $HWSTATE_KSTACK_POINTER, %rdi
+  mov %gs:CPULOCAL_HWSTATE, %rdi
+  add $HWSTATE_KERN_RSP,    %rdi
 
   mov %rbx, (%rdi)
 

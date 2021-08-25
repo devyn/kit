@@ -24,8 +24,8 @@ use crate::paging::{GenericPageset, PagesetExt, PageType};
 
 use crate::multiboot::MmapEntry;
 use crate::process::Id as ProcessId;
-
 use crate::sync::CriticalSpinlock;
+use crate::constants::KERNEL_LOW_END;
 
 /// The first "safe" physical address. Memory below this is not likely to be
 /// safe for general use, and may include parts of the kernel image among other
@@ -33,7 +33,7 @@ use crate::sync::CriticalSpinlock;
 ///
 /// 0x0 to SAFE_BOUNDARY are identity-mapped starting at 0xffff_ffff_8000_0000,
 /// so we avoid that region
-const SAFE_BOUNDARY: usize = 0x800000;
+const SAFE_BOUNDARY: usize = KERNEL_LOW_END as usize;
 
 const INITIAL_HEAP_LENGTH: usize = 131072;
 
@@ -72,6 +72,10 @@ struct HeapState {
     start: *mut u8,
     end: *mut u8,
     length: usize,
+    // For allocating stacks
+    stacks_start: *mut u8,
+    stacks_end: *mut u8,
+    // Keeping track of what we allocated
     regions: CriticalSpinlock<Vec<(PhysicalAddress, PageCount)>>,
 }
 
@@ -181,7 +185,8 @@ pub unsafe fn initialize(mmap_buffer: *const u8, mmap_length: u32) {
     }));
 }
 
-const LARGE_HEAP_START: usize = 0xffff_ffff_8100_0000;
+const LARGE_HEAP_START: usize = 0xffff_ffff_9000_0000;
+const STACKS_START: usize = 0xffff_ffff_f000_0000;
 const BUFZONE_SIZE: usize = 0x4000;
 
 pub unsafe fn allocate(size: usize, align: usize) -> *mut u8 {
@@ -304,6 +309,8 @@ pub unsafe fn enable_large_heap() {
     KERNEL_HEAP = KernelHeap::LargeHeap(HeapState {
         start: LARGE_HEAP_START as *mut u8,
         end: (LARGE_HEAP_START + BUFZONE_SIZE) as *mut u8,
+        stacks_start: STACKS_START as *mut u8,
+        stacks_end: STACKS_START as *mut u8,
         length: 0,
         regions: CriticalSpinlock::new(regions),
     });
@@ -390,6 +397,49 @@ fn kernel_acquire_and_map(
     }
 
     Ok(())
+}
+
+pub const KSTACK_SIZE: usize = 8192;
+pub const KSTACK_ALIGN: usize = 16;
+
+const_assert!(KSTACK_SIZE < isize::MAX as usize);
+const_assert!(KSTACK_SIZE > 0);
+const_assert!(KSTACK_ALIGN & (KSTACK_ALIGN-1) == 0);
+const_assert!(KSTACK_ALIGN > 0);
+
+pub fn allocate_kernel_stack() -> *mut u8 {
+    let heap_state = unsafe {
+        match KERNEL_HEAP {
+            KernelHeap::LargeHeap(ref mut heap_state) => heap_state,
+            _ => panic!("Kernel large heap must be initialized before \
+                memory::allocate_kernel_stack()")
+        }
+    };
+
+    assert_eq!(KSTACK_SIZE % Pageset::page_size(), 0,
+        "Kernel stack size must be a multiple of the page size");
+
+    let pages = KSTACK_SIZE / Pageset::page_size();
+
+    let mut regions = heap_state.regions.lock();
+
+    let new_stack = heap_state.stacks_end;
+
+    // Allocate pages to the stack area
+    kernel_acquire_and_map(new_stack, pages, &mut regions)
+        .unwrap_or_else(|_| panic!("Out of memory"));
+
+    // Increment, skip one page for next time, stacks have guard page on either
+    // side
+    unsafe {
+        heap_state.stacks_end = heap_state.stacks_end.offset(
+            ((pages + 1) * Pageset::page_size()) as isize);
+    }
+
+    // Actually return the stack pointer (going down)
+    unsafe {
+        new_stack.offset(KSTACK_SIZE as isize)
+    }
 }
 
 /// C foreign interface.

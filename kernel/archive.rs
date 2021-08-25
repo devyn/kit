@@ -117,7 +117,7 @@ pub mod utils {
 
     use self::SpawnError::*;
 
-    pub fn spawn<'a>(filename: CStr<'static>, argv: &[&[u8]])
+    pub fn spawn<'a>(filename: CStr<'a>, argv: &[&[u8]])
                      -> Result<process::Id, SpawnError> {
 
         if filename.is_empty() {
