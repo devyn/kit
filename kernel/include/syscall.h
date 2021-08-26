@@ -49,8 +49,8 @@ void syscall_initialize();
 #define SYSCALL_MMAP_ARCHIVE 0x8
   archive_header_t *syscall_mmap_archive();
 
-#define SYSCALL_PRINT_PROCESSES 0x9
-  void syscall_print_processes();
+#define SYSCALL_DEBUG 0x9
+  int32_t syscall_debug(uint32_t operation, uint64_t argument);
 
 #ifdef SYSCALL_C
   const uint64_t syscall_table[] =
@@ -64,7 +64,7 @@ void syscall_initialize();
     (uint64_t) &syscall_wait_process,
     (uint64_t) &syscall_adjust_heap,
     (uint64_t) &syscall_mmap_archive,
-    (uint64_t) &syscall_print_processes,
+    (uint64_t) &syscall_debug,
   };
   const uint64_t syscall_table_size = sizeof(syscall_table)/sizeof(syscall_table[0]);
 #else

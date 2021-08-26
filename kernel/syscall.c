@@ -86,7 +86,7 @@ int syscall_key_get(keyboard_event_t *event)
 int syscall_yield()
 {
   // Might return immediately if there's nothing else to do.
-  scheduler_tick();
+  scheduler_yield();
   return 0;
 }
 
@@ -157,8 +157,4 @@ archive_header_t *syscall_mmap_archive()
   }
 
   return (archive_header_t *) 0x00000ace00000000;
-}
-
-void syscall_print_processes() {
-    process_print_processes();
 }

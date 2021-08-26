@@ -18,18 +18,31 @@ pub unsafe fn initialize() {
 }
 
 /// Enable interrupts.
+#[inline]
 pub unsafe fn enable() {
     asm!("sti");
 }
 
 /// Disable interrupts.
+#[inline]
 pub unsafe fn disable() {
     asm!("cli");
 }
 
 /// Wait for an interrupt.
+#[inline]
 pub unsafe fn wait() {
     asm!("sti; hlt; cli");
+}
+
+/// Briefly enable interrupts to allow a pending interrupt to be serviced.
+#[inline]
+pub unsafe fn accept() {
+    enable();
+    for _ in 0..10 { 
+        core::hint::spin_loop();
+    }
+    disable();
 }
 
 /// C interface. See `kit/kernel/include/interrupt.h`.

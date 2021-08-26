@@ -296,7 +296,10 @@
    read dup if dump else 2drop ." File not found!" then
 ;
 : ps ( -- )
-   cr 0 9 syscall drop
+   cr 0 1 2 9 syscall drop
+;
+: test-kernel-thread ( iterations -- )
+   cr 9001 2 9 syscall drop
 ;
 : spawn ( cstring... argc name-cstring -- pid )
    >r dup >r \ deal with args for now (cstring... argc)

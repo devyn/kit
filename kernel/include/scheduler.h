@@ -20,12 +20,9 @@
 
 int scheduler_initialized();
 
-/**
- * When scheduler_tick() returns, process_current is guaranteed to be the same
- * as it was before, but many things may have happened in between. Thus, the
- * entire return path leading from scheduler_tick() must be reentrant.
- */
-void scheduler_tick();
+void scheduler_yield();
+
+int scheduler_preempt();
 
 void scheduler_sleep();
 

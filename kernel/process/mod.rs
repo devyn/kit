@@ -785,6 +785,7 @@ pub trait Image {
     fn load_into(&self, process: &mut Process) -> Result<(), Error>;
 }
 
+/// Exit the current process.
 pub fn exit(status: i32) -> ! {
     {
         let rc_process = current();
@@ -799,11 +800,12 @@ pub fn exit(status: i32) -> ! {
         process.exit_wait.awaken_all();
     }
 
-    unsafe { scheduler::tick(); }
+    scheduler::r#yield();
 
     panic!("returned to process {} after exit", current().borrow().id);
 }
 
+/// Sleep until the given process id wakes up.
 pub fn wait(id: Id) -> Result<(), Error> {
     let queue = by_id(id).ok_or(Error::UnknownPid(id))?
         .borrow().exit_wait.clone();
@@ -813,10 +815,72 @@ pub fn wait(id: Id) -> Result<(), Error> {
     Ok(())
 }
 
+/// Set our state to sleep and then yield to the scheduler.
 pub fn sleep() {
-    // Set our state to sleep and then yield to the scheduler.
     current().borrow_mut().sleep();
-    unsafe { scheduler::tick(); }
+    scheduler::r#yield();
+}
+
+type BoxedFun = Box<dyn FnOnce() + Send + 'static>;
+type ThinBoxedFun = Box<BoxedFun>;
+
+/// Spawn a kernel thread using Rust code.
+pub fn spawn_kthread<S, F>(name: S, fun: F) -> Id
+    where S: Into<String>, F: FnOnce() + Send + 'static {
+
+    let subproc = kernel().borrow().create_subprocess();
+
+    let id;
+
+    {
+        let mut subproc = subproc.borrow_mut();
+
+        id = subproc.id();
+
+        subproc.set_name(name);
+
+        unsafe {
+            let boxed_fun = Box::into_raw(Box::new(Box::new(fun) as BoxedFun));
+
+            subproc.load_kernel_fn(kthread_entry, boxed_fun as usize);
+        }
+
+        subproc.run();
+    }
+
+    scheduler::push(subproc);
+
+    id
+}
+
+unsafe extern "C" fn kthread_entry(boxed_fun: usize) -> i32 {
+    // Get the boxed function
+    let fun: ThinBoxedFun = Box::from_raw(boxed_fun as *mut BoxedFun);
+
+    // Call it
+    fun();
+
+    // Return code zero
+    0
+}
+
+/// Dumps a list of processes to the console, for debugging.
+pub fn debug_print_processes() {
+    use crate::terminal::console;
+
+    let processes = all();
+
+    let _ = writeln!(console(), "ID    PGID  STATE NAME");
+
+    for rc_process in processes {
+        let process = rc_process.borrow();
+
+        let _ = writeln!(console(), "{:<5} {:<5} {:<5} {}",
+            process.id(),
+            process.pgid(),
+            process.state().short_description(),
+            process.name());
+    }
 }
 
 /// C interface. See `kit/kernel/include/process.h`.
@@ -889,25 +953,5 @@ pub mod ffi {
         let heap_end = mem.heap_end() as *mut c_void;
 
         heap_end
-    }
-
-    /// FIXME: just for demo
-    #[no_mangle]
-    pub extern fn process_print_processes() {
-        use crate::terminal::console;
-
-        let processes = super::all();
-
-        let _ = writeln!(console(), "ID    PGID  STATE NAME");
-
-        for rc_process in processes {
-            let process = rc_process.borrow();
-
-            let _ = writeln!(console(), "{:<5} {:<5} {:<5} {}",
-                process.id(),
-                process.pgid(),
-                process.state().short_description(),
-                process.name());
-        }
     }
 }

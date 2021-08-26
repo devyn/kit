@@ -12,20 +12,18 @@
 
 //! Time and event based task scheduler.
 
-use core::cell::RefCell;
-use alloc::boxed::Box;
 use alloc::collections::VecDeque;
 
 use crate::process::{self, RcProcess};
 use crate::interrupt;
+use crate::sync::CriticalSpinlock;
 
 struct GlobalState {
-    run_queue: VecDeque<RcProcess>,
-    entered: bool,
-    sleeping: bool,
+    run_queue: CriticalSpinlock<VecDeque<RcProcess>>,
+    preempt_lock: CriticalSpinlock<()>,
 }
 
-static mut GLOBAL_STATE: Option<*const RefCell<GlobalState>> = None;
+static mut GLOBAL_STATE: Option<GlobalState> = None;
 static mut INITIALIZED: bool = false;
 
 pub fn initialized() -> bool {
@@ -37,24 +35,19 @@ pub unsafe fn initialize() {
         panic!("scheduler already initialized");
     }
 
-    GLOBAL_STATE = Some(Box::into_raw(box RefCell::new(GlobalState {
-        run_queue: VecDeque::new(),
-        entered: false,
-        sleeping: false,
-    })));
+    GLOBAL_STATE = Some(GlobalState {
+        run_queue: CriticalSpinlock::new(VecDeque::new()),
+        preempt_lock: CriticalSpinlock::new(()),
+    });
 
     INITIALIZED = true;
 }
 
-fn global_state<'a>() -> &'a RefCell<GlobalState> {
+fn global_state<'a>() -> &'a GlobalState {
     unsafe {
-        GLOBAL_STATE.as_ref().and_then(|ptr| ptr.as_ref())
-            .expect("Scheduler not initialized!")
+        GLOBAL_STATE.as_ref()
+            .unwrap_or_else(|| panic!("Scheduler not initialized!"))
     }
-}
-
-pub fn entered() -> bool {
-    initialized() && global_state().borrow().entered
 }
 
 /// Pushes a process on to the end of the run queue.
@@ -65,7 +58,21 @@ pub fn entered() -> bool {
 pub fn push(process: RcProcess) {
     assert!(process.borrow().is_running());
 
-    global_state().borrow_mut().run_queue.push_back(process);
+    global_state().run_queue.lock().push_back(process);
+}
+
+/// Gets the first running process from the queue, discarding non-running
+/// processes.
+fn pop_running() -> Option<RcProcess> {
+    let mut run_queue = global_state().run_queue.lock();
+
+    while let Some(process) = run_queue.pop_front() {
+        if process.borrow().is_running() {
+            return Some(process);
+        }
+    }
+
+    None
 }
 
 /// Given a sleeping process, wakes it up and pushes it on to the end of the run
@@ -92,6 +99,7 @@ pub fn awaken(process: RcProcess) -> Result<bool, process::State> {
     }
 }
 
+
 /// Iterates the scheduler loop so that other processes may execute.
 ///
 /// If no other processes are ready to execute, and the current process is still
@@ -101,70 +109,106 @@ pub fn awaken(process: RcProcess) -> Result<bool, process::State> {
 /// If no processes are ready for execution, `tick()` will halt the processor
 /// and accept interrupts until a process is ready.
 ///
-/// # Unsafety
-///
-/// Call stack must be reentrant. Don't call `tick()` if you can't guarantee
-/// that the entire call chain back to the interrupt or system call handler
-/// knows that you might call `tick()`.
-///
 /// # Panics
 ///
 /// Panics if the scheduler has not been initialized.
-pub unsafe fn tick() {
-    assert!(initialized(), "tick() called before scheduler initialized");
+pub fn r#yield() {
+    assert!(initialized(), "yield() called before scheduler initialized");
 
-    // If the scheduler is currently sleeping, don't do anything;
-    // another instance of `tick()` is already waiting for an event and will
-    // handle it soon.
-    if global_state().borrow().sleeping {
-        return;
+    'switched: loop {
+        // Wait for the preempt lock.
+        let preempt_lock = global_state().preempt_lock.lock();
+
+        // Allow pending interrupts to run.
+        unsafe { interrupt::accept(); }
+
+        let current_process = process::current();
+        let next_process;
+
+        // Get a process that we're allowed to run
+        'got_process: loop {
+            if let Some(next) = pop_running() {
+                // Ready process on queue
+                next_process = next;
+                break 'got_process;
+            } else if current_process.borrow().is_running() {
+                // Current process can be run
+                next_process = current_process;
+                break 'got_process;
+            } else {
+                // Maybe something will change if we wait for an interrupt.
+                unsafe { interrupt::wait(); }
+            }
+        }
+
+        drop(preempt_lock);
+
+        // Try to switch, loop again if we couldn't.
+        if switch(next_process) {
+            break 'switched;
+        }
+    }
+}
+
+/// A weaker version of [r#yield], which will return immediately if:
+///
+/// 1. the preempt lock can't be acquired
+/// 2. there are no other processes waiting
+/// 3. or the scheduler hasn't been initialized yet.
+///
+/// This is intended to be called by the timer to enable timesharing.
+///
+/// Returns true if a switch occurred.
+pub fn preempt() -> bool {
+    if !initialized() { return false; }
+
+    let next_process;
+
+    if let Some(preempt_lock) = global_state().preempt_lock.try_lock() {
+        if let Some(next) = pop_running() {
+            next_process = next;
+        } else {
+            return false;
+        }
+
+        drop(preempt_lock);
+    } else {
+        return false;
     }
 
+    switch(next_process)
+}
+
+/// Do a scheduler-aware process switch - put current process back on run queue
+/// if it's still running.
+///
+/// Returns true if `next_process` could be switched to. `false` if
+/// `next_process` was not ready to run.
+fn switch(next_process: RcProcess) -> bool {
     let current_process = process::current();
 
-    while global_state().borrow().run_queue.is_empty() {
-        let current_process_is_running = current_process.borrow().is_running();
+    let current_process_is_running;
 
-        if current_process_is_running {
-            // We can just continue running the current process, since it has
-            // more work to do, and no one else does.
-            return;
-        } else {
-            // Wait for an interrupt. An interrupt handler may result in a
-            // process being scheduled. This scheduler state is called
-            // 'sleeping', not to be confused with (but similar to) a process's
-            // 'sleeping' state.
-            global_state().borrow_mut().sleeping = true;
-            interrupt::wait();
-            global_state().borrow_mut().sleeping = false;
-        }
+    {
+        let current_process = current_process.borrow();
+        let next_process = next_process.borrow();
+
+        current_process_is_running = current_process.is_running();
+
+        // Can't switch to non-running process
+        if !next_process.is_running() { return false; }
+
+        // Same process, no switch
+        if current_process.id() == next_process.id() { return true; }
     }
 
-    let next_process = global_state().borrow_mut().run_queue.pop_front()
-        .expect("run queue is empty even though we just proved that it wasn't");
-
-    // If the process we're about to execute is not Running (for example, it
-    // changed while it was on the queue), discard it with a tail-recursive
-    // call.
-    let next_process_is_running = next_process.borrow().is_running();
-    if !next_process_is_running {
-        return tick();
+    if current_process_is_running {
+        push(current_process);
     }
 
-    if next_process != current_process {
-        let current_process_is_running = current_process.borrow().is_running();
+    process::switch_to(next_process);
 
-        if current_process_is_running {
-            // The process we're leaving was running, so let's put the current
-            // process on the queue.
-            push(current_process);
-        }
-
-        process::switch_to(next_process);
-    } else {
-        // The next process on the queue is this process. Just return.
-        return;
-    }
+    true
 }
 
 /// C interface. See `kit/kernel/include/scheduler.h`.
@@ -196,7 +240,12 @@ pub mod ffi {
     }
 
     #[no_mangle]
-    pub unsafe extern fn scheduler_tick() {
-        super::tick();
+    pub unsafe extern fn scheduler_yield() {
+        super::r#yield();
+    }
+
+    #[no_mangle]
+    pub unsafe extern fn scheduler_preempt() -> c_int {
+        super::preempt() as c_int
     }
 }

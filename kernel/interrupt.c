@@ -270,9 +270,7 @@ void interrupt_handler(interrupt_stack_t stack) {
     case INTERRUPT_INDEX_IRQ + 0:
       // Timer
       interrupt_irq_done(0);
-      if (scheduler_initialized()) {
-          scheduler_tick();
-      }
+      scheduler_preempt();
       break;
     case INTERRUPT_INDEX_IRQ + 1:
       // PS/2 device 1 IRQ
