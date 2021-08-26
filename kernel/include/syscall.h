@@ -52,24 +52,7 @@ void syscall_initialize();
 #define SYSCALL_DEBUG 0x9
   int32_t syscall_debug(uint32_t operation, uint64_t argument);
 
-#ifdef SYSCALL_C
-  const uint64_t syscall_table[] =
-  {
-    (uint64_t) &syscall_exit,
-    (uint64_t) &syscall_twrite,
-    (uint64_t) &syscall_key_get,
-    (uint64_t) &syscall_yield,
-    (uint64_t) &syscall_sleep,
-    (uint64_t) &syscall_spawn,
-    (uint64_t) &syscall_wait_process,
-    (uint64_t) &syscall_adjust_heap,
-    (uint64_t) &syscall_mmap_archive,
-    (uint64_t) &syscall_debug,
-  };
-  const uint64_t syscall_table_size = sizeof(syscall_table)/sizeof(syscall_table[0]);
-#else
-  extern const uint64_t syscall_table[];
-  extern const uint64_t syscall_table_size;
-#endif
+extern const uint64_t syscall_table[];
+extern const uint64_t syscall_table_size;
 
 #endif

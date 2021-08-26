@@ -63,52 +63,10 @@ void syscall_initialize()
   wrmsr(SYSCALL_FLAG_MASK, IA32_FMASK);
 }
 
-int syscall_exit(int status)
-{
-  process_exit(status);
-
-  DEBUG_MESSAGE("failed to exit process");
-  while (true) hlt();
-}
-
-int syscall_twrite(uint64_t length, const char *buffer)
-{
-  terminal_writebuf(length, buffer);
-  return 0;
-}
-
 int syscall_key_get(keyboard_event_t *event)
 {
   keyboard_sleep_dequeue(event);
   return 0;
-}
-
-int syscall_yield()
-{
-  // Might return immediately if there's nothing else to do.
-  scheduler_yield();
-  return 0;
-}
-
-int syscall_sleep()
-{
-  scheduler_sleep();
-  return 0;
-}
-
-int64_t syscall_spawn(const char *file, int argc, const char *const *argv)
-{
-  return archive_utils_spawn(file, argc, argv);
-}
-
-int syscall_wait_process(process_id_t id, int *exit_status)
-{
-  return process_wait_exit_status(id, exit_status);
-}
-
-void *syscall_adjust_heap(int64_t amount)
-{
-  return process_adjust_heap(amount);
 }
 
 archive_header_t *syscall_mmap_archive()
