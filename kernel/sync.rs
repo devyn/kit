@@ -14,4 +14,4 @@
 pub mod spinlock;
 
 pub use wait::WaitQueue;
-pub use spinlock::{Spinlock, CriticalSpinlock};
+pub use spinlock::Spinlock;

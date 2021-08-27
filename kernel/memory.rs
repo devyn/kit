@@ -24,8 +24,12 @@ use crate::paging::{GenericPageset, PagesetExt, PageType};
 
 use crate::multiboot::MmapEntry;
 use crate::process::Id as ProcessId;
-use crate::sync::CriticalSpinlock;
+use crate::sync::Spinlock;
 use crate::constants::KERNEL_LOW_END;
+
+pub mod pool;
+
+mod large_heap;
 
 /// The first "safe" physical address. Memory below this is not likely to be
 /// safe for general use, and may include parts of the kernel image among other
@@ -37,6 +41,14 @@ const SAFE_BOUNDARY: usize = KERNEL_LOW_END as usize;
 
 const INITIAL_HEAP_LENGTH: usize = 131072;
 
+pub const KSTACK_SIZE: usize = 8192;
+pub const KSTACK_ALIGN: usize = 16;
+
+const_assert!(KSTACK_SIZE < isize::MAX as usize);
+const_assert!(KSTACK_SIZE > 0);
+const_assert!(KSTACK_ALIGN & (KSTACK_ALIGN-1) == 0);
+const_assert!(KSTACK_ALIGN > 0);
+
 extern {
     static mut MEMORY_INITIAL_HEAP: [u8; INITIAL_HEAP_LENGTH];
 }
@@ -47,7 +59,7 @@ static mut KERNEL_HEAP: KernelHeap = KernelHeap::InitialHeap(0);
 #[derive(Debug)]
 enum KernelHeap {
     InitialHeap(usize),
-    LargeHeap(HeapState)
+    LargeHeap(large_heap::HeapState)
 }
 
 // Support for Rust library allocation using the kernel heap
@@ -68,27 +80,16 @@ fn handle_alloc_error(layout: Layout) -> ! {
 }
 
 #[derive(Debug)]
-struct HeapState {
-    start: *mut u8,
-    end: *mut u8,
-    length: usize,
-    // For allocating stacks
-    stacks_start: *mut u8,
-    stacks_end: *mut u8,
-    // Keeping track of what we allocated
-    regions: CriticalSpinlock<Vec<(PhysicalAddress, PageCount)>>,
-}
-
-#[derive(Debug)]
 struct RegionState {
     alloc_regions: BTreeMap<PhysicalAddress, AllocRegionState>,
-    free_regions: BinaryHeap<FreeRegion>,
+    free_regions: BinaryHeap<FreeRegion<PhysicalAddress>>,
     total_free: PageCount,
 }
 
-static mut REGION_STATE: Option<CriticalSpinlock<RegionState>> = None;
+static mut REGION_STATE: Option<Spinlock<RegionState>> = None;
 
 pub type PhysicalAddress = usize;
+pub type VirtualAddress = usize;
 pub type PageCount = usize;
 
 #[derive(Debug)]
@@ -103,20 +104,20 @@ pub enum RegionUser {
     Process(ProcessId)
 }
 
-#[derive(Debug, PartialEq, Eq)]
-struct FreeRegion {
-    start: PhysicalAddress,
+#[derive(Debug, PartialEq, Eq, Clone)]
+struct FreeRegion<T> {
+    start: T,
     length: PageCount
 }
 
-impl PartialOrd for FreeRegion {
-    fn partial_cmp(&self, other: &FreeRegion) -> Option<Ordering> {
+impl<T: Ord> PartialOrd for FreeRegion<T> {
+    fn partial_cmp(&self, other: &FreeRegion<T>) -> Option<Ordering> {
         Some(self.cmp(other))
     }
 }
 
-impl Ord for FreeRegion {
-    fn cmp(&self, other: &FreeRegion) -> Ordering {
+impl<T: Ord> Ord for FreeRegion<T> {
+    fn cmp(&self, other: &FreeRegion<T>) -> Ordering {
         if self.length == other.length {
             self.start.cmp(&other.start)
         } else {
@@ -178,23 +179,19 @@ pub unsafe fn initialize(mmap_buffer: *const u8, mmap_length: u32) {
         }
     }
 
-    REGION_STATE = Some(CriticalSpinlock::new(RegionState {
+    REGION_STATE = Some(Spinlock::new(RegionState {
         total_free: free_regions.iter().fold(0, |s, r| s + r.length),
         free_regions,
         alloc_regions: BTreeMap::new(),
     }));
 }
 
-const LARGE_HEAP_START: usize = 0xffff_ffff_9000_0000;
-const STACKS_START: usize = 0xffff_ffff_f000_0000;
-const BUFZONE_SIZE: usize = 0x4000;
-
 pub unsafe fn allocate(size: usize, align: usize) -> *mut u8 {
     match KERNEL_HEAP {
         KernelHeap::InitialHeap(ref mut counter) =>
             initial_heap_allocate(counter, size, align),
-        KernelHeap::LargeHeap(ref mut state) =>
-            large_heap_allocate(state, size, align)
+        KernelHeap::LargeHeap(ref state) =>
+            large_heap::allocate(state, size, align)
     }
 }
 
@@ -215,7 +212,7 @@ unsafe fn initial_heap_allocate(counter: &mut usize, size: usize, align: usize)
     let new_counter = align_addr(*counter, align);
 
     if new_counter + size >= INITIAL_HEAP_LENGTH {
-        panic!("out of memory in initial heap!");
+        panic!("not enough memory for ({}, {}) in initial heap!", size, align);
     }
 
     let ptr = (&mut MEMORY_INITIAL_HEAP[new_counter]) as *mut u8;
@@ -223,68 +220,6 @@ unsafe fn initial_heap_allocate(counter: &mut usize, size: usize, align: usize)
     *counter = new_counter + size;
 
     ptr
-}
-
-unsafe fn large_heap_allocate(state: &mut HeapState, size: usize, align: usize)
-                              -> *mut u8 {
-
-    // Note: there are parts in here where allocations can happen. Avoid taking
-    // values from state between when these allocations could happen.
-
-    // Don't even try to run any allocation if we're already doing an operation.
-    if let Some(mut regions) = state.regions.try_lock() {
-        // The maximum amount of room we will need to align is (align - 1)
-        // bytes, so reserve that just in case.
-        //
-        // We can't predict what the alignment will be after the
-        // kernel_acquire_and_map() call, since mapping pages sometimes requires
-        // memory allocation, but it should always fit within the BUFZONE_SIZE.
-        let min_end = state.start as usize + state.length +
-            (align - 1) + size + BUFZONE_SIZE;
-
-        if min_end >= state.end as usize {
-            let page_size = Pageset::page_size();
-            let needed_bytes = min_end - state.end as usize;
-            let mut needed_pages = needed_bytes / page_size;
-
-            if needed_bytes % page_size != 0 {
-                needed_pages += 1;
-            }
-
-            // Warning: allocation possible here.
-            let result = 
-                kernel_acquire_and_map(state.end, needed_pages, &mut *regions);
-
-            // If we get an error, still add whatever number of pages we could
-            // allocate
-            let allocated_pages = match result {
-                Ok(()) => needed_pages,
-                Err(some_pages) => some_pages
-            };
-
-            state.end =
-                (state.end as usize + (allocated_pages * page_size)) as *mut u8;
-        }
-    }
-
-    // It's possible that we failed to actually acquire the pages we need, but
-    // try to proceed anyway and hope the buffer zone is enough:
-
-    let start = state.start as usize;
-
-    state.length = align_addr(start + state.length, align) - start;
-
-    let alloc_addr = (start + state.length) as *mut u8;
-
-    // It's possible that even after our best attempt to allocate more memory,
-    // we still don't have enough. In that case we have to panic.
-    if (start + state.length + size) >= state.end as usize {
-        panic!("ran out of bufzone memory");
-    }
-
-    state.length += size;
-
-    alloc_addr
 }
 
 pub unsafe fn enable_large_heap() {
@@ -295,25 +230,7 @@ pub unsafe fn enable_large_heap() {
         return;
     }
 
-    let bufzone_pages = BUFZONE_SIZE / Pageset::page_size();
-
-    let mut regions = vec![];
-
-    kernel_acquire_and_map(
-        LARGE_HEAP_START as *mut u8,
-        bufzone_pages,
-        &mut regions,
-    )
-    .expect("Failed to initialize large heap bufzone");
-
-    KERNEL_HEAP = KernelHeap::LargeHeap(HeapState {
-        start: LARGE_HEAP_START as *mut u8,
-        end: (LARGE_HEAP_START + BUFZONE_SIZE) as *mut u8,
-        stacks_start: STACKS_START as *mut u8,
-        stacks_end: STACKS_START as *mut u8,
-        length: 0,
-        regions: CriticalSpinlock::new(regions),
-    });
+    KERNEL_HEAP = KernelHeap::LargeHeap(large_heap::initialize());
 }
 
 pub fn acquire_region(owner: RegionUser, pages: PageCount)
@@ -399,14 +316,6 @@ fn kernel_acquire_and_map(
     Ok(())
 }
 
-pub const KSTACK_SIZE: usize = 8192;
-pub const KSTACK_ALIGN: usize = 16;
-
-const_assert!(KSTACK_SIZE < isize::MAX as usize);
-const_assert!(KSTACK_SIZE > 0);
-const_assert!(KSTACK_ALIGN & (KSTACK_ALIGN-1) == 0);
-const_assert!(KSTACK_ALIGN > 0);
-
 pub fn allocate_kernel_stack() -> *mut u8 {
     let heap_state = unsafe {
         match KERNEL_HEAP {
@@ -416,30 +325,7 @@ pub fn allocate_kernel_stack() -> *mut u8 {
         }
     };
 
-    assert_eq!(KSTACK_SIZE % Pageset::page_size(), 0,
-        "Kernel stack size must be a multiple of the page size");
-
-    let pages = KSTACK_SIZE / Pageset::page_size();
-
-    let mut regions = heap_state.regions.lock();
-
-    let new_stack = heap_state.stacks_end;
-
-    // Allocate pages to the stack area
-    kernel_acquire_and_map(new_stack, pages, &mut regions)
-        .unwrap_or_else(|_| panic!("Out of memory"));
-
-    // Increment, skip one page for next time, stacks have guard page on either
-    // side
-    unsafe {
-        heap_state.stacks_end = heap_state.stacks_end.offset(
-            ((pages + 1) * Pageset::page_size()) as isize);
-    }
-
-    // Actually return the stack pointer (going down)
-    unsafe {
-        new_stack.offset(KSTACK_SIZE as isize)
-    }
+    large_heap::allocate_kernel_stack(heap_state)
 }
 
 /// C foreign interface.
@@ -454,7 +340,7 @@ pub mod ffi {
 
     #[no_mangle]
     pub unsafe extern fn memory_alloc(size: u64) -> *mut u8 {
-        memory_alloc_aligned(size, 1)
+        memory_alloc_aligned(size, 8)
     }
 
     #[no_mangle]

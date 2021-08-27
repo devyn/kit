@@ -102,9 +102,3 @@ impl<T: ?Sized> Drop for SpinlockGuard<'_, T> {
         assert!(self.spinlock.release(), "failed to release spinlock");
     }
 }
-
-/// Interrupts are not generally enabled in normal operation of the kernel yet,
-/// but this is for the future to mark spinlocks that should not have interrupts
-/// enabled while they are held.
-pub type CriticalSpinlock<T> = Spinlock<T>;
-pub type CriticalSpinlockGuard<'a, T> = SpinlockGuard<'a, T>;

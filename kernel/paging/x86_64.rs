@@ -128,6 +128,7 @@ impl<'a> generic::Pageset<'a> for Pageset {
         asm!("mov {}, %cr3", in(reg) self.cr3, options(att_syntax));
     }
 
+    #[inline]
     fn page_size() -> usize { PAGE_SIZE }
 
     fn is_kernel_pageset(&self) -> bool { self.kernel }
@@ -162,11 +163,11 @@ impl error::Error for Error {
     fn description(&self) -> &str {
         match *self {
             Error::OutOfKernelRange(_) =>
-                "Tried to modify a page in the kernel pageset outside 
+                "Tried to modify a page in the kernel pageset outside \
                  the kernel address space.",
 
             Error::OutOfUserRange(_) =>
-                "Tried to modify a page in a user pageset outside
+                "Tried to modify a page in a user pageset outside \
                  the user address space.",
         }
     }

@@ -16,11 +16,11 @@ use alloc::collections::VecDeque;
 
 use crate::process::{self, RcProcess};
 use crate::interrupt;
-use crate::sync::CriticalSpinlock;
+use crate::sync::Spinlock;
 
 struct GlobalState {
-    run_queue: CriticalSpinlock<VecDeque<RcProcess>>,
-    preempt_lock: CriticalSpinlock<()>,
+    run_queue: Spinlock<VecDeque<RcProcess>>,
+    preempt_lock: Spinlock<()>,
 }
 
 static mut GLOBAL_STATE: Option<GlobalState> = None;
@@ -36,8 +36,8 @@ pub unsafe fn initialize() {
     }
 
     GLOBAL_STATE = Some(GlobalState {
-        run_queue: CriticalSpinlock::new(VecDeque::new()),
-        preempt_lock: CriticalSpinlock::new(()),
+        run_queue: Spinlock::new(VecDeque::new()),
+        preempt_lock: Spinlock::new(()),
     });
 
     INITIALIZED = true;
