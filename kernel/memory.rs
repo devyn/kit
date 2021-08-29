@@ -53,7 +53,11 @@ extern {
     static mut MEMORY_INITIAL_HEAP: [u8; INITIAL_HEAP_LENGTH];
 }
 
+#[cfg(not(test))]
 #[global_allocator]
+static mut KERNEL_HEAP: KernelHeap = KernelHeap::InitialHeap(0);
+
+#[cfg(test)]
 static mut KERNEL_HEAP: KernelHeap = KernelHeap::InitialHeap(0);
 
 #[derive(Debug)]
@@ -74,6 +78,7 @@ unsafe impl GlobalAlloc for KernelHeap {
 }
 
 // What to do on an allocation error
+#[cfg(not(test))]
 #[alloc_error_handler]
 fn handle_alloc_error(layout: Layout) -> ! {
     panic!("Memory allocation failed: {:?}", layout);
@@ -199,7 +204,7 @@ pub unsafe fn deallocate(_ptr: *mut u8, _size: usize, _align: usize) {
     // TODO
 }
 
-fn align_addr(mut addr: usize, align: usize) -> usize {
+const fn align_addr(mut addr: usize, align: usize) -> usize {
     if addr % align != 0 {
         addr += align - (addr % align);
     }

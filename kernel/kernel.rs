@@ -20,7 +20,7 @@
 
 #![feature(lang_items, asm, box_syntax, alloc_error_handler)]
 #![feature(box_patterns, panic_info_message)]
-#![feature(repr_simd)]
+#![feature(repr_simd, const_panic, inline_const)]
 
 #![allow(improper_ctypes)]
 
@@ -161,6 +161,7 @@ pub extern fn kernel_main() -> ! {
     }
 }
 
+#[cfg(not(test))]
 #[panic_handler]
 fn panic_handler(panic_info: &PanicInfo) -> ! {
     let _ = console().set_color(Color::White, Color::Red);

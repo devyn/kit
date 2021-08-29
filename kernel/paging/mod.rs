@@ -31,7 +31,7 @@ pub mod x86_64;
 #[cfg(target_arch = "x86_64")]
 pub use self::x86_64 as target;
 
-pub use self::target::{Pageset, Error};
+pub use self::target::{PAGE_SIZE, Pageset, Error};
 
 static mut INITIALIZED: bool = false;
 

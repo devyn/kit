@@ -25,7 +25,7 @@ use crate::constants::{KERNEL_OFFSET, KERNEL_LOW_START, KERNEL_LOW_END};
 
 use super::generic::{self, Page, PagesetExt, PageType};
 
-const PAGE_SIZE: usize = 4096;
+pub const PAGE_SIZE: usize = 4096;
 
 macro_rules! assert_page_aligned {
     ($value:expr) => {
