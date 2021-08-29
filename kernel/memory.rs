@@ -178,6 +178,7 @@ pub unsafe fn initialize(mmap_buffer: *const u8, mmap_length: u32) {
 }
 
 pub unsafe fn allocate(size: usize, align: usize) -> *mut u8 {
+    debug!("allocate({}, {})", size, align);
     match KERNEL_HEAP {
         KernelHeap::InitialHeap(ref mut counter) =>
             initial_heap_allocate(counter, size, align),

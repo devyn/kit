@@ -97,6 +97,8 @@ impl PoolConfig {
 #[derive(Debug)]
 pub struct Pool {
     config: PoolConfig,
+    objects_used: AtomicUsize,
+    objects_capacity: AtomicUsize,
     free_stack: AtomicPtr<RegionInfo>,
     all_stack: AtomicPtr<RegionInfo>,
 }
@@ -119,6 +121,8 @@ impl Pool {
 
         Pool {
             config,
+            objects_used: AtomicUsize::new(0),
+            objects_capacity: AtomicUsize::new(0),
             free_stack: AtomicPtr::new(ptr::null_mut()),
             all_stack: AtomicPtr::new(ptr::null_mut()),
         }
@@ -129,6 +133,12 @@ impl Pool {
     }
     pub fn region_pages(&self) -> PageCount {
         self.config.region_pages
+    }
+    pub fn objects_used(&self) -> usize {
+        self.objects_used.load(Relaxed)
+    }
+    pub fn objects_capacity(&self) -> usize {
+        self.objects_capacity.load(Relaxed)
     }
 
     /// Make a region available to the pool.
@@ -153,6 +163,8 @@ impl Pool {
 
         push(&self.all_stack, region_info.clone(), ListSel::All);
         push(&self.free_stack, region_info, ListSel::Free);
+
+        self.objects_capacity.fetch_add(self.config.object_capacity(), Relaxed);
 
         debug!("pool({}) region inserted: {:016x}",
             self.object_size(), addr);
@@ -196,6 +208,9 @@ impl Pool {
         match unsafe { region.prepare_drop(self.config) } {
             // It was exclusively held and empty.
             Ok(_) => {
+                self.objects_capacity.fetch_sub(self.config.object_capacity(),
+                    Relaxed);
+
                 debug!("pool({}) region removed: 0x{:016x}",
                     self.object_size(), addr);
                 Ok(())
@@ -231,8 +246,15 @@ impl Pool {
                     unsafe { push(&self.free_stack, free, ListSel::Free); }
                 }
 
-                debug!("pool({},{}) allocated: {:016x}",
-                    self.object_size(), self.region_pages(), free_address);
+                self.objects_used.fetch_add(1, Relaxed);
+
+                let sp: usize;
+
+                unsafe { asm!("mov {}, rsp", out(reg) sp); }
+
+                debug!("pool({},{}) allocated: {:016x} sp={:016x}",
+                    self.object_size(), self.region_pages(), free_address,
+                    sp);
 
                 return Ok(free_address);
             } else {

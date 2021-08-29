@@ -73,10 +73,17 @@ pub unsafe fn initialize() -> HeapState {
 
     let free_virtual = LockFreeList::new();
 
-    let initial_start = LARGE_HEAP_START + PAGE_SIZE * SPARE_PAGES;
+    let spare_start = LARGE_HEAP_START +
+        (LARGE_HEAP_LENGTH - SPARE_PAGES) * PAGE_SIZE;
+
+    kernel_acquire_and_map(
+        spare_start as *mut u8,
+        SPARE_PAGES,
+        |start, length| alloc_physical.push(Node::new((start, length)))
+    ).unwrap();
 
     free_virtual.push(Node::new(FreeRegion {
-        start: initial_start,
+        start: LARGE_HEAP_START,
         length: AtomicUsize::new(LARGE_HEAP_LENGTH - SPARE_PAGES),
     }));
 
@@ -88,9 +95,11 @@ pub unsafe fn initialize() -> HeapState {
     let mut pools = Vec::with_capacity(min_size_of_pools);
 
     // It's a big problem if we don't at least have some common sizes in here
-    // first. Let's initialize every multiple of 8 up to 128
-    for size in (8..=128).step_by(8) {
-        let pool = Pool::new(size, preferred_region_size(size));
+    // first. Let's initialize the spare pages in multiples of 8
+    for index in 0..SPARE_PAGES {
+        let size = 8 + index * 8;
+        let pool = Pool::new(size, 1);
+        pool.insert_region(spare_start + index * PAGE_SIZE).unwrap();
         debug!("{:?}", pool);
         pools.push((size, Arc::new(pool)));
     }
@@ -269,6 +278,16 @@ fn pool_get(state: &HeapState, size: usize) -> RcPool {
     }
 }
 
+fn add_region_to_pool(state: &HeapState, pool: &Pool) -> Result<(), ()> {
+    let region = allocate_pages(state, pool.region_pages(), PAGE_SIZE)?;
+
+    assert!(region != 0);
+
+    unsafe { pool.insert_region(region) }.unwrap();
+
+    Ok(())
+}
+
 fn allocate_small_object(state: &HeapState, size_aligned: usize)
     -> Result<VirtualAddress, ()> {
 
@@ -278,16 +297,16 @@ fn allocate_small_object(state: &HeapState, size_aligned: usize)
     {
         // Try to just get an address from the pool
         if let Ok(vaddr) = pool.allocate() {
+            // If the pool is now almost full, add another page
+            if pool.objects_capacity().saturating_sub(pool.objects_used()) < 10 {
+                let _ = add_region_to_pool(state, &pool);
+            }
             return Ok(vaddr);
         }
     }
 
     // The pool is probably empty. Allocate a region first and try again
-    let region = allocate_pages(state, pool.region_pages(), PAGE_SIZE)?;
-
-    assert!(region != 0);
-
-    unsafe { pool.insert_region(region) }.unwrap();
+    add_region_to_pool(state, &pool)?;
     Ok(pool.allocate().expect("Added region but pool still empty"))
 }
 

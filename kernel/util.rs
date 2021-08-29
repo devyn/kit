@@ -25,6 +25,7 @@ macro_rules! debug {
             line!(),
             column!(),
             format_args!($fmt, $($args),*));
+        for _ in 0..100000 { unsafe { asm!("nop") } }
     };
     ($fmt:expr) => (debug!($fmt,));
 }
