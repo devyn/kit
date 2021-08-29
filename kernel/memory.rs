@@ -13,18 +13,22 @@
 //! Physical memory management and kernel heap.
 
 use core::mem;
-use core::cmp::{min, Ordering};
+use core::cmp::min;
 use core::alloc::{GlobalAlloc, Layout};
 
-use alloc::vec::Vec;
-use alloc::collections::{BTreeMap, BinaryHeap};
+use core::sync::atomic::AtomicUsize;
+use core::sync::atomic::Ordering::*;
 
-use crate::paging::{self, kernel_pageset, Pageset};
-use crate::paging::{GenericPageset, PagesetExt, PageType};
+use alloc::vec::Vec;
+
+use crate::paging::{self, kernel_pageset};
+use crate::paging::{PagesetExt, PageType};
+use crate::paging::PAGE_SIZE;
 
 use crate::multiboot::MmapEntry;
 use crate::process::Id as ProcessId;
-use crate::sync::Spinlock;
+use crate::sync::LockFreeList;
+use crate::sync::lock_free_list::Node;
 use crate::constants::KERNEL_LOW_END;
 
 pub mod pool;
@@ -86,12 +90,13 @@ fn handle_alloc_error(layout: Layout) -> ! {
 
 #[derive(Debug)]
 struct RegionState {
-    alloc_regions: BTreeMap<PhysicalAddress, AllocRegionState>,
-    free_regions: BinaryHeap<FreeRegion<PhysicalAddress>>,
-    total_free: PageCount,
+    alloc_regions: LockFreeList<(PhysicalAddress, AllocRegionState)>,
+    free_regions: LockFreeList<FreeRegion<PhysicalAddress>>,
+    total_page_count: usize,
+    free_page_count: AtomicUsize,
 }
 
-static mut REGION_STATE: Option<Spinlock<RegionState>> = None;
+static mut REGION_STATE: Option<RegionState> = None;
 
 pub type PhysicalAddress = usize;
 pub type VirtualAddress = usize;
@@ -109,26 +114,10 @@ pub enum RegionUser {
     Process(ProcessId)
 }
 
-#[derive(Debug, PartialEq, Eq, Clone)]
+#[derive(Debug)]
 struct FreeRegion<T> {
     start: T,
-    length: PageCount
-}
-
-impl<T: Ord> PartialOrd for FreeRegion<T> {
-    fn partial_cmp(&self, other: &FreeRegion<T>) -> Option<Ordering> {
-        Some(self.cmp(other))
-    }
-}
-
-impl<T: Ord> Ord for FreeRegion<T> {
-    fn cmp(&self, other: &FreeRegion<T>) -> Ordering {
-        if self.length == other.length {
-            self.start.cmp(&other.start)
-        } else {
-            other.length.cmp(&self.length)
-        }
-    }
+    length: AtomicUsize, // page count
 }
 
 /// Loads the memory map information into the region tree in order to know where
@@ -137,9 +126,7 @@ pub unsafe fn initialize(mmap_buffer: *const u8, mmap_length: u32) {
     let mut current_mmap = mmap_buffer;
     let mmap_end = mmap_buffer.offset(mmap_length as isize);
 
-    let page_size = Pageset::page_size();
-
-    let mut free_regions = BinaryHeap::with_capacity(16);
+    let mut free_regions = LockFreeList::new();
 
     while current_mmap < mmap_end {
         let entry_ptr: *const MmapEntry = mem::transmute(current_mmap);
@@ -151,23 +138,18 @@ pub unsafe fn initialize(mmap_buffer: *const u8, mmap_length: u32) {
         let len  = entry.len  as usize;
 
         // Align physical base address to page size.
-        let mut physical_base =
-            if addr % page_size != 0 {
-                (addr / page_size + 1) * page_size
-            } else {
-                addr
-            };
+        let mut physical_base = align_addr(addr, PAGE_SIZE);
 
         // Remove remainder from length and count pages.
-        let mut pages = (len - (addr % page_size)) / page_size;
+        let mut pages = (len - (addr % PAGE_SIZE)) / PAGE_SIZE;
 
         // If the base starts before SAFE_BOUNDARY, remove the pages before that
         // (and make sure we still have pages left).
         if physical_base < SAFE_BOUNDARY {
-            let diff = (SAFE_BOUNDARY - physical_base) / page_size;
+            let diff = (SAFE_BOUNDARY - physical_base) / PAGE_SIZE;
 
             if diff < pages {
-                physical_base += diff * page_size;
+                physical_base += diff * PAGE_SIZE;
                 pages         -= diff;
             } else {
                 continue; // skip this entry
@@ -177,18 +159,22 @@ pub unsafe fn initialize(mmap_buffer: *const u8, mmap_length: u32) {
         // If the entry is marked as available and has at least one page, add it
         // to the free regions.
         if entry.is_available() && pages > 0 {
-            free_regions.push(FreeRegion {
+            free_regions.push(Node::new(FreeRegion {
                 start: physical_base,
-                length: pages
-            });
+                length: AtomicUsize::new(pages)
+            }));
         }
     }
 
-    REGION_STATE = Some(Spinlock::new(RegionState {
-        total_free: free_regions.iter().fold(0, |s, r| s + r.length),
+    let total_page_count = free_regions.iter().fold(0,
+        |s, r| s + r.length.load(Relaxed));
+
+    REGION_STATE = Some(RegionState {
+        total_page_count,
+        free_page_count: AtomicUsize::new(total_page_count),
         free_regions,
-        alloc_regions: BTreeMap::new(),
-    }));
+        alloc_regions: LockFreeList::new(),
+    });
 }
 
 pub unsafe fn allocate(size: usize, align: usize) -> *mut u8 {
@@ -207,6 +193,13 @@ pub unsafe fn deallocate(_ptr: *mut u8, _size: usize, _align: usize) {
 const fn align_addr(mut addr: usize, align: usize) -> usize {
     if addr % align != 0 {
         addr += align - (addr % align);
+    }
+    addr
+}
+
+const fn align_addr_down(mut addr: usize, align: usize) -> usize {
+    if addr % align != 0 {
+        addr -= addr % align;
     }
     addr
 }
@@ -240,41 +233,61 @@ pub unsafe fn enable_large_heap() {
 
 pub fn acquire_region(owner: RegionUser, pages: PageCount)
                       -> Option<(PhysicalAddress, PageCount)> {
-    let page_size = Pageset::page_size();
 
     // Safety: initialized once
-    let state_lock = unsafe { 
+    let state = unsafe { 
         REGION_STATE.as_ref().expect("memory::initialize() not called")
     };
 
-    if let Some(mut state) = state_lock.try_lock() {
-        if state.total_free < pages {
-            return None;
-        }
+    let free_page_count = state.free_page_count.load(Relaxed);
+    if free_page_count < pages {
+        debug!("free_page_count={} < {}", free_page_count, pages);
+        return None;
+    }
 
-        if let Some(free_region) = state.free_regions.pop() {
-            if free_region.length > pages {
-                state.free_regions.push(FreeRegion {
-                    start: free_region.start + (pages * page_size),
-                    length: free_region.length - pages
-                });
+    let mut alloc_start = 0;
+    let mut acq_pages = 0;
+
+    // Find the first free region with (any) space
+    for free_region in state.free_regions.iter() {
+        let mut original_length = 0;
+
+        // Take as many pages as we can from it, up to pages
+        let res = free_region.length.fetch_update(Relaxed, Relaxed,
+            |length| {
+                original_length = length;
+
+                if length > 0 {
+                    acq_pages = min(length, pages);
+                    Some(length - min(length, pages))
+                } else {
+                    acq_pages = 0;
+                    None
+                }
             }
+        );
 
-            let captured_length = min(free_region.length, pages);
+        // Our allocated region will be at the end, since we can only update
+        // length
+        alloc_start = free_region.start +
+            ((original_length - acq_pages) * PAGE_SIZE);
 
-            state.alloc_regions.insert(free_region.start, AllocRegionState {
-                length: captured_length,
-                users: vec![owner]
-            });
-
-            state.total_free -= captured_length;
-
-            Some((free_region.start, captured_length))
-        } else {
-            None
+        if res.is_ok() {
+            break;
         }
+    }
+
+    if acq_pages > 0 {
+        state.free_page_count.fetch_sub(acq_pages, Relaxed);
+
+        state.alloc_regions.push(Node::new((alloc_start, AllocRegionState {
+            length: acq_pages,
+            users: vec![owner]
+        })));
+
+        Some((alloc_start, acq_pages))
     } else {
-        // Nested calls to acquire_region are not allowed.
+        debug!("No free physical region available.");
         None
     }
 }
@@ -284,13 +297,12 @@ pub fn release_region(user: RegionUser, paddr: PhysicalAddress) {
 }
 
 /// Returns the number of pages successfully allocated on error
-fn kernel_acquire_and_map(
+fn kernel_acquire_and_map<F>(
     vaddr: *mut u8,
     pages: PageCount,
-    regions: &mut Vec<(PhysicalAddress, PageCount)>,
-) -> Result<(), PageCount> {
-
-    let page_size = Pageset::page_size();
+    mut push_region: F,
+) -> Result<(), PageCount>
+    where F: FnMut(PhysicalAddress, PageCount) {
 
     let mut cur_vaddr = vaddr as usize;
     let mut cur_pages = pages;
@@ -306,16 +318,16 @@ fn kernel_acquire_and_map(
             kernel_pageset()
                 .map_pages_with_type(
                     cur_vaddr,
-                    (got_paddr..).step_by(page_size).take(got_pages),
+                    (got_paddr..).step_by(PAGE_SIZE).take(got_pages),
                     PageType::default().writable(),
                 )
                 .expect("unable to map acquired pages into kernel space")
         }
 
-        cur_vaddr += got_pages * page_size;
+        cur_vaddr += got_pages * PAGE_SIZE;
         cur_pages -= got_pages;
 
-        regions.push((got_paddr, got_pages));
+        push_region(got_paddr, got_pages);
     }
 
     Ok(())

@@ -10,20 +10,19 @@
  *
  ******************************************************************************/
 
-use crate::sync::Spinlock;
+use crate::sync::{Spinlock, LockFreeList};
+use crate::sync::lock_free_list::Node;
 use crate::paging::PAGE_SIZE;
 
 use alloc::sync::Arc;
 use alloc::vec::Vec;
-use alloc::collections::BTreeSet;
 
-use core::sync::atomic::{AtomicBool, AtomicUsize};
+use core::sync::atomic::AtomicUsize;
 use core::sync::atomic::Ordering::*;
 
-
-use super::{FreeRegion, PhysicalAddress, VirtualAddress, PageCount};
+use super::{PhysicalAddress, VirtualAddress, PageCount, FreeRegion};
 use super::KSTACK_SIZE;
-use super::{kernel_acquire_and_map, align_addr};
+use super::{kernel_acquire_and_map, align_addr, align_addr_down};
 use super::pool::Pool;
 
 pub const LARGE_HEAP_START: usize = 0xffff_ffff_9000_0000;
@@ -48,16 +47,13 @@ pub struct HeapState {
     stacks_start: *mut u8,
     stacks_end: Spinlock<*mut u8>,
     // Tracked memory regions
-    regions: Spinlock<HeapRegionState>,
-    // Spare pages (already mapped) to be used in emergencies
-    spare_pages: [AtomicUsize; SPARE_PAGES],
-    spare_pages_dirty: AtomicBool,
+    regions: HeapRegionState,
 }
 
 #[derive(Debug)]
 struct HeapRegionState {
-    alloc_physical: Vec<(PhysicalAddress, PageCount)>,
-    free_virtual: BTreeSet<FreeRegion<VirtualAddress>>,
+    alloc_physical: LockFreeList<(PhysicalAddress, PageCount)>,
+    free_virtual: LockFreeList<FreeRegion<VirtualAddress>>,
 }
 
 const fn preferred_region_size(object_size: usize) -> PageCount {
@@ -73,29 +69,16 @@ const fn preferred_region_size(object_size: usize) -> PageCount {
 }
 
 pub unsafe fn initialize() -> HeapState {
-    let mut alloc_physical = vec![];
+    let alloc_physical = LockFreeList::new();
 
-    kernel_acquire_and_map(
-        LARGE_HEAP_START as *mut u8,
-        SPARE_PAGES,
-        &mut alloc_physical,
-    )
-    .expect("Failed to initialize large heap spare pages");
-
-    let spare_pages = [const { AtomicUsize::new(0) }; SPARE_PAGES];
-
-    for index in 0..SPARE_PAGES {
-        spare_pages[index].store(LARGE_HEAP_START + PAGE_SIZE * index, Relaxed);
-    }
-
-    let mut free_virtual = BTreeSet::new();
+    let free_virtual = LockFreeList::new();
 
     let initial_start = LARGE_HEAP_START + PAGE_SIZE * SPARE_PAGES;
 
-    free_virtual.insert(FreeRegion {
+    free_virtual.push(Node::new(FreeRegion {
         start: initial_start,
-        length: LARGE_HEAP_LENGTH - SPARE_PAGES,
-    });
+        length: AtomicUsize::new(LARGE_HEAP_LENGTH - SPARE_PAGES),
+    }));
 
     // At least a page large, in order to avoid triggering the small object
     // allocator
@@ -119,12 +102,10 @@ pub unsafe fn initialize() -> HeapState {
         pools: Spinlock::new(pools),
         stacks_start: STACKS_START as *mut u8,
         stacks_end: Spinlock::new(STACKS_START as *mut u8),
-        regions: Spinlock::new(HeapRegionState {
+        regions: HeapRegionState {
             alloc_physical,
             free_virtual,
-        }),
-        spare_pages: spare_pages,
-        spare_pages_dirty: AtomicBool::new(false),
+        },
     }
 }
 
@@ -165,163 +146,96 @@ fn allocate_pages(state: &HeapState, pages: usize, align: usize)
 
     let page_size = PAGE_SIZE;
 
-    if let Some(mut regions) = state.regions.try_lock() {
-        // Find a virtual region large enough that will work for the alignment
-        let range = .. FreeRegion { length: pages - 1, start: 0 };
+    let regions = &state.regions;
 
-        debug!("regions.free_virtual={:?}", regions.free_virtual);
-        debug!("pages={:?}, range={:?}", pages, range);
+    // Find a virtual region large enough that will work for the alignment
+    debug!("regions.free_virtual={:?}", regions.free_virtual);
+    debug!("pages={:?}", pages);
 
-        let r = regions.free_virtual.range(range).flat_map(|r| {
+    let alloc_start = 'retry: loop {
+        let r = regions.free_virtual.iter().flat_map(|r| {
+            let r_length = r.length.load(Relaxed);
+
             // Find the end of the region
-            let r_end = r.start + r.length * page_size;
+            let r_end = r.start + r_length * page_size;
 
             // Figure out where our allocation would need to be placed
-            let alloc_start = align_addr(r.start, align);
+            //
+            // Prefer to put it near the end so that we can just update the
+            // length and avoid taking anything out of the list
+            let alloc_start = align_addr_down(r_end - pages * page_size, align);
             let alloc_end = alloc_start + pages * page_size;
 
             debug!("considering  {:016x} < {:016x}, {:016x} > {:016x}", r.start,
                 alloc_start, alloc_end, r_end);
 
             // If the allocation would fall out of the region, we can't use it
+            if r.start > alloc_start { return None; }
             if r_end < alloc_end { return None; }
 
             // Figure out what the regions before and after would be
-            let region_before = FreeRegion {
-                length: (alloc_start - r.start) / page_size,
-                start: r.start
-            };
-            let region_after = FreeRegion {
-                length: (r_end - alloc_end) / page_size,
-                start: r_end
-            };
+            let new_length = (alloc_start - r.start) / page_size;
+            let region_after = (r_end, (r_end - alloc_end) / page_size);
 
             // We could allocate
-            Some((r.clone(), alloc_start, region_before, region_after))
+            Some((r, alloc_start, r_length, new_length, region_after))
         }).nth(0);
 
-        let (old_region, alloc_start, region_before, region_after) = match r {
+        let (region, alloc_start, r_length, new_length, region_after) = match r {
             Some(r) => r,
             None => return Err(())
         };
 
-        // Remove the old region
-        regions.free_virtual.remove(&old_region);
-
-        // If there's space around the allocated region, save it
-        if region_before.length > 0 {
-            regions.free_virtual.insert(region_before);
-        }
-        if region_after.length > 0 {
-            regions.free_virtual.insert(region_after);
-        }
-
-        // Map the pages
-        let map_res = kernel_acquire_and_map(
-            alloc_start as *mut u8,
-            pages,
-            &mut regions.alloc_physical);
-
-        if !map_res.is_ok() {
-            return Err(());
+        // Try to compare_exchange the region length to the new length
+        if let Err(_) = region.length.compare_exchange(
+            r_length,
+            new_length,
+            Relaxed,
+            Relaxed
+        ) {
+            // Updated while we did the calculation. Try again.
+            continue 'retry;
         }
 
-        // See if we might be able to add more spare pages
-        add_spare_pages(state, &mut regions);
+        debug!("region={:?}", region);
+        debug!("alloc_start=0x{:016x}", alloc_start);
+        debug!("r_length={}", r_length);
+        debug!("new_length={}", new_length);
+        debug!("region_after=({:016x}, {})", region_after.0, region_after.1);
 
-        // We successfully allocated!
-        Ok(alloc_start)
-    } else {
-        // Special case: if we only need one page, and align is multiple of the
-        // page size, we can use a spare page.
-        if pages == 1 && PAGE_SIZE % align == 0 {
-            debug!("need a spare page");
+        // Insert a node if the after region has length
+        let (r_after_start, r_after_length) = region_after;
 
-            // Find one we can take
-            for index in 0..SPARE_PAGES {
-                let page = state.spare_pages[index].swap(0, Relaxed);
-
-                if page != 0 {
-                    state.spare_pages_dirty.store(true, Relaxed);
-                    return Ok(page);
-                }
-            }
-
-            // Not found... :(
-            Err(())
-        } else {
-            // Can't allocate pages while the region lock is held
-            Err(())
+        if r_after_length > 0 {
+            regions.free_virtual.push(Node::new(FreeRegion {
+                start: r_after_start,
+                length: AtomicUsize::new(r_after_length),
+            }));
         }
+
+        // If new_length = 0, try to remove it from the list
+        if new_length == 0 {
+            regions.free_virtual.remove(&region);
+        }
+
+        break alloc_start;
+    };
+
+    // Map the pages
+    let map_res = kernel_acquire_and_map(
+        alloc_start as *mut u8,
+        pages,
+        |start, pages| {
+            regions.alloc_physical.push(Node::new((start, pages)));
+        }
+    );
+
+    if !map_res.is_ok() {
+        return Err(());
     }
-}
 
-/// Try to add spare pages if the dirty flag is set
-fn add_spare_pages(state: &HeapState, regions: &mut HeapRegionState) {
-    if state
-        .spare_pages_dirty
-        .compare_exchange(true, false, Relaxed, Relaxed)
-        .is_ok()
-    {
-        // Count how many are empty
-        let wanted_pages = (0..SPARE_PAGES)
-            .filter(|index| state.spare_pages[*index].load(Relaxed) == 0)
-            .count();
-
-        debug!("wanted_pages={}", wanted_pages);
-
-        // Don't need to allocate.
-        if wanted_pages < 1 {
-            return;
-        }
-
-        let mut region = match regions.free_virtual.iter().rev().cloned().nth(0)
-        {
-            Some(r) => r,
-            None => return,
-        };
-
-        regions.free_virtual.remove(&region);
-
-        if region.length > wanted_pages {
-            regions.free_virtual.insert(FreeRegion {
-                start: region.start + PAGE_SIZE * wanted_pages,
-                length: region.length - wanted_pages,
-            });
-            region.length = wanted_pages;
-        }
-
-        let map_res = kernel_acquire_and_map(
-            region.start as *mut u8,
-            region.length,
-            &mut regions.alloc_physical,
-        );
-
-        // Calculate the addresses of the allocated pages and push them
-        if map_res.is_ok() {
-            let mut spare_page_index = 0;
-            let mut uninserted_pages = region.length;
-
-            for pnum in 0..region.length {
-                while spare_page_index < SPARE_PAGES {
-                    let page_addr = region.start + PAGE_SIZE * pnum;
-                    let push_res = state.spare_pages[spare_page_index]
-                        .compare_exchange(0, page_addr, Relaxed, Relaxed);
-
-                    spare_page_index += 1;
-
-                    if push_res.is_ok() {
-                        uninserted_pages -= 1;
-                        break;
-                    }
-                }
-            }
-
-            assert_eq!(uninserted_pages, 0);
-        }
-
-        debug!("add_spare_pages end");
-    }
+    // We successfully allocated!
+    Ok(alloc_start)
 }
 
 // Map on sorted vec
@@ -383,8 +297,6 @@ pub fn allocate_kernel_stack(heap_state: &HeapState) -> *mut u8 {
 
     let pages = KSTACK_SIZE / PAGE_SIZE;
 
-    let mut regions = heap_state.regions.lock();
-
     // Increment, skip one page for next time, stacks have guard page on either
     // side
     let new_stack = unsafe {
@@ -395,8 +307,11 @@ pub fn allocate_kernel_stack(heap_state: &HeapState) -> *mut u8 {
     };
 
     // Allocate pages to the stack area
-    kernel_acquire_and_map(new_stack, pages, &mut regions.alloc_physical)
-        .unwrap_or_else(|_| panic!("Out of memory"));
+    kernel_acquire_and_map(new_stack, pages, 
+        |start, pages| {
+            heap_state.regions.alloc_physical.push(Node::new((start, pages)));
+        }
+    ).unwrap_or_else(|_| panic!("Out of memory"));
 
     // Actually return the stack pointer (going down)
     unsafe {
