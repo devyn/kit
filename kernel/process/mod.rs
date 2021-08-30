@@ -797,7 +797,10 @@ impl Drop for ProcessMem {
         debug!("Destructor running for {:?}", self);
 
         // Release the owned memory regions
-        for region in self.owned_regions.drain(..) {
+        //
+        // Do it backwards, opposite the order we allocated them, for the best
+        // chance of unification
+        for region in self.owned_regions.drain(..).rev() {
             memory::release_region(
                 RegionUser::Process(self.id),
                 region.paddr,

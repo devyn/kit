@@ -337,38 +337,11 @@ fn deallocate_pages(state: &HeapState, vaddr: VirtualAddress, pages: usize) {
         );
     }
 
-    // Once that's done, we can release the virtual address space.
-    //
-    // Try to find a free region that we can extend to include what we just
-    // freed.
-    for free_region in state.regions.free_virtual.iter() {
-        if vaddr < free_region.start { continue; }
-
-        if free_region.length.fetch_update(Relaxed, Relaxed, |len| {
-            if free_region.start + len * PAGE_SIZE == vaddr {
-                // It starts where this ends, so we can just add the length
-                Some(len + pages)
-            } else {
-                // Can't unify.
-                None
-            }
-        }).is_ok() {
-            // We were able to extend it.
-            debug!("released virtual {:016x} + {} into {:?}",
-                vaddr, pages, *free_region);
-            return;
-        }
-    }
-
-    // We weren't able to find a free region that overlaps with this, so
-    // just add it to the free list.
-    state.regions.free_virtual.push(Node::new(FreeRegion {
-        start: vaddr,
-        length: pages.into(),
-    }));
-
-    debug!("released virtual {:016x} + {} to new region",
-        vaddr, pages);
+    super::release_to_free_region_list(
+        &state.regions.free_virtual,
+        vaddr,
+        pages,
+        "virtual");
 }
 
 // Map on sorted vec

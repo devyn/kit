@@ -359,38 +359,74 @@ pub fn release_region(
         // further.
         assert!(state.alloc_regions.remove(&region));
 
-        // Try to find a free region that we can extend to include what we just
-        // freed.
-        for free_region in state.free_regions.iter() {
-            if paddr < free_region.start { continue; }
-
-            if free_region.length.fetch_update(Relaxed, Relaxed, |len| {
-                if free_region.start + len * PAGE_SIZE == paddr {
-                    // It starts where this ends, so we can just add the length
-                    Some(len + region.length)
-                } else {
-                    // Can't unify.
-                    None
-                }
-            }).is_ok() {
-                // We were able to extend it.
-                debug!("released {:?} into {:?}", *region, *free_region);
-                return;
-            }
-        }
-
-        // We weren't able to find a free region that overlaps with this, so
-        // just add it to the free list.
-        state.free_regions.push(Node::new(FreeRegion {
-            start: region.start,
-            length: region.length.into(),
-        }));
-
-        debug!("released {:?} as new free region", *region);
+        release_to_free_region_list(&state.free_regions,
+            region.start, region.length, "physical");
     } else {
         panic!("Wanted to release physical region {:?}, {:016x}, \
             but can't find it.", user, paddr);
     }
+}
+
+fn release_to_free_region_list(
+    list: &LockFreeList<FreeRegion<usize>>,
+    start: usize,
+    length: usize,
+    type_: &'static str,
+) {
+    // Optimistically make a new region to place. It's important to have this
+    // ready now in case we end up setting the only free region to zero...
+    let new_node = Node::new(FreeRegion {
+        start: start,
+        length: length.into(),
+    });
+
+    // Try to find a free region that we can extend to include what we just
+    // freed.
+    for free_region in list.iter() {
+        if start + length * PAGE_SIZE == free_region.start {
+            // The free region starts where our new node ends. We can unify it
+            // with the free region, but it's a little complicated, we have to
+            // set that free region's length to zero to lock it while we add the
+            // new node.
+            let other_length = free_region.length.swap(0, Relaxed);
+            new_node.length.fetch_add(other_length, Relaxed);
+
+            // Now the new_node should be possible to insert.
+            list.push(new_node);
+
+            // We can remove the old free region since it's zero anyway
+            list.remove(&free_region);
+
+            debug!("released {} {:016x} + {} + {} by unify start",
+                type_, start, length, other_length);
+
+            return;
+        } else if start < free_region.start { 
+            continue;
+        }
+
+        if free_region.length.fetch_update(Relaxed, Relaxed, |len| {
+            // Skip len = 0, as it's a lock value
+            if len != 0 && free_region.start + len * PAGE_SIZE == start {
+                // It starts where this ends, so we can just add the length
+                Some(len + length)
+            } else {
+                // Can't unify.
+                None
+            }
+        }).is_ok() {
+            // We were able to extend it.
+            debug!("released {} {:016x} + {} by unify end into {:?}",
+                type_, start, length, *free_region);
+            return;
+        }
+    }
+
+    // We weren't able to find a free region that overlaps with this, so
+    // just add it to the free list.
+    list.push(new_node);
+
+    debug!("released {} {:016x} + {} as new free region", type_, start, length);
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
