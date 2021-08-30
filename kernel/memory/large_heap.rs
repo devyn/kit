@@ -28,7 +28,7 @@ use super::pool::Pool;
 pub const LARGE_HEAP_START: usize = 0xffff_ffff_9000_0000;
 pub const LARGE_HEAP_LENGTH: usize = 0x20000; // pages
 pub const STACKS_START: usize = 0xffff_ffff_f000_0000;
-pub const SPARE_PAGES: usize = 8;
+pub const BOOTSTRAP_HEAP_PAGES: usize = 16;
 
 type RcPool = Arc<Pool>;
 
@@ -73,18 +73,20 @@ pub unsafe fn initialize() -> HeapState {
 
     let free_virtual = LockFreeList::new();
 
-    let spare_start = LARGE_HEAP_START +
-        (LARGE_HEAP_LENGTH - SPARE_PAGES) * PAGE_SIZE;
+    // We reserve some space in order to have some healthy initial pools for
+    // small object sizes, since these are required almost immediately.
+    let bootstrap_start = LARGE_HEAP_START +
+        (LARGE_HEAP_LENGTH - BOOTSTRAP_HEAP_PAGES) * PAGE_SIZE;
 
     kernel_acquire_and_map(
-        spare_start as *mut u8,
-        SPARE_PAGES,
+        bootstrap_start as *mut u8,
+        BOOTSTRAP_HEAP_PAGES,
         |start, length| alloc_physical.push(Node::new((start, length)))
     ).unwrap();
 
     free_virtual.push(Node::new(FreeRegion {
         start: LARGE_HEAP_START,
-        length: AtomicUsize::new(LARGE_HEAP_LENGTH - SPARE_PAGES),
+        length: AtomicUsize::new(LARGE_HEAP_LENGTH - BOOTSTRAP_HEAP_PAGES),
     }));
 
     // At least a page large, in order to avoid triggering the small object
@@ -95,11 +97,11 @@ pub unsafe fn initialize() -> HeapState {
     let mut pools = Vec::with_capacity(min_size_of_pools);
 
     // It's a big problem if we don't at least have some common sizes in here
-    // first. Let's initialize the spare pages in multiples of 8
-    for index in 0..SPARE_PAGES {
+    // first. Let's initialize the bootstrap pages in multiples of 8
+    for index in 0..BOOTSTRAP_HEAP_PAGES {
         let size = 8 + index * 8;
         let pool = Pool::new(size, 1);
-        pool.insert_region(spare_start + index * PAGE_SIZE).unwrap();
+        pool.insert_region(bootstrap_start + index * PAGE_SIZE).unwrap();
         debug!("{:?}", pool);
         pools.push((size, Arc::new(pool)));
     }
@@ -297,7 +299,10 @@ fn allocate_small_object(state: &HeapState, size_aligned: usize)
     {
         // Try to just get an address from the pool
         if let Ok(vaddr) = pool.allocate() {
-            // If the pool is now almost full, add another page
+            // It's dangerous if all of the pools are too full, so we need to
+            // make sure they always have some free space.
+            //
+            // If the pool is now almost full, add another region
             if pool.objects_capacity().saturating_sub(pool.objects_used()) < 10 {
                 let _ = add_region_to_pool(state, &pool);
             }

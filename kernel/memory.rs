@@ -45,7 +45,8 @@ const SAFE_BOUNDARY: usize = KERNEL_LOW_END as usize;
 
 const INITIAL_HEAP_LENGTH: usize = 131072;
 
-pub const KSTACK_SIZE: usize = 8192;
+/// Rust is stack-hungry. We may even want more?
+pub const KSTACK_SIZE: usize = 32768;
 pub const KSTACK_ALIGN: usize = 16;
 
 const_assert!(KSTACK_SIZE < isize::MAX as usize);
@@ -177,14 +178,25 @@ pub unsafe fn initialize(mmap_buffer: *const u8, mmap_length: u32) {
     });
 }
 
+static mut ALLOCATOR_DEPTH_COUNT: usize = 0;
+
 pub unsafe fn allocate(size: usize, align: usize) -> *mut u8 {
     debug!("allocate({}, {})", size, align);
-    match KERNEL_HEAP {
+
+    assert!(ALLOCATOR_DEPTH_COUNT < 12);
+
+    ALLOCATOR_DEPTH_COUNT += 1;
+
+    let ptr = match KERNEL_HEAP {
         KernelHeap::InitialHeap(ref mut counter) =>
             initial_heap_allocate(counter, size, align),
         KernelHeap::LargeHeap(ref state) =>
             large_heap::allocate(state, size, align)
-    }
+    };
+
+    ALLOCATOR_DEPTH_COUNT -= 1;
+
+    ptr
 }
 
 pub unsafe fn deallocate(_ptr: *mut u8, _size: usize, _align: usize) {

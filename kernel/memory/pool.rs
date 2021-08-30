@@ -99,8 +99,8 @@ pub struct Pool {
     config: PoolConfig,
     objects_used: AtomicUsize,
     objects_capacity: AtomicUsize,
-    free_stack: AtomicPtr<RegionInfo>,
-    all_stack: AtomicPtr<RegionInfo>,
+    free_list: AtomicPtr<RegionInfo>,
+    all_list: AtomicPtr<RegionInfo>,
 }
 
 impl Pool {
@@ -123,8 +123,8 @@ impl Pool {
             config,
             objects_used: AtomicUsize::new(0),
             objects_capacity: AtomicUsize::new(0),
-            free_stack: AtomicPtr::new(ptr::null_mut()),
-            all_stack: AtomicPtr::new(ptr::null_mut()),
+            free_list: AtomicPtr::new(ptr::null_mut()),
+            all_list: AtomicPtr::new(ptr::null_mut()),
         }
     }
 
@@ -161,19 +161,20 @@ impl Pool {
         )
         .unwrap());
 
-        push(&self.all_stack, region_info.clone(), ListSel::All);
-        push(&self.free_stack, region_info, ListSel::Free);
+        push(&self.all_list, region_info.clone(), ListSel::All);
+        push(&self.free_list, region_info, ListSel::Free);
 
         self.objects_capacity.fetch_add(self.config.object_capacity(), Relaxed);
 
-        debug!("pool({}) region inserted: {:016x}",
-            self.object_size(), addr);
+        debug!("pool({}) region inserted: {:016x}, new capacity = {}/{}",
+            self.object_size(), addr,
+            self.objects_used(), self.objects_capacity());
 
         Ok(())
     }
 
     pub fn remove_region(&self, addr: usize) -> Result<(), Error> {
-        // Safety: stack first/next pointers are assumed valid
+        // Safety: list first/next pointers are assumed valid
         //
         // First, we try to take it from the free list. It's okay if we don't
         // find it here but we do have to take it.
@@ -189,7 +190,7 @@ impl Pool {
             //
             // Put it back in the free list if it was.
             if let Some(free_ref) = found_in_free_list {
-                unsafe { push(&self.free_stack, free_ref, ListSel::Free); }
+                unsafe { push(&self.free_list, free_ref, ListSel::Free); }
             }
             return Err(Error::RegionInUse(addr));
         }
@@ -219,11 +220,11 @@ impl Pool {
             // Not possible, so let's clean up what we did and put it back where
             // we found it.
             Err(e) => {
-                unsafe { push(&self.all_stack, region.clone(), ListSel::All); }
+                unsafe { push(&self.all_list, region.clone(), ListSel::All); }
 
                 if was_in_free_list {
                     unsafe {
-                        push(&self.free_stack, region.clone(), ListSel::All);
+                        push(&self.free_list, region.clone(), ListSel::All);
                     }
                 }
 
@@ -233,34 +234,43 @@ impl Pool {
     }
 
     pub fn allocate(&self) -> Result<VirtualAddress, Error> {
-        // Safety: stack first/next pointers are assumed valid
-        //
-        // Pop the free stack until we can get an object
-        while let Some(free) = unsafe { pop(&self.free_stack, ListSel::Free) } {
+        debug!("pool({},{}) allocate()? capacity={}/{}",
+            self.object_size(), self.region_pages(),
+            self.objects_used(), self.objects_capacity());
+
+        for all in self.iter(ListSel::All) {
+            debug!("Region: {:?}", unsafe { all.debug(self.config) });
+        }
+
+        // Walk the free list until we can get an object
+        for free in self.iter(ListSel::Free) {
+            debug!("Checking free region {:?}",
+                unsafe { free.debug(self.config) });
             // Operations involving the bitmap are safe because we know our
             // config is good and the references we're using to region info are
             // part of actual regions.
             if let Some(free_address) = unsafe { free.allocate(self.config) } {
-                // We have it. Unless it's full, put it back on the free stack
-                if !unsafe { free.bitmap(self.config) }.is_full() {
-                    unsafe { push(&self.free_stack, free, ListSel::Free); }
+                // We have it. If it's full, make an effort to remove from the
+                // free list
+                if unsafe { free.bitmap(self.config) }.is_full() {
+                    debug!("pool({},{}) full region {:?}",
+                        self.object_size(), self.region_pages(),
+                        unsafe { free.debug(self.config) });
+                    self.remove(ListSel::Free, free.region_base(self.config));
                 }
 
                 self.objects_used.fetch_add(1, Relaxed);
 
-                let sp: usize;
-
-                unsafe { asm!("mov {}, rsp", out(reg) sp); }
-
-                debug!("pool({},{}) allocated: {:016x} sp={:016x}",
+                debug!("pool({},{}) allocated: {:016x} capacity={}/{}",
                     self.object_size(), self.region_pages(), free_address,
-                    sp);
+                    self.objects_used(), self.objects_capacity());
 
                 return Ok(free_address);
             } else {
                 // Is this weird?
-                debug!("Weird: found a full region on the free stack: {:?}",
+                debug!("Weird: found a full region on the free list: {:?}",
                     unsafe { free.debug(self.config) });
+                self.remove(ListSel::Free, free.region_base(self.config));
             }
 
         }
@@ -274,8 +284,8 @@ impl Pool {
     #[inline]
     fn first(&self, which: ListSel) -> &AtomicPtr<RegionInfo> {
         match which {
-            ListSel::Free => &self.free_stack,
-            ListSel::All => &self.all_stack,
+            ListSel::Free => &self.free_list,
+            ListSel::All => &self.all_list,
         }
     }
 

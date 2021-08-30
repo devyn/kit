@@ -67,7 +67,7 @@ pub const ARGS_TOP_ADDR:   usize = 0x0000_7fee_ffff_ffff;
 pub const STACK_BASE_ADDR: usize = 0x0000_7fff_ffff_f000;
 pub const HEAP_BASE_ADDR:  usize = 0x0000_0001_0000_0000;
 
-pub const STACK_SIZE:      usize = 8192;
+pub const STACK_SIZE:      usize = 32768;
 
 /// The hardware state of a process. Usually mutated by foreign code.
 #[repr(C, align(16))]

@@ -18,15 +18,15 @@ use core::intrinsics::{write_bytes, copy_nonoverlapping};
 #[macro_export]
 #[allow(unused_macros)]
 macro_rules! debug {
-    ($fmt:expr, $($args:expr),*) => {
-        let _ = writeln!($crate::terminal::console(),
+    ($fmt:expr, $($args:expr),*) => ({
+        use core::fmt::Write;
+        let _ = writeln!($crate::serial::com1(),
             "DEBUG: {}:{}:{}: {}",
             file!(),
             line!(),
             column!(),
             format_args!($fmt, $($args),*));
-        for _ in 0..100000 { unsafe { asm!("nop") } }
-    };
+    });
     ($fmt:expr) => (debug!($fmt,));
 }
 

@@ -36,6 +36,7 @@ use core::panic::PanicInfo;
 #[macro_use] pub mod sync;
 #[macro_use] pub mod util;
 
+pub mod serial;
 pub mod terminal;
 pub mod constants;
 pub mod cpu;
@@ -57,6 +58,8 @@ use terminal::*;
 /// Main kernel entry point.
 #[no_mangle]
 pub extern fn kernel_main() -> ! {
+
+    serial::com1().initialize();
 
     console().reset().unwrap();
     console().set_color(Color::Red, Color::White).unwrap();
