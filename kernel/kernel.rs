@@ -61,6 +61,8 @@ pub extern fn kernel_main() -> ! {
 
     serial::com1().initialize().unwrap();
 
+    debug!("BOOT: Hello, I'm Kit.");
+
     console().reset().unwrap();
     console().set_color(Color::Red, Color::White).unwrap();
 

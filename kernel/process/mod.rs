@@ -181,8 +181,17 @@ pub fn switch_to(process: RcProcess) {
 
     let old_process = current();
 
+    let old_id = old_process.lock().id();
+    let new_id = process.lock().id();
+
     let old_hw_state = old_process.lock().hw_state;
     let new_hw_state = process.lock().hw_state;
+
+    debug!("SWITCH PID{} {:p} (strong={}) -> PID{} {:p} (strong={})",
+        old_id, old_process, Arc::strong_count(&old_process),
+        new_id, process, Arc::strong_count(&process));
+
+    drop(old_process);
 
     // Don't switch pageset for processes that don't have a memory space.
     //
@@ -196,9 +205,7 @@ pub fn switch_to(process: RcProcess) {
         }
     }
 
-    {
-        global_state().lock().current_process = process;
-    }
+    drop(mem::replace(&mut global_state().lock().current_process, process));
 
     // Do the magic!
     unsafe {
@@ -295,6 +302,8 @@ impl Process {
 
         let rc_process = Arc::new(Spinlock::new(process));
 
+        debug!("Process {} pointer {:p}", id, rc_process);
+
         global_state().lock().process_tree.insert(id, rc_process.clone());
 
         rc_process
@@ -320,6 +329,8 @@ impl Process {
         debug!("New subprocess: {:?}", process);
 
         let rc_process = Arc::new(Spinlock::new(process));
+
+        debug!("Process {} pointer {:p}", id, rc_process);
 
         global_state().lock().process_tree.insert(id, rc_process.clone());
 
@@ -783,7 +794,7 @@ impl ProcessMem {
 
 impl Drop for ProcessMem {
     fn drop(&mut self) {
-        debug!("Destructor running for ProcessMem {:?}", self);
+        debug!("Destructor running for {:?}", self);
 
         // Release the owned memory regions
         for region in self.owned_regions.drain(..) {
@@ -840,6 +851,9 @@ pub fn exit(status: i32) -> ! {
 
         // Notify wait queue
         process.exit_wait.awaken_all();
+
+        drop(process);
+        drop(rc_process);
     }
 
     scheduler::r#yield();
@@ -973,7 +987,7 @@ pub mod ffi {
 
                 *status = exit_status;
 
-                super::cleanup(pid);
+                drop(super::cleanup(pid));
                 0
             } else {
                 -1

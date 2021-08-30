@@ -12,12 +12,9 @@
 
 //! Kernel page management.
 
-use core::mem;
-
 use alloc::sync::Arc;
 use alloc::boxed::Box;
 
-use crate::c_ffi::c_void;
 use crate::sync::Spinlock;
 
 pub mod generic;
@@ -37,7 +34,7 @@ static mut INITIALIZED: bool = false;
 
 static mut KERNEL_PAGESET: Option<*mut Pageset> = None;
 
-static mut CURRENT_PAGESET: Option<*const c_void> = None;
+static mut CURRENT_PAGESET: Option<RcPageset> = None;
 
 /// A reference-counted, shared pageset.
 ///
@@ -63,13 +60,7 @@ pub unsafe fn kernel_pageset() -> &'static mut Pageset {
 /// what the current pageset belongs to (i.e., the current process) is
 /// dangerous.
 pub unsafe fn current_pageset() -> Option<RcPageset> {
-    CURRENT_PAGESET.map(|ptr| {
-        let rc1: RcPageset = mem::transmute(ptr);
-        let rc2 = rc1.clone();
-
-        mem::forget(rc1);
-        rc2
-    })
+    CURRENT_PAGESET.clone()
 }
 
 /// # Safety
@@ -77,12 +68,12 @@ pub unsafe fn current_pageset() -> Option<RcPageset> {
 /// `process` assumes that the current pageset is the current process's pageset,
 /// and that if there is no current process, the kernel pageset is active.
 pub unsafe fn set_current_pageset(pageset: Option<RcPageset>) {
-    let old: Option<RcPageset> = CURRENT_PAGESET.map(|ptr| mem::transmute(ptr));
+    let old: Option<RcPageset> = CURRENT_PAGESET.clone();
 
     if let Some(pageset) = pageset {
         pageset.lock().load_into_hw();
 
-        CURRENT_PAGESET = Some(mem::transmute(pageset));
+        CURRENT_PAGESET = Some(pageset);
     } else {
         kernel_pageset().load_into_hw();
 

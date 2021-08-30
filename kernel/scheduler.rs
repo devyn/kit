@@ -122,7 +122,6 @@ pub fn r#yield() {
         // Allow pending interrupts to run.
         unsafe { interrupt::accept(); }
 
-        let current_process = process::current();
         let next_process;
 
         // Get a process that we're allowed to run
@@ -131,9 +130,10 @@ pub fn r#yield() {
                 // Ready process on queue
                 next_process = next;
                 break 'got_process;
-            } else if current_process.lock().is_running() {
+            } else if let Some(current) =
+                    Some(process::current()).filter(|p| p.lock().is_running()) {
                 // Current process can be run
-                next_process = current_process;
+                next_process = current;
                 break 'got_process;
             } else {
                 // Maybe something will change if we wait for an interrupt.
@@ -142,6 +142,10 @@ pub fn r#yield() {
         }
 
         drop(preempt_lock);
+
+        // It can be very important to make sure that we drop any reference
+        // counted pointers we are holding onto before we do this, as it's
+        // possible that we may never return from this...
 
         // Try to switch, loop again if we couldn't.
         if switch(next_process) {
@@ -214,6 +218,8 @@ fn switch(next_process: RcProcess) -> bool {
 
     if current_process_is_running {
         push(current_process);
+    } else {
+        drop(current_process);
     }
 
     process::switch_to(next_process);
