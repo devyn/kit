@@ -155,7 +155,7 @@ const MIN_ALIGN: usize = 8;
 
 /// Returns ptr::null on failure
 pub unsafe fn allocate(state: &HeapState, size: usize, align: usize)
-                              -> *mut u8 {
+    -> *mut u8 {
 
     // Note: either avoid holding onto locks where allocate() might end up being
     // called again, or have a strategy for what happens if the lock is being
@@ -179,6 +179,25 @@ pub unsafe fn allocate(state: &HeapState, size: usize, align: usize)
     }
         .map(|p| p as *mut u8)
         .unwrap_or(core::ptr::null::<u8>() as *mut u8)
+}
+
+pub unsafe fn deallocate(
+    state: &HeapState,
+    ptr: *mut u8,
+    size: usize,
+    align: usize
+) {
+    // There is a minimum alignment.
+    let align = if align < MIN_ALIGN { MIN_ALIGN } else { align };
+
+    // Align the requested size up to the alignment.
+    let size_aligned = align_addr(size, align);
+
+    if size_aligned >= PAGE_SIZE {
+        // Deallocate pages not implemented yet.
+    } else {
+        deallocate_small_object(state, ptr as usize, size_aligned);
+    }
 }
 
 fn allocate_pages(state: &HeapState, pages: usize, align: usize)
@@ -281,15 +300,18 @@ fn allocate_pages(state: &HeapState, pages: usize, align: usize)
 }
 
 // Map on sorted vec
-fn pool_get(state: &HeapState, size: usize) -> RcPool {
+fn pool_get(state: &HeapState, size: usize) -> Option<RcPool> {
     let pools = state.pools.lock();
 
     if let Ok(index) = pools.binary_search_by_key(&size, |tup| tup.0) {
-        pools[index].1.clone()
+        Some(pools[index].1.clone())
     } else {
-        // Don't hold the lock while we allocate something
-        drop(pools);
+        None
+    }
+}
 
+fn pool_get_or_create(state: &HeapState, size: usize) -> RcPool {
+    pool_get(state, size).unwrap_or_else(|| {
         // Allocate a new pool
         let new_pool = Arc::new(
             Pool::new(size, preferred_region_size(size)));
@@ -308,7 +330,7 @@ fn pool_get(state: &HeapState, size: usize) -> RcPool {
                 new_pool
             }
         }
-    }
+    })
 }
 
 fn add_region_to_pool(state: &HeapState, pool: &Pool) -> Result<(), ()> {
@@ -325,7 +347,7 @@ fn allocate_small_object(state: &HeapState, size_aligned: usize)
     -> Result<VirtualAddress, ()> {
 
     // Find the pool appropriate to the object, or create it
-    let pool = pool_get(state, size_aligned);
+    let pool = pool_get_or_create(state, size_aligned);
 
     {
         // Try to just get an address from the pool
@@ -348,6 +370,23 @@ fn allocate_small_object(state: &HeapState, size_aligned: usize)
     // The pool is probably empty. Allocate a region first and try again
     add_region_to_pool(state, &pool)?;
     Ok(pool.allocate().expect("Added region but pool still empty"))
+}
+
+fn deallocate_small_object(
+    state: &HeapState,
+    vaddr: usize,
+    size_aligned: usize
+) {
+
+    // Find the pool appropriate to the object
+    if let Some(pool) = pool_get(state, size_aligned) {
+        if let Err(err) = pool.deallocate(vaddr) {
+            debug!("BUG: Pool {} deallocation error: {}", size_aligned, err);
+        }
+    } else {
+        debug!("BUG: Trying to deallocate unknown pointer 0x{:16x} x {}",
+            vaddr, size_aligned);
+    }
 }
 
 pub fn allocate_kernel_stack(heap_state: &HeapState) -> *mut u8 {

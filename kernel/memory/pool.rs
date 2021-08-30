@@ -309,7 +309,47 @@ impl Pool {
     }
 
     pub fn deallocate(&self, addr: usize) -> Result<Deallocated, Error> {
-        todo!()
+        debug!("pool({},{}) deallocate({:016x}) capacity={}/{}",
+            self.object_size(), self.region_pages(),
+            addr,
+            self.objects_used(), self.objects_capacity());
+
+        let responsible_region = self.iter(ListSel::All)
+            .find(|r| r.contains(self.config, addr));
+
+        if let Some(region) = responsible_region {
+            // Safety: the bitmap is assumed safe since we know this is a
+            // real region
+            if unsafe { region.deallocate(self.config, addr) } {
+                self.objects_used.fetch_sub(1, Relaxed);
+
+                let bitmap = unsafe { region.bitmap(self.config) };
+
+                let deallocated = Deallocated {
+                    // Check to see if the region is empty, and report that to
+                    // the caller so maybe they can decide if they want to clean
+                    // it up.
+                    maybe_empty: if bitmap.is_empty() {
+                        Some(region.region_base(self.config))
+                    } else {
+                        None
+                    }
+                };
+
+                debug!("pool({},{}) deallocated: {:016x} capacity={}/{} \
+                    maybe_empty={:?}",
+                    self.object_size(), self.region_pages(),
+                    addr,
+                    self.objects_used(), self.objects_capacity(),
+                    deallocated.maybe_empty);
+
+                Ok(deallocated)
+            } else {
+                Err(Error::AddressNotAllocated(addr))
+            }
+        } else {
+            Err(Error::AddressNotAllocated(addr))
+        }
     }
 
     #[inline]

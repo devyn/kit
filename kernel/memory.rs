@@ -178,14 +178,8 @@ pub unsafe fn initialize(mmap_buffer: *const u8, mmap_length: u32) {
     });
 }
 
-static mut ALLOCATOR_DEPTH_COUNT: usize = 0;
-
 pub unsafe fn allocate(size: usize, align: usize) -> *mut u8 {
     debug!("allocate({}, {})", size, align);
-
-    assert!(ALLOCATOR_DEPTH_COUNT < 12);
-
-    ALLOCATOR_DEPTH_COUNT += 1;
 
     let ptr = match KERNEL_HEAP {
         KernelHeap::InitialHeap(ref mut counter) =>
@@ -194,13 +188,19 @@ pub unsafe fn allocate(size: usize, align: usize) -> *mut u8 {
             large_heap::allocate(state, size, align)
     };
 
-    ALLOCATOR_DEPTH_COUNT -= 1;
-
     ptr
 }
 
-pub unsafe fn deallocate(_ptr: *mut u8, _size: usize, _align: usize) {
-    // TODO
+pub unsafe fn deallocate(ptr: *mut u8, size: usize, align: usize) {
+    debug!("deallocate({:p}, {}, {})", ptr, size, align);
+
+    match KERNEL_HEAP {
+        KernelHeap::InitialHeap(ref mut counter) =>
+            // Deallocation not supported.
+            (),
+        KernelHeap::LargeHeap(ref state) =>
+            large_heap::deallocate(state, ptr, size, align)
+    }
 }
 
 const fn align_addr(mut addr: usize, align: usize) -> usize {
