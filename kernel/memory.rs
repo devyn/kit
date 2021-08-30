@@ -361,6 +361,9 @@ pub fn release_region(
 
         release_to_free_region_list(&state.free_regions,
             region.start, region.length, "physical");
+
+        // Update the counter
+        state.free_page_count.fetch_add(region.length, Relaxed);
     } else {
         panic!("Wanted to release physical region {:?}, {:016x}, \
             but can't find it.", user, paddr);
