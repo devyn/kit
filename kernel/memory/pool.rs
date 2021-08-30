@@ -320,10 +320,18 @@ impl Pool {
         if let Some(region) = responsible_region {
             // Safety: the bitmap is assumed safe since we know this is a
             // real region
+            let bitmap = unsafe { region.bitmap(self.config) };
+            let was_full = bitmap.is_full();
+
             if unsafe { region.deallocate(self.config, addr) } {
                 self.objects_used.fetch_sub(1, Relaxed);
 
-                let bitmap = unsafe { region.bitmap(self.config) };
+                // If it was full, put it back on the free list.
+                if was_full {
+                    unsafe { 
+                        push(&self.free_list, region.clone(), ListSel::Free);
+                    }
+                }
 
                 let deallocated = Deallocated {
                     // Check to see if the region is empty, and report that to
