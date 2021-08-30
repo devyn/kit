@@ -250,6 +250,8 @@ impl Pool {
             // config is good and the references we're using to region info are
             // part of actual regions.
             if let Some(free_address) = unsafe { free.allocate(self.config) } {
+                self.objects_used.fetch_add(1, Relaxed);
+
                 // We have it. If it's full, make an effort to remove from the
                 // free list
                 if unsafe { free.bitmap(self.config) }.is_full() {
@@ -258,8 +260,6 @@ impl Pool {
                         unsafe { free.debug(self.config) });
                     self.remove(ListSel::Free, free.region_base(self.config));
                 }
-
-                self.objects_used.fetch_add(1, Relaxed);
 
                 debug!("pool({},{}) allocated: {:016x} capacity={}/{}",
                     self.object_size(), self.region_pages(), free_address,
@@ -736,7 +736,7 @@ mod bitmap {
                 let desired_state =
                     if self.bits % 8 != 0 && byte == byte_size(self.bits) - 1 {
                         // Last byte should pad out of range bits to 1
-                        0xFF << (8 - self.bits % 8)
+                        0xFF << self.bits % 8
                     } else {
                         0x00
                     };
@@ -858,6 +858,31 @@ mod bitmap {
             }
 
             true
+        }
+
+        /// Counts the number of full bits. Non-atomic.
+        pub fn count_full(&self) -> usize {
+            let mut pointer = self.ptr;
+
+            let mut count = 0;
+            let mut total_bit = 0;
+
+            for _ in 0..byte_size(self.bits) {
+                unsafe {
+                    let value = (&*pointer).load(Relaxed);
+
+                    for bit in 0..8 {
+                        if value & (1 << bit) != 0 && total_bit < self.bits {
+                            count += 1;
+                        }
+                        total_bit += 1;
+                    }
+
+                    pointer = pointer.offset(1);
+                }
+            }
+
+            count
         }
     }
 
