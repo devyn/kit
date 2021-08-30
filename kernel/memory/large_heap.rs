@@ -120,6 +120,37 @@ pub unsafe fn initialize() -> HeapState {
     }
 }
 
+pub fn debug_print_allocator_stats(state: &HeapState) {
+    use crate::terminal::console;
+
+    let _ = writeln!(console(), "Large heap: {:016x} - {:016x}",
+        state.start, state.end);
+
+    {
+        let pools = state.pools.lock();
+
+        let _ = writeln!(console(), "OSIZE RSIZE FREE     USED     CAPACITY");
+
+        for (size, pool) in pools.iter() {
+            let _ = writeln!(console(), "{:<5} {:<5} {:<8} {:<8} {:<8}",
+                size,
+                pool.region_pages(),
+                pool.objects_free(),
+                pool.objects_used(),
+                pool.objects_capacity());
+        }
+    }
+
+    {
+        let stacks_end = state.stacks_end.lock();
+
+        let _ = writeln!(console(), "Stacks: {:p} - {:p}",
+            state.stacks_start, *stacks_end);
+    }
+
+    // Physical regions?
+}
+
 const MIN_ALIGN: usize = 8;
 
 /// Returns ptr::null on failure

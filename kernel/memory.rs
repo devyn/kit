@@ -358,6 +358,22 @@ pub fn allocate_kernel_stack() -> *mut u8 {
     large_heap::allocate_kernel_stack(heap_state)
 }
 
+pub fn debug_print_allocator_stats() {
+    use crate::terminal::console;
+
+    unsafe {
+        match KERNEL_HEAP {
+            KernelHeap::InitialHeap(count) => {
+                let _ = writeln!(console(), "Initial heap: {} / {}",
+                    count, INITIAL_HEAP_LENGTH);
+            },
+            KernelHeap::LargeHeap(ref state) => {
+                large_heap::debug_print_allocator_stats(state);
+            },
+        }
+    }
+}
+
 /// C foreign interface.
 pub mod ffi {
     use super::*;
