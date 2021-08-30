@@ -56,7 +56,7 @@ fn global_state<'a>() -> &'a GlobalState {
 ///
 /// Panics if the process is not in the `Running` state.
 pub fn push(process: RcProcess) {
-    assert!(process.borrow().is_running());
+    assert!(process.lock().is_running());
 
     global_state().run_queue.lock().push_back(process);
 }
@@ -67,7 +67,7 @@ fn pop_running() -> Option<RcProcess> {
     let mut run_queue = global_state().run_queue.lock();
 
     while let Some(process) = run_queue.pop_front() {
-        if process.borrow().is_running() {
+        if process.lock().is_running() {
             return Some(process);
         }
     }
@@ -86,12 +86,12 @@ fn pop_running() -> Option<RcProcess> {
 pub fn awaken(process: RcProcess) -> Result<bool, process::State> {
     use process::State::{Running, Sleeping};
 
-    let state = process.borrow().state();
+    let state = process.lock().state();
 
     match state {
         Running => Ok(false),
         Sleeping => {
-            process.borrow_mut().awaken();
+            process.lock().awaken();
             push(process);
             Ok(true)
         },
@@ -131,7 +131,7 @@ pub fn r#yield() {
                 // Ready process on queue
                 next_process = next;
                 break 'got_process;
-            } else if current_process.borrow().is_running() {
+            } else if current_process.lock().is_running() {
                 // Current process can be run
                 next_process = current_process;
                 break 'got_process;
@@ -190,16 +190,26 @@ fn switch(next_process: RcProcess) -> bool {
     let current_process_is_running;
 
     {
-        let current_process = current_process.borrow();
-        let next_process = next_process.borrow();
+        struct Info {
+            id: process::Id,
+            running: bool
+        }
 
-        current_process_is_running = current_process.is_running();
+        fn extract(process: &RcProcess) -> Info {
+            let p = process.lock();
+            Info { id: p.id(), running: p.is_running() }
+        }
+
+        let current_process = extract(&current_process);
+        let next_process = extract(&next_process);
+
+        current_process_is_running = current_process.running;
 
         // Can't switch to non-running process
-        if !next_process.is_running() { return false; }
+        if !next_process.running { return false; }
 
         // Same process, no switch
-        if current_process.id() == next_process.id() { return true; }
+        if current_process.id == next_process.id { return true; }
     }
 
     if current_process_is_running {

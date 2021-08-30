@@ -301,7 +301,7 @@ impl<'a> Image for Executable<'a> {
             // Load the process's pageset, making sure to restore the previous
             // one after.
             let mem = process.mem().unwrap();
-            let new_pageset = mem.borrow().pageset();
+            let new_pageset = mem.lock().pageset();
 
             let original_pageset = paging::current_pageset();
             paging::set_current_pageset(Some(new_pageset));
@@ -310,7 +310,7 @@ impl<'a> Image for Executable<'a> {
             // necessary.
             for phdr in self.elf64_le.program_headers() {
                 if phdr.region_type == RegionType::Load {
-                    result = phdr_load(phdr, &mut *mem.borrow_mut());
+                    result = phdr_load(phdr, &mut *mem.lock());
                 }
 
                 if result.is_err() { break }

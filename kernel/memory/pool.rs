@@ -483,12 +483,6 @@ unsafe fn push(
     forget(new);
 }
 
-unsafe fn pop(node: &AtomicPtr<RegionInfo>, which: ListSel)
-    -> Option<RegionInfoRef> {
-
-    pop_if(node, which, |_| true)
-}
-
 unsafe fn pop_if<F>(node: &AtomicPtr<RegionInfo>, which: ListSel, mut pred: F)
     -> Option<RegionInfoRef>
     where F: FnMut(&RegionInfo) -> bool {

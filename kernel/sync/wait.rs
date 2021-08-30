@@ -10,29 +10,28 @@
  *
  ******************************************************************************/
 
-use alloc::rc::Rc;
+use alloc::sync::Arc;
 use alloc::collections::VecDeque;
-
-use core::cell::RefCell;
 
 use crate::process;
 use crate::scheduler;
+use crate::sync::Spinlock;
 
 #[derive(Debug, Clone)]
 pub struct WaitQueue {
-    q: Rc<RefCell<VecDeque<process::Id>>>,
+    q: Arc<Spinlock<VecDeque<process::Id>>>,
 }
 
 impl WaitQueue {
     pub fn new() -> WaitQueue {
-        WaitQueue { q: Rc::new(RefCell::new(VecDeque::new())) }
+        WaitQueue { q: Arc::new(Spinlock::new(VecDeque::new())) }
     }
 
     /// Awaken all processes waiting on this wait queue.
     pub fn awaken_all(&self) {
-        for &pid in self.q.borrow().iter() {
+        for &pid in self.q.lock().iter() {
             if let Some(process) = process::by_id(pid) {
-                if process.borrow().is_alive() {
+                if process.lock().is_alive() {
                     scheduler::awaken(process).unwrap();
                 }
             }
@@ -46,7 +45,7 @@ impl WaitQueue {
     /// Returns true if a process was awakened, otherwise false if the queue was
     /// empty.
     pub fn awaken_one(&self) -> bool {
-        let mut q = self.q.borrow_mut();
+        let mut q = self.q.lock();
 
         // This loop will discard dead processes
         while let Some(pid) = q.pop_front() {
@@ -71,7 +70,7 @@ impl WaitQueue {
     ///
     /// The process should be in a suitable state to be woken up.
     pub fn insert(&self, pid: process::Id) {
-        let mut q = self.q.borrow_mut();
+        let mut q = self.q.lock();
 
         // Don't insert duplicates.
         if !q.iter().any(|&x| x == pid) {
@@ -81,7 +80,7 @@ impl WaitQueue {
 
     /// Remove a process from the wait queue.
     pub fn remove(&self, pid: process::Id) -> bool {
-        let mut q = self.q.borrow_mut();
+        let mut q = self.q.lock();
 
         // There's a significant chance that the process requesting itself to be
         // removed is the process previously awakened by awaken_one, and
@@ -102,7 +101,7 @@ macro_rules! wait {
     ($condition:expr, [$($queue:expr),+]) => {
         // Before doing anything, just test the condition once
         if !$condition {
-            let current_pid = $crate::process::current().borrow().id;
+            let current_pid = $crate::process::current().lock().id;
 
             // Add us to the queues
             $(

@@ -301,6 +301,9 @@
 : kmem ( -- )
    cr 0 2 2 9 syscall drop
 ;
+: pmem ( -- )
+   cr 0 3 2 9 syscall drop
+;
 : test-kernel-thread ( iterations -- )
    cr 9001 2 9 syscall drop
 ;

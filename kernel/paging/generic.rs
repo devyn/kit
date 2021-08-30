@@ -13,12 +13,12 @@
 //! Page management functions and traits applicable to all targets.
 
 use core::iter::{repeat, StepBy};
-use core::cell::RefCell;
 use core::ops;
 
 use crate::error::Error;
+use crate::sync::Spinlock;
 
-use alloc::rc::Rc;
+use alloc::sync::Arc;
 
 pub type Page<Paddr> = Option<(Paddr, PageType)>;
 
@@ -83,8 +83,8 @@ pub trait Pageset<'a>: Sized {
 }
 
 pub trait PagesetExt<'a>: Pageset<'a> {
-    fn alloc() -> Rc<RefCell<Self>> {
-        Rc::new(RefCell::new(Self::new()))
+    fn alloc() -> Arc<Spinlock<Self>> {
+        Arc::new(Spinlock::new(Self::new()))
     }
 
     fn range(vaddr_start: usize, vaddr_end: usize)

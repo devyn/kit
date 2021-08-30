@@ -20,9 +20,11 @@ use alloc::vec::Vec;
 use core::sync::atomic::AtomicUsize;
 use core::sync::atomic::Ordering::*;
 
-use super::{PhysicalAddress, VirtualAddress, PageCount, FreeRegion};
+use super::{VirtualAddress, PageCount, FreeRegion};
 use super::KSTACK_SIZE;
-use super::{kernel_acquire_and_map, align_addr, align_addr_down};
+use super::{kernel_acquire_and_map, kernel_unmap_and_release};
+use super::{align_addr, align_addr_down};
+use super::AcquiredMappedRegion;
 use super::pool::Pool;
 
 pub const LARGE_HEAP_START: usize = 0xffff_ffff_9000_0000;
@@ -52,7 +54,7 @@ pub struct HeapState {
 
 #[derive(Debug)]
 struct HeapRegionState {
-    alloc_physical: LockFreeList<(PhysicalAddress, PageCount)>,
+    alloc_physical: LockFreeList<AcquiredMappedRegion>,
     free_virtual: LockFreeList<FreeRegion<VirtualAddress>>,
 }
 
@@ -81,7 +83,7 @@ pub unsafe fn initialize() -> HeapState {
     kernel_acquire_and_map(
         bootstrap_start as *mut u8,
         BOOTSTRAP_HEAP_PAGES,
-        |start, length| alloc_physical.push(Node::new((start, length)))
+        |acq| alloc_physical.push(Node::new(acq))
     ).unwrap();
 
     free_virtual.push(Node::new(FreeRegion {
@@ -194,7 +196,10 @@ pub unsafe fn deallocate(
     let size_aligned = align_addr(size, align);
 
     if size_aligned >= PAGE_SIZE {
-        // Deallocate pages not implemented yet.
+        let pages = size_aligned / PAGE_SIZE +
+            if size_aligned % PAGE_SIZE != 0 { 1 } else { 0 };
+
+        deallocate_pages(state, ptr as usize, pages);
     } else {
         deallocate_small_object(state, ptr as usize, size_aligned);
     }
@@ -286,8 +291,8 @@ fn allocate_pages(state: &HeapState, pages: usize, align: usize)
     let map_res = kernel_acquire_and_map(
         alloc_start as *mut u8,
         pages,
-        |start, pages| {
-            regions.alloc_physical.push(Node::new((start, pages)));
+        |acq| {
+            regions.alloc_physical.push(Node::new(acq));
         }
     );
 
@@ -297,6 +302,73 @@ fn allocate_pages(state: &HeapState, pages: usize, align: usize)
 
     // We successfully allocated!
     Ok(alloc_start)
+}
+
+fn deallocate_pages(state: &HeapState, vaddr: VirtualAddress, pages: usize) {
+    if pages == 0 {
+        return;
+    }
+
+    let vaddr_end = vaddr + pages * PAGE_SIZE;
+
+    let matching_regions = state.regions.alloc_physical.drain_filter(|acq| {
+        let acq_vaddr_end = acq.vaddr as usize + acq.pages * PAGE_SIZE;
+
+        // Don't remove a region that overlaps but isn't contained by our
+        // request to pages. We will throw an error if we don't manage to
+        // deallocate all of the pages instead.
+        acq.vaddr as usize >= vaddr && acq_vaddr_end <= vaddr_end
+    });
+
+    let mut pages_to_deallocate = pages;
+
+    // For each matching region we can grab from the list, immediately unmap &
+    // release it.
+    for acq in matching_regions {
+        kernel_unmap_and_release(*acq);
+        pages_to_deallocate -= acq.pages;
+    }
+
+    if pages_to_deallocate != 0 {
+        panic!(
+            "deallocate_pages({:016x}, {}) had {} leftover pages to \
+            deallocate that it couldn't find.",
+            vaddr, pages, pages_to_deallocate
+        );
+    }
+
+    // Once that's done, we can release the virtual address space.
+    //
+    // Try to find a free region that we can extend to include what we just
+    // freed.
+    for free_region in state.regions.free_virtual.iter() {
+        if vaddr < free_region.start { continue; }
+
+        if free_region.length.fetch_update(Relaxed, Relaxed, |len| {
+            if free_region.start + len * PAGE_SIZE == vaddr {
+                // It starts where this ends, so we can just add the length
+                Some(len + pages)
+            } else {
+                // Can't unify.
+                None
+            }
+        }).is_ok() {
+            // We were able to extend it.
+            debug!("released virtual {:016x} + {} into {:?}",
+                vaddr, pages, *free_region);
+            return;
+        }
+    }
+
+    // We weren't able to find a free region that overlaps with this, so
+    // just add it to the free list.
+    state.regions.free_virtual.push(Node::new(FreeRegion {
+        start: vaddr,
+        length: pages.into(),
+    }));
+
+    debug!("released virtual {:016x} + {} to new region",
+        vaddr, pages);
 }
 
 // Map on sorted vec
@@ -406,8 +478,8 @@ pub fn allocate_kernel_stack(heap_state: &HeapState) -> *mut u8 {
 
     // Allocate pages to the stack area
     kernel_acquire_and_map(new_stack, pages, 
-        |start, pages| {
-            heap_state.regions.alloc_physical.push(Node::new((start, pages)));
+        |acq| {
+            heap_state.regions.alloc_physical.push(Node::new(acq));
         }
     ).unwrap_or_else(|_| panic!("Out of memory"));
 

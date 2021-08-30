@@ -181,6 +181,7 @@ impl FreeBitmap {
     }
 
     /// Counts the number of full bits. Non-atomic.
+    #[allow(dead_code)]
     pub fn count_full(&self) -> usize {
         let mut pointer = self.ptr;
 

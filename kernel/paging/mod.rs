@@ -12,13 +12,13 @@
 
 //! Kernel page management.
 
-use core::cell::*;
 use core::mem;
 
-use alloc::rc::Rc;
+use alloc::sync::Arc;
 use alloc::boxed::Box;
 
 use crate::c_ffi::c_void;
+use crate::sync::Spinlock;
 
 pub mod generic;
 
@@ -44,7 +44,7 @@ static mut CURRENT_PAGESET: Option<*const c_void> = None;
 /// This is required in order to be able to set a pageset as the current
 /// pageset, because we need to be able to guarantee that it will still be valid
 /// while the hardware is using it.
-pub type RcPageset = Rc<RefCell<Pageset>>;
+pub type RcPageset = Arc<Spinlock<Pageset>>;
 
 /// # Safety
 ///
@@ -80,7 +80,7 @@ pub unsafe fn set_current_pageset(pageset: Option<RcPageset>) {
     let old: Option<RcPageset> = CURRENT_PAGESET.map(|ptr| mem::transmute(ptr));
 
     if let Some(pageset) = pageset {
-        pageset.borrow_mut().load_into_hw();
+        pageset.lock().load_into_hw();
 
         CURRENT_PAGESET = Some(mem::transmute(pageset));
     } else {
@@ -113,14 +113,14 @@ pub unsafe fn initialize() {
 
 /// C interface. See `kit/kernel/include/paging.h`.
 pub mod ffi {
-    use core::cell::*;
     use core::iter::repeat;
     use core::ptr;
     use core::mem;
 
     use crate::c_ffi::c_void;
+    use crate::sync::Spinlock;
 
-    use alloc::rc::Rc;
+    use alloc::sync::Arc;
 
     use super::*;
 
@@ -128,28 +128,23 @@ pub mod ffi {
     pub struct PagesetCRef(*const c_void);
 
     impl PagesetCRef {
-        pub fn new(rc_pageset: Rc<RefCell<Pageset>>) -> PagesetCRef {
-            unsafe {
-                mem::transmute(rc_pageset)
-            }
+        pub fn new(rc_pageset: Arc<Spinlock<Pageset>>) -> PagesetCRef {
+            PagesetCRef(Arc::into_raw(rc_pageset) as *const c_void)
         }
 
-        pub fn to_rc(&self) -> Rc<RefCell<Pageset>> {
+        pub fn to_rc(&self) -> Arc<Spinlock<Pageset>> {
             if self.is_null() {
                 panic!("Tried to call into_rc() on null PagesetCRef");
             }
 
             unsafe {
                 let PagesetCRef(ptr) = *self;
-                let rc1: Rc<RefCell<Pageset>> = mem::transmute(ptr);
-                let rc2 = rc1.clone();
-
-                mem::forget(rc1);
-                rc2
+                Arc::increment_strong_count(ptr as *const Spinlock<Pageset>);
+                Arc::from_raw(ptr as *const Spinlock<Pageset>)
             }
         }
 
-        pub fn to_option(&self) -> Option<Rc<RefCell<Pageset>>> {
+        pub fn to_option(&self) -> Option<Arc<Spinlock<Pageset>>> {
             if self.is_null() {
                 None
             } else {
@@ -157,13 +152,13 @@ pub mod ffi {
             }
         }
 
-        pub fn into_rc(self) -> Rc<RefCell<Pageset>> {
+        pub fn into_rc(self) -> Arc<Spinlock<Pageset>> {
             if self.is_null() {
                 panic!("Tried to call into_rc() on null PagesetCRef");
             }
 
             unsafe {
-                mem::transmute(self)
+                Arc::from_raw(self.0 as *const Spinlock<Pageset>)
             }
         }
 
@@ -254,7 +249,7 @@ pub mod ffi {
                                       linear_address: *const c_void,
                                       physical_address: *mut u64) -> i8 {
         let pageset = pageset.to_option();
-        let pageset = pageset.as_ref().map(|x| x.borrow());
+        let pageset = pageset.as_ref().map(|x| x.lock());
         let pageset = pageset.as_ref().map(|x| &**x)
                                       .unwrap_or(kernel_pageset());
         let vaddr   = linear_address as usize;
@@ -274,7 +269,7 @@ pub mod ffi {
                                     pages: u64,
                                     flags: u8) -> u64 {
         let pageset     = pageset.to_option();
-        let mut pageset = pageset.as_ref().map(|x| x.borrow_mut());
+        let mut pageset = pageset.as_ref().map(|x| x.lock());
         let pageset     = pageset.as_mut().map(|x| &mut **x)
                                           .unwrap_or(kernel_pageset());
 
@@ -296,7 +291,7 @@ pub mod ffi {
                                       linear_address: *const c_void,
                                       pages: u64) -> u64 {
         let pageset     = pageset.to_option();
-        let mut pageset = pageset.as_ref().map(|x| x.borrow_mut());
+        let mut pageset = pageset.as_ref().map(|x| x.lock());
         let pageset     = pageset.as_mut().map(|x| &mut **x)
                                           .unwrap_or(kernel_pageset());
 
@@ -311,7 +306,7 @@ pub mod ffi {
                                           linear_address: *const c_void,
                                           flags: *mut u8) -> i8 {
         let pageset = pageset.to_option();
-        let pageset = pageset.as_ref().map(|x| x.borrow());
+        let pageset = pageset.as_ref().map(|x| x.lock());
         let pageset = pageset.as_ref().map(|x| &**x)
                                       .unwrap_or(kernel_pageset());
 
@@ -331,7 +326,7 @@ pub mod ffi {
                                           pages: u64,
                                           flags: u8) -> u64 {
         let pageset     = pageset.to_option();
-        let mut pageset = pageset.as_ref().map(|x| x.borrow_mut());
+        let mut pageset = pageset.as_ref().map(|x| x.lock());
         let pageset     = pageset.as_mut().map(|x| &mut **x)
                                           .unwrap_or(kernel_pageset());
 

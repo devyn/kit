@@ -134,10 +134,10 @@ pub mod utils {
 
         let process = Process::create(filename);
 
-        let process_id = process.borrow().id();
+        let process_id = process.lock().id();
 
         {
-            let mut process = process.borrow_mut();
+            let mut process = process.lock();
 
             process.load(&exec).map_err(|_| ExecLoadError)?;
 

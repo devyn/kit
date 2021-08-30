@@ -20,6 +20,7 @@ use core::sync::atomic::AtomicUsize;
 use core::sync::atomic::Ordering::*;
 
 use alloc::vec::Vec;
+use alloc::sync::Arc;
 
 use crate::paging::{self, kernel_pageset};
 use crate::paging::{PagesetExt, PageType};
@@ -27,7 +28,7 @@ use crate::paging::PAGE_SIZE;
 
 use crate::multiboot::MmapEntry;
 use crate::process::Id as ProcessId;
-use crate::sync::LockFreeList;
+use crate::sync::{Rcu, LockFreeList};
 use crate::sync::lock_free_list::Node;
 use crate::constants::KERNEL_LOW_END;
 
@@ -91,7 +92,7 @@ fn handle_alloc_error(layout: Layout) -> ! {
 
 #[derive(Debug)]
 struct RegionState {
-    alloc_regions: LockFreeList<(PhysicalAddress, AllocRegionState)>,
+    alloc_regions: LockFreeList<AllocRegionState>,
     free_regions: LockFreeList<FreeRegion<PhysicalAddress>>,
     total_page_count: usize,
     free_page_count: AtomicUsize,
@@ -105,8 +106,9 @@ pub type PageCount = usize;
 
 #[derive(Debug)]
 struct AllocRegionState {
+    start: PhysicalAddress,
     length: PageCount,
-    users: Vec<RegionUser>
+    users: Rcu<Vec<RegionUser>>
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
@@ -127,7 +129,7 @@ pub unsafe fn initialize(mmap_buffer: *const u8, mmap_length: u32) {
     let mut current_mmap = mmap_buffer;
     let mmap_end = mmap_buffer.offset(mmap_length as isize);
 
-    let mut free_regions = LockFreeList::new();
+    let free_regions = LockFreeList::new();
 
     while current_mmap < mmap_end {
         let entry_ptr: *const MmapEntry = mem::transmute(current_mmap);
@@ -162,7 +164,7 @@ pub unsafe fn initialize(mmap_buffer: *const u8, mmap_length: u32) {
         if entry.is_available() && pages > 0 {
             free_regions.push(Node::new(FreeRegion {
                 start: physical_base,
-                length: AtomicUsize::new(pages)
+                length: pages.into(),
             }));
         }
     }
@@ -172,7 +174,7 @@ pub unsafe fn initialize(mmap_buffer: *const u8, mmap_length: u32) {
 
     REGION_STATE = Some(RegionState {
         total_page_count,
-        free_page_count: AtomicUsize::new(total_page_count),
+        free_page_count: total_page_count.into(),
         free_regions,
         alloc_regions: LockFreeList::new(),
     });
@@ -195,7 +197,7 @@ pub unsafe fn deallocate(ptr: *mut u8, size: usize, align: usize) {
     debug!("deallocate({:p}, {}, {})", ptr, size, align);
 
     match KERNEL_HEAP {
-        KernelHeap::InitialHeap(ref mut counter) =>
+        KernelHeap::InitialHeap(_) =>
             // Deallocation not supported.
             (),
         KernelHeap::LargeHeap(ref state) =>
@@ -293,10 +295,11 @@ pub fn acquire_region(owner: RegionUser, pages: PageCount)
     if acq_pages > 0 {
         state.free_page_count.fetch_sub(acq_pages, Relaxed);
 
-        state.alloc_regions.push(Node::new((alloc_start, AllocRegionState {
+        state.alloc_regions.push(Node::new(AllocRegionState {
+            start: alloc_start,
             length: acq_pages,
-            users: vec![owner]
-        })));
+            users: vec![owner].into()
+        }));
 
         Some((alloc_start, acq_pages))
     } else {
@@ -305,8 +308,96 @@ pub fn acquire_region(owner: RegionUser, pages: PageCount)
     }
 }
 
-pub fn release_region(user: RegionUser, paddr: PhysicalAddress) {
-    unimplemented!()
+pub fn release_region(
+    user: RegionUser,
+    paddr: PhysicalAddress,
+    pages: PageCount
+) {
+    // Safety: initialized once
+    let state = unsafe { 
+        REGION_STATE.as_ref().expect("memory::initialize() not called")
+    };
+
+    // Find the region in the alloc list
+    let region = state.alloc_regions.iter()
+        .find(|region| region.start == paddr);
+
+    if let Some(region) = region {
+        assert_eq!(region.length, pages, "release_region with wrong size");
+
+        // First, update the users list. If we remove our user but there's still
+        // other users, just return early.
+        'users_update: loop {
+            let users = region.users.read();
+
+            // Make sure the users contains our user
+            if !users.contains(&user) {
+                panic!("Wanted to release physical region {:016x}, \
+                    but user {:?} does not own it (owners: {:?})",
+                    paddr, user, users);
+            }
+
+            let new_users: Arc<Vec<_>> = Arc::new(
+                users.iter().cloned().filter(|u| *u != user).collect());
+
+            let is_exclusively_owned = new_users.is_empty();
+
+            if region.users.update(&users, new_users).is_err() {
+                // retry
+                continue 'users_update;
+            }
+
+            if !is_exclusively_owned {
+                // we don't exclusively own it.
+                return;
+            } else {
+                break;
+            }
+        }
+
+        // We have the right to destroy the region now. It won't be updated any
+        // further.
+        assert!(state.alloc_regions.remove(&region));
+
+        // Try to find a free region that we can extend to include what we just
+        // freed.
+        for free_region in state.free_regions.iter() {
+            if paddr < free_region.start { continue; }
+
+            if free_region.length.fetch_update(Relaxed, Relaxed, |len| {
+                if free_region.start + len * PAGE_SIZE == paddr {
+                    // It starts where this ends, so we can just add the length
+                    Some(len + region.length)
+                } else {
+                    // Can't unify.
+                    None
+                }
+            }).is_ok() {
+                // We were able to extend it.
+                debug!("released {:?} into {:?}", *region, *free_region);
+                return;
+            }
+        }
+
+        // We weren't able to find a free region that overlaps with this, so
+        // just add it to the free list.
+        state.free_regions.push(Node::new(FreeRegion {
+            start: region.start,
+            length: region.length.into(),
+        }));
+
+        debug!("released {:?} as new free region", *region);
+    } else {
+        panic!("Wanted to release physical region {:?}, {:016x}, \
+            but can't find it.", user, paddr);
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct AcquiredMappedRegion {
+    vaddr: *mut u8,
+    paddr: PhysicalAddress,
+    pages: PageCount,
 }
 
 /// Returns the number of pages successfully allocated on error
@@ -315,7 +406,7 @@ fn kernel_acquire_and_map<F>(
     pages: PageCount,
     mut push_region: F,
 ) -> Result<(), PageCount>
-    where F: FnMut(PhysicalAddress, PageCount) {
+    where F: FnMut(AcquiredMappedRegion) {
 
     let mut cur_vaddr = vaddr as usize;
     let mut cur_pages = pages;
@@ -337,13 +428,31 @@ fn kernel_acquire_and_map<F>(
                 .expect("unable to map acquired pages into kernel space")
         }
 
+        push_region(AcquiredMappedRegion {
+            vaddr: cur_vaddr as *mut u8,
+            paddr: got_paddr,
+            pages: got_pages
+        });
+
         cur_vaddr += got_pages * PAGE_SIZE;
         cur_pages -= got_pages;
-
-        push_region(got_paddr, got_pages);
     }
 
     Ok(())
+}
+
+fn kernel_unmap_and_release(r: AcquiredMappedRegion) {
+    // First, unmap the pages so that they aren't in use anymore
+    unsafe {
+        kernel_pageset()
+            .unmap_pages(r.vaddr as usize, r.pages)
+            .unwrap_or_else(|err| {
+                panic!("unable to kernel_unmap_and_release({:?}, {:016x}, {}): \
+                    unmap failed: {}", r.vaddr, r.paddr, r.pages, err);
+            })
+    }
+
+    release_region(RegionUser::Kernel, r.paddr, r.pages);
 }
 
 pub fn allocate_kernel_stack() -> *mut u8 {
@@ -372,6 +481,33 @@ pub fn debug_print_allocator_stats() {
             },
         }
     }
+}
+
+pub fn debug_print_physical_mem_stats() {
+    use crate::terminal::console;
+
+    // Safety: initialized once
+    let state = unsafe { 
+        REGION_STATE.as_ref().expect("memory::initialize() not called")
+    };
+
+    for region in state.free_regions.iter() {
+        let _ = writeln!(console(), "FREE {:016x} - {:016x}",
+            region.start,
+            region.start + region.length.load(Relaxed) * PAGE_SIZE);
+    }
+
+    let free = state.free_page_count.load(Relaxed);
+    let total = state.total_page_count;
+    let used = total - free;
+
+    let _ = writeln!(console(), "Pages: {} free / {} used / {} total",
+        free, used, total);
+
+    let _ = writeln!(console(), "Bytes: {} M free / {} M used / {} M total",
+        free * PAGE_SIZE / 1048576,
+        used * PAGE_SIZE / 1048576,
+        total * PAGE_SIZE / 1048576);
 }
 
 /// C foreign interface.

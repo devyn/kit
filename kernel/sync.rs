@@ -13,7 +13,9 @@
 #[macro_use] pub mod wait;
 pub mod spinlock;
 pub mod lock_free_list;
+pub mod rcu;
 
 pub use wait::WaitQueue;
 pub use spinlock::Spinlock;
 pub use lock_free_list::LockFreeList;
+pub use rcu::Rcu;

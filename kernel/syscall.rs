@@ -143,6 +143,7 @@ extern {
 
 pub const SYSCALL_DEBUG_PRINT_PROCESSES: u32 = 1;
 pub const SYSCALL_DEBUG_PRINT_ALLOCATOR_STATS: u32 = 2;
+pub const SYSCALL_DEBUG_PRINT_PHYSICAL_MEM_STATS: u32 = 3;
 pub const SYSCALL_DEBUG_TEST_KERNEL_THREAD: u32 = 9001;
 
 /// Interface not stable.
@@ -155,6 +156,9 @@ pub unsafe extern fn syscall_debug(operation: u32, argument: usize) -> i32 {
         },
         SYSCALL_DEBUG_PRINT_ALLOCATOR_STATS => {
             memory::debug_print_allocator_stats();
+        },
+        SYSCALL_DEBUG_PRINT_PHYSICAL_MEM_STATS => {
+            memory::debug_print_physical_mem_stats();
         },
         SYSCALL_DEBUG_TEST_KERNEL_THREAD => {
             let name = format!("TEST_KERNEL_THREAD-{}", argument);

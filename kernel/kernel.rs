@@ -157,10 +157,11 @@ pub extern fn kernel_main() -> ! {
     {
         let process = process::by_id(pid).unwrap();
 
+        let name = process.lock().name();
+        let exit_status = process.lock().exit_status();
+
         panic!("Initial process ({}:{}) exited with code {}",
-            pid,
-            process.borrow().name(),
-            process.borrow().exit_status().unwrap());
+            pid, name, exit_status.unwrap());
     }
 }
 

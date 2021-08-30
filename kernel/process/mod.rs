@@ -13,13 +13,11 @@
 //! Process management functions.
 
 use core::{i32, u32, usize};
-use core::cell::*;
-use core::fmt;
 use core::slice;
 use core::mem;
 
 use alloc::boxed::Box;
-use alloc::rc::Rc;
+use alloc::sync::Arc;
 use alloc::vec::Vec;
 use alloc::string::String;
 use alloc::collections::BTreeMap;
@@ -31,10 +29,12 @@ use crate::error;
 use crate::paging::{self, Pageset, PagesetExt, RcPageset, PageType};
 use crate::paging::generic::Pageset as GenericPageset;
 use crate::memory::{self, RegionUser};
+use crate::memory::{VirtualAddress, PhysicalAddress, PageCount};
 use crate::scheduler;
 use crate::syscall;
 use crate::util::copy_memory;
 use crate::sync::WaitQueue;
+use crate::sync::Spinlock;
 
 pub mod x86_64;
 pub use self::x86_64 as target;
@@ -67,7 +67,7 @@ struct GlobalState {
     next_id: Id,
 }
 
-static mut GLOBAL_STATE: Option<*const RefCell<GlobalState>> = None;
+static mut GLOBAL_STATE: Option<Spinlock<GlobalState>> = None;
 static mut INITIALIZED: bool = false;
 
 pub fn initialized() -> bool {
@@ -81,10 +81,10 @@ pub unsafe fn initialize() {
 
     // The kernel process does not have its own memory space, so when switching
     // between kernel processes 
-    let kernel_process = Rc::new(RefCell::new(Process {
+    let kernel_process = Arc::new(Spinlock::new(Process {
         id:          0, // only process that can have ID 0
         pgid:        0, // all kernel subprocesses share this value too
-        name:        Rc::new("kernel".into()),
+        name:        Arc::new("kernel".into()),
         state:       State::Running,
         hw_state:    Box::into_raw(box target::HwState::new()),
         mem:         None,
@@ -96,14 +96,14 @@ pub unsafe fn initialize() {
 
     let mut process_tree = BTreeMap::new();
 
-    process_tree.insert(kernel_process.borrow().id, kernel_process.clone());
+    process_tree.insert(kernel_process.lock().id, kernel_process.clone());
 
-    GLOBAL_STATE = Some(Box::into_raw(box RefCell::new(GlobalState {
+    GLOBAL_STATE = Some(Spinlock::new(GlobalState {
         kernel_process,
         current_process,
         process_tree,
         next_id: 1,
-    })));
+    }));
 
     scheduler::initialize();
     syscall::initialize();
@@ -111,39 +111,64 @@ pub unsafe fn initialize() {
     INITIALIZED = true;
 }
 
-fn global_state<'a>() -> &'a RefCell<GlobalState> {
+fn global_state<'a>() -> &'a Spinlock<GlobalState> {
     unsafe {
-        GLOBAL_STATE.as_ref().and_then(|ptr| ptr.as_ref())
+        GLOBAL_STATE.as_ref()
             .expect("Process module not initialized!")
     }
 }
 
 /// Get the kernel process (ID=0).
 pub fn kernel() -> RcProcess {
-    global_state().borrow().kernel_process.clone()
+    global_state().lock().kernel_process.clone()
 }
 
 /// Get the current process.
 pub fn current() -> RcProcess {
-    global_state().borrow().current_process.clone()
+    global_state().lock().current_process.clone()
 }
 
 /// Get a process by ID.
 pub fn by_id(id: Id) -> Option<RcProcess> {
-    global_state().borrow().process_tree.get(&id).map(|r| r.clone())
+    global_state().lock().process_tree.get(&id).map(|r| r.clone())
 }
 
 /// Get the processes sharing a PGID.
 pub fn by_pgid(pgid: Id) -> Vec<RcProcess> {
-    global_state().borrow().process_tree.values()
-        .filter(|proc| proc.borrow().pgid == pgid)
+    global_state().lock().process_tree.values()
+        .filter(|proc| proc.lock().pgid == pgid)
         .map(|proc| proc.clone())
         .collect()
 }
 
+// Remove a dead process.
+pub fn cleanup(id: Id) -> Option<RcProcess> {
+    let mut state = global_state().lock();
+
+    let is_dead = state
+        .process_tree
+        .get(&id)
+        .map(|p| p.lock().is_dead())
+        .unwrap_or(false);
+
+    if is_dead {
+        let removed = state.process_tree.remove(&id);
+
+        if let Some(ref process) = removed {
+            debug!("Removed process from tree: {:?}", process);
+            debug!("PID {} Strong count = {}", id,
+                Arc::strong_count(process));
+        }
+
+        removed
+    } else {
+        None
+    }
+}
+
 /// Get all processes.
 pub fn all() -> Vec<RcProcess> {
-    global_state().borrow().process_tree.values().cloned().collect()
+    global_state().lock().process_tree.values().cloned().collect()
 }
 
 /// Change the current process (immediately).
@@ -152,18 +177,18 @@ pub fn all() -> Vec<RcProcess> {
 ///
 /// Panics if the process to switch to is not in the `Running` state.
 pub fn switch_to(process: RcProcess) {
-    assert!(process.borrow().is_running());
+    assert!(process.lock().is_running());
 
     let old_process = current();
 
-    let old_hw_state = old_process.borrow().hw_state;
-    let new_hw_state = process.borrow().hw_state;
+    let old_hw_state = old_process.lock().hw_state;
+    let new_hw_state = process.lock().hw_state;
 
     // Don't switch pageset for processes that don't have a memory space.
     //
     // This allows kernel processes to have lighter context switching - the
     // kernel pageset is always accessible anyway.
-    if let Some(pageset) = process.borrow().pageset() {
+    if let Some(pageset) = process.lock().pageset() {
         // Safety: we got the pageset from another process, so it shouldn't be
         // anything weird
         unsafe {
@@ -171,7 +196,9 @@ pub fn switch_to(process: RcProcess) {
         }
     }
 
-    global_state().borrow_mut().current_process = process;
+    {
+        global_state().lock().current_process = process;
+    }
 
     // Do the magic!
     unsafe {
@@ -201,7 +228,7 @@ fn new_user_hw_state() -> Box<target::HwState> {
     Box::new(hw_state)
 }
 
-pub type RcProcess = Rc<RefCell<Process>>;
+pub type RcProcess = Arc<Spinlock<Process>>;
 
 #[derive(Debug)]
 pub struct Process {
@@ -210,7 +237,7 @@ pub struct Process {
     /// Process group: subprocesses spawned from the same process will have the
     /// same PGID. Exit() will cause all processes with that PGID to exit.
     pgid:        Id,
-    name:        Rc<String>,
+    name:        Arc<String>,
     state:       State,
     hw_state:    *mut target::HwState,
 
@@ -227,7 +254,7 @@ pub struct Process {
 
 impl Process {
     fn next_id() -> Id {
-        let mut global_state = global_state().borrow_mut();
+        let mut global_state = global_state().lock();
 
         let next_id = global_state.next_id;
         assert!(next_id != u32::MAX, "out of process IDs");
@@ -240,10 +267,11 @@ impl Process {
         let id = Process::next_id();
 
         let mut process_mem = ProcessMem {
-            id:          id,
-            pageset:     Pageset::alloc(),
-            heap_base:   target::HEAP_BASE_ADDR,
-            heap_length: 0,
+            id:            id,
+            pageset:       Pageset::alloc(),
+            heap_base:     target::HEAP_BASE_ADDR,
+            heap_length:   0,
+            owned_regions: vec![],
         };
 
         // FIXME? This assumes a downward growing stack, like x86
@@ -255,17 +283,19 @@ impl Process {
         let process = Process {
             id:          id,
             pgid:        id,
-            name:        Rc::new(name.into()),
+            name:        Arc::new(name.into()),
             state:       State::Loading,
             hw_state:    Box::into_raw(new_user_hw_state()),
-            mem:         Some(Rc::new(RefCell::new(process_mem))),
+            mem:         Some(Arc::new(Spinlock::new(process_mem))),
             exit_status: 0,
             exit_wait:   WaitQueue::new(),
         };
 
-        let rc_process = Rc::new(RefCell::new(process));
+        debug!("New process: {:?}", process);
 
-        global_state().borrow_mut().process_tree.insert(id, rc_process.clone());
+        let rc_process = Arc::new(Spinlock::new(process));
+
+        global_state().lock().process_tree.insert(id, rc_process.clone());
 
         rc_process
     }
@@ -287,9 +317,11 @@ impl Process {
             exit_wait: WaitQueue::new(),
         };
 
-        let rc_process = Rc::new(RefCell::new(process));
+        debug!("New subprocess: {:?}", process);
 
-        global_state().borrow_mut().process_tree.insert(id, rc_process.clone());
+        let rc_process = Arc::new(Spinlock::new(process));
+
+        global_state().lock().process_tree.insert(id, rc_process.clone());
 
         rc_process
     }
@@ -302,12 +334,12 @@ impl Process {
         self.pgid
     }
 
-    pub fn name(&self) -> &str {
-        &*self.name
+    pub fn name(&self) -> Arc<String> {
+        self.name.clone()
     }
 
     pub fn set_name<S>(&mut self, name: S) where S: Into<String> {
-        self.name = Rc::new(name.into());
+        self.name = Arc::new(name.into());
     }
 
     pub fn state(&self) -> State {
@@ -319,7 +351,7 @@ impl Process {
     }
 
     pub fn pageset(&self) -> Option<RcPageset> {
-        self.mem.as_ref().map(|rc| rc.borrow().pageset.clone())
+        self.mem.as_ref().map(|rc| rc.lock().pageset.clone())
     }
 
     pub fn is_running(&self) -> bool {
@@ -419,7 +451,7 @@ impl Process {
         assert_eq!(self.state, State::Loading);
 
         if let Some(ref mem) = self.mem {
-            let params = mem.borrow_mut().setup_args(args)?;
+            let params = mem.lock().setup_args(args)?;
 
             // Safety: hwstate exclusive ownership due to Loading state
             unsafe {
@@ -512,14 +544,22 @@ impl Drop for Process {
     }
 }
 
-pub type RcProcessMem = Rc<RefCell<ProcessMem>>;
+#[derive(Debug, Clone, Copy)]
+struct ProcessOwnedRegion {
+    vaddr: VirtualAddress,
+    paddr: PhysicalAddress,
+    pages: PageCount,
+}
+
+pub type RcProcessMem = Arc<Spinlock<ProcessMem>>;
 
 #[derive(Debug)]
 pub struct ProcessMem {
-    id:          Id,
-    pageset:     RcPageset,
-    heap_base:   usize,
-    heap_length: usize,
+    id:            Id,
+    pageset:       RcPageset,
+    heap_base:     usize,
+    heap_length:   usize,
+    owned_regions: Vec<ProcessOwnedRegion>,
 }
 
 impl ProcessMem {
@@ -565,7 +605,9 @@ impl ProcessMem {
 
         let mut mapped = 0;
 
-        let mut pageset = self.pageset.borrow_mut();
+        let mut pageset = self.pageset.lock();
+
+        let mut cur_vaddr = vaddr;
 
         while mapped < pages {
             let (paddr_start, acq_pages) =
@@ -576,12 +618,19 @@ impl ProcessMem {
             let paddr_end = paddr_start + acq_pages * page_size;
 
             pageset.map_pages_with_type(
-                    vaddr,
+                    cur_vaddr,
                     (paddr_start..paddr_end).step_by(page_size),
                     page_type.user())
                  .map_err(|e| Error::from(e))?;
 
+            self.owned_regions.push(ProcessOwnedRegion {
+                vaddr: cur_vaddr,
+                paddr: paddr_start,
+                pages: acq_pages,
+            });
+
             mapped += acq_pages;
+            cur_vaddr += acq_pages * page_size;
         }
 
         Ok(())
@@ -598,33 +647,33 @@ impl ProcessMem {
                 size / page_size
             };
 
-        let mut pageset = self.pageset.borrow_mut();
+        let vaddr_end = vaddr + pages * page_size;
 
-        // Release contiguous physical regions.
-        let mut paddr_range = None;
+        let mut pageset = self.pageset.lock();
 
-        pageset.modify_pages(vaddr, pages, |page| {
-            if let Some((paddr, _)) = page {
-                if let Some((paddr_start, paddr_end)) = paddr_range.take() {
-                    if paddr_end == paddr - page_size {
-                        paddr_range = Some((paddr_start, paddr));
-                    } else {
-                        memory::release_region(RegionUser::Process(self.id),
-                                               paddr_start);
+        // FIXME: this code won't deallocate part of a region - i.e. it won't
+        // split overlapping regions and just release part of it. That should
+        // probably be added, because most likely user-mode memory allocators
+        // would want to do it
+        let overlaps = |region: &ProcessOwnedRegion| {
+            let r_vaddr_end = region.vaddr + region.pages * page_size;
+            region.vaddr >= vaddr && r_vaddr_end <= vaddr_end
+        };
 
-                        paddr_range = Some((paddr, paddr));
-                    }
-                } else {
-                    paddr_range = Some((paddr, paddr));
-                }
-            }
+        for region in self.owned_regions.iter().cloned().filter(&overlaps) {
+            // Clear the pages
+            pageset.modify_pages(region.vaddr, region.pages, |_| None)?;
 
-            None
-        })?;
-
-        if let Some((paddr_start, _paddr_end)) = paddr_range {
-            memory::release_region(RegionUser::Process(self.id), paddr_start);
+            // Release them
+            memory::release_region(
+                RegionUser::Process(self.id),
+                region.paddr,
+                region.pages
+            );
         }
+
+        // Remove the selected region
+        self.owned_regions.retain(|r| !overlaps(r));
 
         Ok(())
     }
@@ -732,6 +781,21 @@ impl ProcessMem {
     }
 }
 
+impl Drop for ProcessMem {
+    fn drop(&mut self) {
+        debug!("Destructor running for ProcessMem {:?}", self);
+
+        // Release the owned memory regions
+        for region in self.owned_regions.drain(..) {
+            memory::release_region(
+                RegionUser::Process(self.id),
+                region.paddr,
+                region.pages
+            );
+        }
+    }
+}
+
 #[derive(PartialEq, Eq, Debug, Display)]
 pub enum Error {
     /// An error occurred while trying to modify pages: {0}
@@ -768,7 +832,7 @@ pub fn exit(status: i32) -> ! {
     {
         let rc_process = current();
 
-        let mut process = rc_process.borrow_mut();
+        let mut process = rc_process.lock();
 
         assert!(process.id != 0, "attempted to exit({}) kernel!", status);
 
@@ -780,22 +844,22 @@ pub fn exit(status: i32) -> ! {
 
     scheduler::r#yield();
 
-    panic!("returned to process {} after exit", current().borrow().id);
+    panic!("returned to process {} after exit", current().lock().id);
 }
 
 /// Sleep until the given process id wakes up.
 pub fn wait(id: Id) -> Result<(), Error> {
     let queue = by_id(id).ok_or(Error::UnknownPid(id))?
-        .borrow().exit_wait.clone();
+        .lock().exit_wait.clone();
 
-    wait!(by_id(id).map(|p| p.borrow().is_dead()).unwrap_or(true), [queue]);
+    wait!(by_id(id).map(|p| p.lock().is_dead()).unwrap_or(true), [queue]);
 
     Ok(())
 }
 
 /// Set our state to sleep and then yield to the scheduler.
 pub fn sleep() {
-    current().borrow_mut().sleep();
+    current().lock().sleep();
     scheduler::r#yield();
 }
 
@@ -806,12 +870,12 @@ type ThinBoxedFun = Box<BoxedFun>;
 pub fn spawn_kthread<S, F>(name: S, fun: F) -> Id
     where S: Into<String>, F: FnOnce() + Send + 'static {
 
-    let subproc = kernel().borrow().create_subprocess();
+    let subproc = kernel().lock().create_subprocess();
 
     let id;
 
     {
-        let mut subproc = subproc.borrow_mut();
+        let mut subproc = subproc.lock();
 
         id = subproc.id();
 
@@ -851,7 +915,7 @@ pub fn debug_print_processes() {
     let _ = writeln!(console(), "ID    PGID  STATE NAME");
 
     for rc_process in processes {
-        let process = rc_process.borrow();
+        let process = rc_process.lock();
 
         let _ = writeln!(console(), "{:<5} {:<5} {:<5} {}",
             process.id(),
@@ -867,7 +931,7 @@ pub mod ffi {
 
     #[no_mangle]
     pub extern fn process_current_id() -> uint32_t {
-        super::current().borrow().id
+        super::current().lock().id
     }
 
     #[no_mangle]
@@ -879,16 +943,17 @@ pub mod ffi {
     pub unsafe extern fn process_signal(pid: uint32_t, signal: c_int) -> c_int {
         if let Some(process) = super::by_id(pid) {
             // Case 1: this is the current process, so just exit
-            if super::current().borrow().id == process.borrow().id {
+            if super::current().lock().id == process.lock().id {
+                drop(process);
                 super::exit(signal);
                 // the function will not return!
             }
 
             // Case 2: we're telling another process to exit.
-            process.borrow_mut().exit(signal);
+            process.lock().exit(signal);
 
             // Let waiting processes know
-            process.borrow().exit_wait.awaken_all();
+            process.lock().exit_wait.awaken_all();
 
             1
         } else {
@@ -903,10 +968,12 @@ pub mod ffi {
                                                   -> c_int {
         if super::wait(pid).is_ok() {
             if let Some(rc_process) = super::by_id(pid) {
-                let exit_status = rc_process.borrow().exit_status()
+                let exit_status = rc_process.lock().exit_status()
                     .expect("wait() returned but process is not dead");
 
                 *status = exit_status;
+
+                super::cleanup(pid);
                 0
             } else {
                 -1
@@ -921,10 +988,10 @@ pub mod ffi {
     pub unsafe extern fn process_adjust_heap(amount: int64_t) -> *mut c_void {
         let current_process = super::current();
 
-        let rc_mem = current_process.borrow_mut().mem()
+        let rc_mem = current_process.lock().mem()
             .expect("Current process has no memory associated with it");
 
-        let mut mem = rc_mem.borrow_mut();
+        let mut mem = rc_mem.lock();
 
         mem.adjust_heap(amount as isize).unwrap();
 

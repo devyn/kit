@@ -133,25 +133,23 @@ impl<T> LockFreeList<T> {
     }
 
     pub fn remove(&self, target: &Node<T>) -> bool {
-        let mut pred = |node: &Node<T>| Arc::ptr_eq(&node.arc, &target.arc);
-
-        // If the head node matches, remove that
-        if let Some(_) = pop_if(&self.head, &mut pred) {
-            return true;
-        } else {
-            // Step through the iterator and try pop off each
-            for node in self.iter() {
-                if let Some(_) = pop_if(&node.arc.tail, &mut pred) {
-                    return true;
-                }
-            }
-
-            false
-        }
+        self.drain_filter(|node| Arc::ptr_eq(&node.arc, &target.arc))
+            .nth(0)
+            .is_some()
     }
 
     pub fn iter(&self) -> Iter<T> {
         Iter { next: self.head() }
+    }
+
+    /// An iterator that removes items from the list if they match a filter
+    pub fn drain_filter<F>(&self, pred: F) -> DrainFilter<T, F>
+        where F: FnMut(&Node<T>) -> bool {
+
+        DrainFilter {
+            state: DrainFilterState::Head(self),
+            pred
+        }
     }
 }
 
@@ -166,6 +164,50 @@ impl<T> Iterator for Iter<T> {
         let after = self.next.as_ref().and_then(|n| Node::tail(n));
 
         mem::replace(&mut self.next, after)
+    }
+}
+
+pub struct DrainFilter<'a, T, F> where F: FnMut(&Node<T>) -> bool {
+    state: DrainFilterState<'a, T>,
+    pred: F
+}
+
+enum DrainFilterState<'a, T> {
+    Head(&'a LockFreeList<T>),
+    Node(Node<T>),
+    End
+}
+
+impl<'a, T, F> Iterator for DrainFilter<'a, T, F>
+where F: FnMut(&Node<T>) -> bool {
+    type Item = Node<T>;
+
+    fn next(&mut self) -> Option<Node<T>> {
+        loop {
+            match self.state {
+                DrainFilterState::Head(list) => {
+                    if let Some(out) = pop_if(&list.head, &mut self.pred) {
+                        return Some(out);
+                    } else {
+                        self.state = list.head()
+                            .map(|node| DrainFilterState::Node(node))
+                            .unwrap_or(DrainFilterState::End);
+                    }
+                },
+                DrainFilterState::Node(ref node) => {
+                    if let Some(out) = pop_if(&node.arc.tail, &mut self.pred) {
+                        return Some(out);
+                    } else {
+                        self.state = Node::tail(node)
+                            .map(|node| DrainFilterState::Node(node))
+                            .unwrap_or(DrainFilterState::End);
+                    }
+                },
+                DrainFilterState::End => {
+                    return None;
+                }
+            };
+        }
     }
 }
 
