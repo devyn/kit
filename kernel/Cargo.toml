@@ -10,3 +10,4 @@ crate-type = ["staticlib"]
 
 [dependencies]
 static_assertions = "1.1.0"
+displaydoc = { version = "0.2", default-features = false }

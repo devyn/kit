@@ -14,12 +14,6 @@ use core::fmt::{Debug, Display};
 
 /// Mostly compatible with Rust's `std::error::Error`.
 pub trait Error: Debug + Display {
-    /// A short description of the error.
-    ///
-    /// The description should not contain newlines or sentence-ending
-    /// punctuation, to facilitate embedding in larger user-facing strings.
-    fn description(&self) -> &str;
-
-    /// The lower-level cause of this error, if any.
-    fn cause(&self) -> Option<&dyn Error> { None }
+    /// The lower-level source of this error, if any.
+    fn source(&self) -> Option<&(dyn Error + 'static)> { None }
 }

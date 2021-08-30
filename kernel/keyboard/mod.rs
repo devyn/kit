@@ -12,7 +12,7 @@
 
 //! Generic keyboard input handler.
 
-use core::fmt;
+use displaydoc::Display;
 
 use crate::error::Error;
 
@@ -30,33 +30,13 @@ pub unsafe fn initialize() -> Result<(), KeyboardInitError> {
     Ok(())
 }
 
-#[derive(Debug)]
+#[derive(Debug, Display)]
 pub enum KeyboardInitError {
-    /// Initialization of a keyboard controller failed.
-    ///
-    /// The string is the name of the relevant keyboard controller.
+    /// Initialization of the '{0}' keyboard controller failed.
     ControllerInitFailed(&'static str),
 }
 
-impl Error for KeyboardInitError {
-    fn description(&self) -> &str {
-        match *self {
-            KeyboardInitError::ControllerInitFailed(_) =>
-                "Initialization of a keyboard controller failed."
-        }
-    }
-}
-
-impl fmt::Display for KeyboardInitError {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        match *self {
-            KeyboardInitError::ControllerInitFailed(name) =>
-               write!(f,
-                      "Initialization of the '{}' keyboard controller failed.",
-                      name ),
-        }
-    }
-}
+impl Error for KeyboardInitError { }
 
 /// C interface. See `kit/kernel/include/keyboard.h`.
 pub mod ffi {

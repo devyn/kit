@@ -41,19 +41,28 @@ use core::ops::Deref;
 use crate::paging::PAGE_SIZE;
 use crate::sync::Spinlock;
 
+use displaydoc::Display;
+
 use super::{PageCount, VirtualAddress, align_addr};
 
 mod bitmap;
 use bitmap::FreeBitmap;
 
-#[derive(Debug)]
+#[derive(Debug, Display)]
 pub enum Error {
+    /// No free space
     NoFreeSpace,
+    /// Address not allocated: 0x{0:016x}
     AddressNotAllocated(VirtualAddress),
+    /// Region in use: 0x{0:016x}
     RegionInUse(VirtualAddress),
+    /// Region not empty: 0x{0:016x}
     RegionNotEmpty(VirtualAddress),
+    /// Region not found: 0x{0:016x}
     RegionNotFound(VirtualAddress),
 }
+
+impl crate::error::Error for Error { }
 
 #[derive(Debug, Clone, Copy)]
 struct PoolConfig {

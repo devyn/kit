@@ -14,19 +14,15 @@
 
 use core::fmt;
 
-#[derive(Debug)]
+use displaydoc::Display;
+
+#[derive(Debug, Display)]
 pub enum Error {
+    /// Serial port is faulty
     SerialIsFaulty,
 }
 
-impl fmt::Display for Error {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        match *self {
-            Error::SerialIsFaulty =>
-                write!(f, "serial port is faulty"),
-        }
-    }
-}
+impl crate::error::Error for Error { }
 
 pub struct SerialPort {
     io_addr: u16,

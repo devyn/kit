@@ -24,6 +24,8 @@ use alloc::vec::Vec;
 use alloc::string::String;
 use alloc::collections::BTreeMap;
 
+use displaydoc::Display;
+
 use crate::error;
 
 use crate::paging::{self, Pageset, PagesetExt, RcPageset, PageType};
@@ -730,48 +732,24 @@ impl ProcessMem {
     }
 }
 
-#[derive(PartialEq, Eq, Debug)]
+#[derive(PartialEq, Eq, Debug, Display)]
 pub enum Error {
+    /// An error occurred while trying to modify pages: {0}
     PagingError(paging::Error),
+    /// Ran out of free physical regions to allocate pages with ({0} alloc'd)
     OutOfMemory(usize),
+    /// An integer overflow occurred (parameter too big/small?)
     Overflow,
+    /// Unknown process id {0}
     UnknownPid(Id),
 }
 
 impl error::Error for Error {
-    fn description(&self) -> &str {
-        match *self {
-            Error::PagingError(_) =>
-                "An error occurred while trying to modify pages",
-
-            Error::OutOfMemory(_) =>
-                "Ran out of free physical regions to allocate pages with",
-
-            Error::Overflow =>
-                "An integer overflow occurred (parameter too big/small?)",
-
-            Error::UnknownPid(_) =>
-                "Unknown process id",
-        }
-    }
-
-    fn cause(&self) -> Option<&dyn error::Error> {
+    fn source(&self) -> Option<&(dyn error::Error + 'static)> {
         match *self {
             Error::PagingError(ref paging_error) => Some(paging_error),
             _ => None
         }
-    }
-}
-
-impl fmt::Display for Error {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        f.write_str(error::Error::description(self))?;
-
-        if let Some(cause) = error::Error::cause(self) {
-            write!(f, ": {}", cause)?;
-        }
-
-        Ok(())
     }
 }
 

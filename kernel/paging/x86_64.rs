@@ -25,6 +25,8 @@ use crate::constants::{KERNEL_OFFSET, KERNEL_LOW_START, KERNEL_LOW_END};
 
 use super::generic::{self, Page, PagesetExt, PageType};
 
+use displaydoc::Display;
+
 pub const PAGE_SIZE: usize = 4096;
 
 macro_rules! assert_page_aligned {
@@ -153,31 +155,21 @@ impl<'a> generic::Pageset<'a> for Pageset {
     }
 }
 
-#[derive(PartialEq, Eq, Debug)]
+#[derive(PartialEq, Eq, Debug, Display)]
 pub enum Error {
+    /**
+     * Tried to modify a page (0x{0:016x}) in the kernel pageset outside the
+     * kernel address space.
+     */
     OutOfKernelRange(usize),
+    /**
+     * Tried to modify a page (0x{0:016x}) in the user pageset outside the user
+     * address space.
+     */
     OutOfUserRange(usize),
 }
 
-impl error::Error for Error {
-    fn description(&self) -> &str {
-        match *self {
-            Error::OutOfKernelRange(_) =>
-                "Tried to modify a page in the kernel pageset outside \
-                 the kernel address space.",
-
-            Error::OutOfUserRange(_) =>
-                "Tried to modify a page in a user pageset outside \
-                 the user address space.",
-        }
-    }
-}
-
-impl fmt::Display for Error {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        f.pad(error::Error::description(self))
-    }
-}
+impl error::Error for Error { }
 
 pub struct Iter<'a> {
     pageset: &'a Pageset,
