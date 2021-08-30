@@ -287,6 +287,11 @@ pub fn acquire_region(owner: RegionUser, pages: PageCount)
         alloc_start = free_region.start +
             ((original_length - acq_pages) * PAGE_SIZE);
 
+        // Remove free region if it's empty
+        if free_region.length.load(Relaxed) == 0 {
+            state.free_regions.remove(&free_region);
+        }
+
         if res.is_ok() {
             break;
         }
