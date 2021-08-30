@@ -303,8 +303,12 @@ fn allocate_small_object(state: &HeapState, size_aligned: usize)
             // make sure they always have some free space.
             //
             // If the pool is now almost full, add another region
-            if pool.objects_capacity().saturating_sub(pool.objects_used()) < 10 {
-                let _ = add_region_to_pool(state, &pool);
+            if pool.objects_free() < pool.region_object_capacity()/2 {
+                // Use the pool maintenance guard to avoid getting stuck in a
+                // loop doing this.
+                pool.try_maintain(|| {
+                    let _ = add_region_to_pool(state, &pool);
+                });
             }
             return Ok(vaddr);
         }

@@ -22,7 +22,7 @@ pub struct Spinlock<T: ?Sized> {
 }
 
 impl<T> Spinlock<T> {
-    pub fn new(value: T) -> Spinlock<T> {
+    pub const fn new(value: T) -> Spinlock<T> {
         Spinlock {
             locked: AtomicBool::new(false),
             cell: UnsafeCell::new(value)

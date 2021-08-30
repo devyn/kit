@@ -59,7 +59,7 @@ use terminal::*;
 #[no_mangle]
 pub extern fn kernel_main() -> ! {
 
-    serial::com1().initialize();
+    serial::com1().initialize().unwrap();
 
     console().reset().unwrap();
     console().set_color(Color::Red, Color::White).unwrap();
