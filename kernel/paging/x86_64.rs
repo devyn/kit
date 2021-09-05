@@ -201,6 +201,8 @@ impl<'a> Iterator for Iter<'a> {
 impl<'a> Iter<'a> {
     fn walk(&mut self, vaddr: usize) -> Result<(), ()> {
         if self.first || vaddr.pml4_index() != self.vaddr.pml4_index() {
+            self.first = false;
+
             if !self.pageset.pml4.index_if_ok(vaddr).is_none() {
                 self.pdpt = ptr::null();
                 self.pd   = ptr::null();

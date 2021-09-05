@@ -30,6 +30,15 @@ pub use self::x86_64 as target;
 
 pub use self::target::{PAGE_SIZE, Pageset, Error};
 
+// Must be non-zero.
+const_assert!(PAGE_SIZE > 0);
+
+// Must be a power of two.
+const_assert_eq!(PAGE_SIZE & (PAGE_SIZE - 1), 0);
+
+/// Number of trailing bits in an address that would belong to the same page.
+pub const PAGE_BITS: u32 = PAGE_SIZE.trailing_zeros();
+
 static mut INITIALIZED: bool = false;
 
 static mut KERNEL_PAGESET: Option<*mut Pageset> = None;
@@ -228,9 +237,8 @@ pub mod ffi {
     #[no_mangle]
     pub unsafe extern fn paging_drop_ref(pageset: *mut PagesetCRef) {
         if !(*pageset).is_null() {
-            // Replace with 0xdead to make it obvious if it's used again
             drop(mem::replace(&mut *pageset,
-                              PagesetCRef(0xdead as *const c_void)).into_rc())
+                              PagesetCRef(ptr::null())).into_rc())
         }
     }
 

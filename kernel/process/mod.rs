@@ -458,7 +458,10 @@ impl Process {
         kstate.push_stack(ptr);
     }
 
-    pub fn set_args(&mut self, args: &[&[u8]]) -> Result<(), Error> {
+    pub fn set_args<A>(&mut self, args: &[A]) -> Result<(), Error>
+    where
+        A: AsRef<[u8]>,
+    {
         assert_eq!(self.state, State::Loading);
 
         if let Some(ref mem) = self.mem {
@@ -732,8 +735,11 @@ impl ProcessMem {
     /// be passed to the entry point.
     ///
     /// See [HwState::set_args]
-    pub fn setup_args(&mut self, args: &[&[u8]])
-        -> Result<Option<(i32, usize)>, Error> {
+    pub fn setup_args<A>(&mut self, args: &[A])
+        -> Result<Option<(i32, usize)>, Error>
+    where
+        A: AsRef<[u8]>,
+    {
 
         // Special case: if there are no args, just set HwState.
         if args.is_empty() {
@@ -746,7 +752,7 @@ impl ProcessMem {
         // Size of all args + size of null bytes at end of each arg + size of
         // pointer table
         let args_size =
-            args.iter().map(|a| a.len()).sum::<usize>() + args.len() +
+            args.iter().map(|a| a.as_ref().len()).sum::<usize>() + args.len() +
             mem::size_of::<usize>() * args.len();
 
         let page_size = <Pageset as GenericPageset>::page_size();
@@ -770,6 +776,8 @@ impl ProcessMem {
                 vaddr + ptr_table.len() * mem::size_of::<usize>();
 
             for (index, arg) in args.iter().enumerate() {
+                let arg = arg.as_ref();
+
                 let arg_dest: &mut [u8] =
                     slice::from_raw_parts_mut(next_ptr as *mut u8,
                                               arg.len() + 1);
@@ -960,7 +968,9 @@ pub mod ffi {
     pub unsafe extern fn process_signal(pid: uint32_t, signal: c_int) -> c_int {
         if let Some(process) = super::by_id(pid) {
             // Case 1: this is the current process, so just exit
-            if super::current().lock().id == process.lock().id {
+            let current_pid = super::current().lock().id;
+            let target_pid = process.lock().id;
+            if current_pid == target_pid {
                 drop(process);
                 super::exit(signal);
                 // the function will not return!

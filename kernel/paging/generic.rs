@@ -14,6 +14,7 @@
 
 use core::iter::{repeat, StepBy};
 use core::ops;
+use core::fmt;
 
 use crate::error::Error;
 use crate::sync::Spinlock;
@@ -185,7 +186,7 @@ pub trait PagesetExt<'a>: Pageset<'a> {
 
 impl<'a, T: Pageset<'a>> PagesetExt<'a> for T { }
 
-#[derive(PartialEq, Eq, Debug, Copy, Clone)]
+#[derive(PartialEq, Eq, Copy, Clone)]
 pub struct PageType(u8);
 
 impl Default for PageType {
@@ -219,4 +220,13 @@ impl PageType {
     pub fn is_executable(self)  -> bool { self.is(0) }
     pub fn is_writable(self)    -> bool { self.is(1) }
     pub fn is_user(self)        -> bool { self.is(2) }
+}
+
+impl fmt::Debug for PageType {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "PageType({}{}{})",
+            if self.is_executable() { 'x' } else { '-' },
+            if self.is_writable()   { 'w' } else { '-' },
+            if self.is_user()       { 'u' } else { '-' })
+    }
 }

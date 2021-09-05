@@ -15,6 +15,7 @@ use crate::memory;
 use crate::scheduler;
 use crate::c_ffi::*;
 use crate::terminal::console;
+use crate::ptr::UserPtr;
 
 use core::slice;
 
@@ -42,9 +43,11 @@ struct SyscallTableEntry(usize);
 #[repr(C)]
 struct SyscallTable([SyscallTableEntry; SYSCALL_MAX + 1]);
 
+#[used]
 #[export_name = "syscall_table_size"]
 static TABLE_SIZE: usize = SYSCALL_MAX + 1;
 
+#[used]
 #[export_name = "syscall_table"]
 static mut TABLE: SyscallTable =
     SyscallTable([SyscallTableEntry(0); SYSCALL_MAX + 1]);
@@ -115,9 +118,9 @@ pub extern fn syscall_sleep() -> c_int {
 // FIXME: unsafe user ptr handling
 #[no_mangle]
 pub unsafe extern fn syscall_spawn(
-    file: *const c_char,
+    file: UserPtr<u8>,
     argc: c_int,
-    argv: *const *const c_char
+    argv: UserPtr<UserPtr<u8>>,
 ) -> int64_t {
     crate::archive::ffi::archive_utils_spawn(file, argc, argv)
 }

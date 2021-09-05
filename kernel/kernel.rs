@@ -21,6 +21,7 @@
 #![feature(lang_items, asm, box_syntax, alloc_error_handler)]
 #![feature(box_patterns, panic_info_message)]
 #![feature(repr_simd, const_panic, inline_const)]
+#![feature(maybe_uninit_slice, vec_spare_capacity)]
 
 #![allow(improper_ctypes)]
 
@@ -52,6 +53,7 @@ pub mod scheduler;
 pub mod syscall;
 pub mod c_ffi;
 pub mod error;
+pub mod ptr;
 
 use terminal::*;
 

@@ -55,6 +55,8 @@ pub mod ffi {
     use crate::multiboot;
     use crate::archive::utils;
 
+    use crate::ptr::UserPtr;
+
     use crate::c_ffi::{c_int, c_char, int64_t, CStr, c_void};
 
     use alloc::vec::Vec;
@@ -75,23 +77,48 @@ pub mod ffi {
     }
 
     #[no_mangle]
-    pub unsafe extern fn archive_utils_spawn(filename: *const c_char,
-                                             argc: c_int,
-                                             argv: *const *const c_char)
-                                             -> int64_t {
+    pub extern fn archive_utils_spawn(
+        filename: UserPtr<u8>,
+        argc: c_int,
+        argv: UserPtr<UserPtr<u8>>
+    ) -> int64_t {
 
-        // XXX: This is dangerous in so many ways.
-        // Beyond FIXME status. Get rid of it.
+        if argc < 0 {
+            return -1;
+        }
+        
+        if argc > 1024 {
+            return -1;
+        }
 
-        let filename = CStr::from_ptr(filename);
+        macro_rules! try_i {
+            ($value:expr) => (match $value {
+                Ok(v) => v,
+                Err(err) => {
+                    debug!("archive_utils_spawn error: {}", err);
+                    return -1;
+                }
+            })
+        }
 
-        let argv: Vec<Vec<u8>> = (0..argc as isize).map(|i| {
-            CStr::from_ptr(*argv.offset(i)).as_bytes().iter().map(|&b| b).collect()
-        }).collect();
+        let mut filename_buffer: Vec<u8> = vec![0; 256];
 
-        let argv_ptrs: Vec<&[u8]> = argv.iter().map(|v| &v[..]).collect();
+        let filename = try_i!(filename.read_c_string(&mut filename_buffer));
 
-        utils::spawn(filename, &argv_ptrs)
+        let argv_ptrs: Vec<UserPtr<u8>> =
+            try_i!(argv.read_to_vec(argc as usize));
+
+        let argv = try_i!(argv_ptrs.iter().map(|ptr| {
+            let mut arg_buffer: Vec<u8> = vec![0; 256];
+
+            let len = ptr.read_c_string(&mut arg_buffer)?.len();
+
+            arg_buffer.truncate(len + 1);
+
+            Ok(arg_buffer)
+        }).collect::<Result<Vec<Vec<u8>>, crate::ptr::Error>>());
+
+        utils::spawn(filename, &argv)
             .map(|pid| pid as i64)
             .unwrap_or_else(|e| -((e as u32) as i64))
     }
@@ -117,8 +144,11 @@ pub mod utils {
 
     use self::SpawnError::*;
 
-    pub fn spawn<'a>(filename: CStr<'a>, argv: &[&[u8]])
-                     -> Result<process::Id, SpawnError> {
+    pub fn spawn<'a, A>(filename: CStr<'a>, argv: &[A])
+        -> Result<process::Id, SpawnError>
+    where
+        A: AsRef<[u8]>,
+    {
 
         if filename.is_empty() {
             return Err(NoProgramSpecified);
