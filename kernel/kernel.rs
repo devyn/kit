@@ -25,13 +25,14 @@
 
 #![allow(improper_ctypes)]
 
-#![no_std]
+#![cfg_attr(not(test), no_std)]
 
 // These rust libs are specifically configured for Kit.
 #[macro_use] extern crate alloc;
 #[macro_use] extern crate static_assertions;
 #[macro_use] extern crate log as log_crate;
 
+#[cfg(not(test))]
 use core::panic::PanicInfo;
 
 #[macro_use] pub mod sync;
@@ -59,6 +60,7 @@ pub mod ptr;
 
 use terminal::*;
 use cmdline::Cmdline;
+use memory::InitMemoryMap;
 
 use alloc::string::String;
 
@@ -112,20 +114,20 @@ pub extern fn kernel_main() -> ! {
     console().set_color(Color::LightGrey, Color::Black).unwrap();
     console().write_char('\n').unwrap();
 
+    let mut init_memory_map = InitMemoryMap::default();
+
     if mb_info.flags & multiboot::info_flags::MEM_MAP != 0 {
         unsafe {
-            let mmap = constants::translate_low_addr(mb_info.mmap_addr)
-                .expect("mmap pointer outside low region");
-
-            memory::initialize(mmap, mb_info.mmap_length);
+            init_memory_map.load_from_multiboot(&mb_info);
         }
     } else {
         panic!("Bootloader did not provide memory map!");
     }
 
     unsafe {
+        memory::initialize(&init_memory_map);
         interrupt::initialize();
-        paging::initialize();
+        paging::initialize(&init_memory_map);
         memory::enable_large_heap();
         keyboard::initialize().unwrap();
     }

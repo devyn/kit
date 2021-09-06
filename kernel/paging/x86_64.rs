@@ -22,6 +22,7 @@ use crate::error;
 use alloc::boxed::Box;
 
 use crate::constants::{KERNEL_OFFSET, KERNEL_LOW_START, KERNEL_LOW_END};
+use crate::memory::InitMemoryMap;
 
 use super::generic::{self, Page, PagesetExt, PageType};
 
@@ -99,7 +100,7 @@ impl<'a> generic::Pageset<'a> for Pageset {
         Pageset { cr3: cr3, pml4: pml4, kernel: false }
     }
 
-    fn new_kernel() -> Pageset {
+    fn new_kernel(init_memory_map: &InitMemoryMap) -> Pageset {
         let pml4  = Pml4::alloc(Kernel);
         let paddr = safe_lookup(&pml4.entries)
             .expect("failed to find (Kernel) pml4's physical address");
@@ -110,14 +111,15 @@ impl<'a> generic::Pageset<'a> for Pageset {
         let mut pageset = Pageset { cr3: cr3, pml4: pml4, kernel: true };
 
         // Insert the identity map.
-        let identity_map_insert_result =
-            pageset.map_pages_with_type(
-                KERNEL_OFFSET,
-                Pageset::range(KERNEL_LOW_START as usize,
-                               KERNEL_LOW_END as usize),
-                PageType::default().writable().executable().not_user());
-
-        assert!(identity_map_insert_result.is_ok());
+        for &(vaddr, pages, page) in &init_memory_map.boot_mappings {
+            if let Some((paddr, page_type)) = page {
+                pageset.map_pages_with_type(vaddr,
+                    Pageset::range(paddr, paddr + pages * PAGE_SIZE),
+                    page_type).unwrap();
+            } else {
+                pageset.unmap_pages(vaddr, pages).unwrap();
+            }
+        }
 
         pageset
     }

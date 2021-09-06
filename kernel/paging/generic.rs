@@ -18,6 +18,7 @@ use core::fmt;
 
 use crate::error::Error;
 use crate::sync::Spinlock;
+use crate::memory::InitMemoryMap;
 
 use alloc::sync::Arc;
 
@@ -45,7 +46,7 @@ pub trait Pageset<'a>: Sized {
     fn new() -> Self;
 
     /// Create a new kernel pageset.
-    fn new_kernel() -> Self;
+    fn new_kernel(init_memory_map: &InitMemoryMap) -> Self;
 
     /// Load the pageset's page tables into the appropriate control registers.
     ///

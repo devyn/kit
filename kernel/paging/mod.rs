@@ -16,11 +16,12 @@ use alloc::sync::Arc;
 use alloc::boxed::Box;
 
 use crate::sync::Spinlock;
+use crate::memory::InitMemoryMap;
 
 pub mod generic;
 
 pub use self::generic::Pageset as GenericPageset;
-pub use self::generic::{PageType, PagesetExt};
+pub use self::generic::{Page, PageType, PagesetExt};
 
 #[cfg(any(doc, target_arch = "x86_64"))]
 pub mod x86_64;
@@ -97,12 +98,13 @@ pub fn initialized() -> bool {
 }
 
 /// Call this on system initialization.
-pub unsafe fn initialize() {
+pub unsafe fn initialize(init_memory_map: &InitMemoryMap) {
     if INITIALIZED {
         panic!("paging already initialized");
     }
 
-    KERNEL_PAGESET = Some(Box::into_raw(box Pageset::new_kernel()));
+    KERNEL_PAGESET = Some(Box::into_raw(
+        Box::new(Pageset::new_kernel(init_memory_map))));
 
     assert!(kernel_pageset().lookup(initialized as usize).is_some());
 

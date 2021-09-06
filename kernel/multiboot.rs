@@ -36,8 +36,12 @@
 
 use core::mem;
 
+use alloc::vec::Vec;
+
 use crate::c_ffi::CStr;
-use crate::constants::translate_low_addr;
+use crate::constants::{KERNEL_OFFSET, translate_low_addr};
+use crate::paging::{PAGE_SIZE, Page, PageType};
+use crate::memory::{VirtualAddress, PageCount, PhysicalAddress};
 
 /// How many bytes from the start of the file we search for the header.
 pub const SEARCH: usize                 = 8192;
@@ -257,6 +261,152 @@ impl Info {
             None
         }
     }
+
+    /// The mmap entries, if present.
+    pub unsafe fn mmap_entries(&self) -> Option<MmapEntryIter> {
+        if self.flags & info_flags::MEM_MAP != 0 {
+            let current_mmap =
+                translate_low_addr(self.mmap_addr).unwrap() as *const u8;
+            let mmap_end =
+                current_mmap.wrapping_add(self.mmap_length as usize);
+
+            Some(MmapEntryIter {
+                current_mmap, mmap_end, phantom: core::marker::PhantomData })
+        } else {
+            None
+        }
+    }
+
+    /// The modules, if present.
+    pub unsafe fn modules(&self) -> Option<&[Module]> {
+        if self.flags & info_flags::MODS != 0 {
+            let slice =
+                core::slice::from_raw_parts(
+                    translate_low_addr(self.mods_addr).unwrap(),
+                    self.mods_count as usize);
+
+            Some(slice)
+        } else {
+            None
+        }
+    }
+
+    /// Parse available memory maps
+    pub unsafe fn parse_available(&self, out: &mut Vec<(usize, usize)>) {
+        if let Some(entries) = self.mmap_entries() {
+            for entry in entries {
+                debug!("Multiboot memory entry: {:08X?}", entry);
+
+                if entry.is_available() {
+                    out.push(entry.range());
+                }
+            }
+        }
+    }
+
+    /// Parse reserved memory maps
+    pub unsafe fn parse_reserved(&self, out: &mut Vec<(usize, usize)>) {
+        if let Some(entries) = self.mmap_entries() {
+            for entry in entries {
+                if !entry.is_available() {
+                    out.push(entry.range());
+                }
+            }
+        }
+    }
+
+    /// Generate required identity maps to preserve kernel, modules, and
+    /// multiboot info.
+    pub unsafe fn generate_identity_maps(
+        &self,
+        out: &mut Vec<(VirtualAddress, PageCount, Page<PhysicalAddress>)>,
+    ) {
+        let initial_len = out.len();
+
+        // First, identity map low 1 MB of memory.
+        out.push((KERNEL_OFFSET, 0x100000/PAGE_SIZE,
+            Some((0x0, PageType::default().writable()))));
+
+        // Load kernel section symbols
+        extern {
+            static _bootstrap_begin: u8;
+            static _bootstrap_end: u8;
+            static _kernel_text_begin: u8;
+            static _kernel_text_end: u8;
+            static _kernel_rodata_begin: u8;
+            static _kernel_rodata_end: u8;
+            static _kernel_data_begin: u8;
+            static _kernel_data_end: u8;
+            static _kernel_got_begin: u8;
+            static _kernel_got_end: u8;
+            static _kernel_got_plt_begin: u8;
+            static _kernel_got_plt_end: u8;
+            static _kernel_bss_begin: u8;
+            static _kernel_bss_end: u8;
+        }
+
+        // These symbols are low memory addressed, so we have to add the offset
+        let bootstrap_begin = &_bootstrap_begin as *const u8 as usize;
+        let bootstrap_end = &_bootstrap_end as *const u8 as usize;
+
+        {
+            let bytes = bootstrap_end - bootstrap_begin;
+            let pages = bytes / PAGE_SIZE +
+                if bytes % PAGE_SIZE != 0 { 1 } else { 0 };
+
+            out.push((
+                KERNEL_OFFSET + bootstrap_begin,
+                pages,
+                Some((bootstrap_begin, PageType::default().writable()))
+            ));
+        }
+
+        // The rest are high memory addressed, just map them accordingly
+        let sections: [(*const u8, *const u8, PageType); 6] = [
+            (&_kernel_text_begin, &_kernel_text_end,
+             PageType::default().executable()),
+            (&_kernel_rodata_begin, &_kernel_rodata_end,
+             PageType::default()),
+            (&_kernel_data_begin, &_kernel_data_end,
+             PageType::default().writable()),
+            (&_kernel_got_begin, &_kernel_got_end,
+             PageType::default().writable()),
+            (&_kernel_got_plt_begin, &_kernel_got_plt_end,
+             PageType::default().writable()),
+            (&_kernel_bss_begin, &_kernel_bss_end,
+             PageType::default().writable()),
+        ];
+
+        for &(begin, end, page_type) in &sections[..] {
+            let bytes = end as usize - begin as usize;
+            let pages = bytes / PAGE_SIZE +
+                if bytes % PAGE_SIZE != 0 { 1 } else { 0 };
+
+            out.push((
+                begin as usize,
+                pages,
+                Some((begin as usize - KERNEL_OFFSET, page_type))
+            ));
+        }
+
+        // Add modules, identity mapped, read-only
+        if let Some(modules) = self.modules() {
+            for module in modules {
+                let bytes =
+                    module.mod_end as usize - module.mod_start as usize;
+                let pages = bytes / PAGE_SIZE +
+                    if bytes % PAGE_SIZE > 0 { 1 } else { 0 };
+
+                out.push((
+                    KERNEL_OFFSET + module.mod_start as usize,
+                    pages,
+                    Some((module.mod_start as usize, PageType::default()))
+                ));
+            }
+        }
+
+        debug!("Multiboot identity map: {:08X?}", &out[initial_len..]);
+    }
 }
 
 pub const MEMORY_AVAILABLE: u32 = 1;
@@ -278,6 +428,36 @@ pub struct MmapEntry {
 impl MmapEntry {
     pub fn is_available(&self) -> bool {
         self.kind == MEMORY_AVAILABLE
+    }
+
+    pub fn range(&self) -> (usize, usize) {
+        (self.addr as usize, (self.addr + self.len) as usize)
+    }
+}
+
+pub struct MmapEntryIter<'a> {
+    current_mmap: *const u8,
+    mmap_end: *const u8,
+    phantom: core::marker::PhantomData<&'a u8>,
+}
+
+impl<'a> Iterator for MmapEntryIter<'a> {
+    type Item = &'a MmapEntry;
+
+    fn next(&mut self) -> Option<&'a MmapEntry> {
+        unsafe {
+            if self.current_mmap < self.mmap_end {
+                let entry_ptr: *const MmapEntry = self.current_mmap.cast();
+                let entry = entry_ptr.as_ref().unwrap();
+
+                self.current_mmap = self.current_mmap
+                    .wrapping_add(entry.size as usize + 4);
+
+                Some(entry)
+            } else {
+                None
+            }
+        }
     }
 }
 

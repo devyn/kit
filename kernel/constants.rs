@@ -20,7 +20,7 @@ pub const KERNEL_OFFSET: usize = 0xffffffff80000000;
 pub const KERNEL_LOW_START: u32 = 0x00000000;
 
 /// End of the initial ('low') identity mapped region.
-pub const KERNEL_LOW_END:   u32 = 0x01000000;
+pub const KERNEL_LOW_END:   u32 = 0x04000000;
 
 /// Get a usable constant pointer in kernel space from a low address.
 ///

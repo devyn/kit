@@ -37,6 +37,8 @@ SECTIONS
     . = ALIGN(4K);
   }
 
+  _bootstrap_data_begin = .;
+
   .bootstrap_data :
   {
     build/kernel/boot32.o (.bootstrap_gdt64)
@@ -47,37 +49,63 @@ SECTIONS
     . = ALIGN(4K);
   }
 
+  _bootstrap_end = .;
+
   /* 64-bit kernel in the higher half of the 48-bit addressing scheme */
   .             += KERNEL_VMA;
   _kernel_begin  = .;
 
   /* Kernel executable code. */
-  .text : AT(ADDR(.text) - KERNEL_VMA)
+  .text ALIGN(4K) : AT(ADDR(.text) - KERNEL_VMA)
   {
-    *(EXCLUDE_FILE(build/kernel/boot*.o) .text)
-    . = ALIGN(4K);
+    _kernel_text_begin = .;
+    *(EXCLUDE_FILE(build/kernel/boot*.o) .text*)
+    _kernel_text_end = ALIGN(4K);
   }
 
   /* Read-only data. */
-  .rodata : AT(ADDR(.rodata) - KERNEL_VMA)
+  .rodata ALIGN(4K) : AT(ADDR(.rodata) - KERNEL_VMA)
   {
+    _kernel_rodata_begin = .;
     *(EXCLUDE_FILE(build/kernel/boot*.o) .rodata*)
-    . = ALIGN(4K);
+    _kernel_rodata_end = ALIGN(4K);
   }
 
   /* Read-write data (initialized) */
-  .data : AT(ADDR(.data) - KERNEL_VMA)
+  .data ALIGN(4K) : AT(ADDR(.data) - KERNEL_VMA)
   {
-    *(EXCLUDE_FILE(build/kernel/boot*.o) .data)
-    . = ALIGN(4K);
+    _kernel_data_begin = .;
+    *(EXCLUDE_FILE(build/kernel/boot*.o) .data*)
+    _kernel_data_end = ALIGN(4K);
+  }
+
+  /* Global offset table */
+  .got ALIGN(4K) : AT(ADDR(.got) - KERNEL_VMA)
+  {
+    _kernel_got_begin = .;
+    *(EXCLUDE_FILE(build/kernel/boot*.o) .got*)
+    /* TODO: figure out why bogus data necessary to make non-zero offset */
+    . = . + 8;
+    _kernel_got_end = ALIGN(4K);
+  }
+
+  /* Global offset table - PLT (executable) */
+  .got.plt ALIGN(4K) : AT(ADDR(.got.plt) - KERNEL_VMA)
+  {
+    _kernel_got_plt_begin = .;
+    *(EXCLUDE_FILE(build/kernel/boot*.o) .got.plt*)
+    /* TODO: figure out why bogus data necessary to make non-zero offset */
+    . = . + 8;
+    _kernel_got_plt_end = ALIGN(4K);
   }
 
   /* Read-write data (uninitialized) */
-  .bss : AT(ADDR(.bss) - KERNEL_VMA)
+  .bss ALIGN(4K) : AT(ADDR(.bss) - KERNEL_VMA)
   {
+    _kernel_bss_begin = .;
     *(EXCLUDE_FILE(build/kernel/boot*.o) COMMON)
-    *(EXCLUDE_FILE(build/kernel/boot*.o) .bss)
-    . = ALIGN(4K);
+    *(EXCLUDE_FILE(build/kernel/boot*.o) .bss*)
+    _kernel_bss_end = ALIGN(4K);
   }
 
   /* The compiler may produce other sections, by default it will put them in

@@ -42,7 +42,10 @@ clean-kernel:
 	rm -f build/kernel/*.a
 	rm -f build/kernel.elf
 
-.PHONY: all-kernel doc-kernel clean-kernel
+test-kernel:
+	cd kernel && ${CARGO} +nightly test ${KERNEL_TESTS}
+
+.PHONY: all-kernel doc-kernel clean-kernel test-kernel
 
 build/kernel/.dir: build/.dir
 	mkdir -p build/kernel

@@ -21,10 +21,8 @@ use crate::c_ffi::CStr;
 pub unsafe fn initialize(modules: *const multiboot::Module,
                          modules_count: u32) -> bool {
 
-    unsafe {
-        debug!("modules={:08X?}",
-            core::slice::from_raw_parts(modules, modules_count as usize));
-    }
+    debug!("modules={:08X?}",
+        core::slice::from_raw_parts(modules, modules_count as usize));
 
     ffi::archive_initialize(modules_count as u64, modules) == 1
 }

@@ -12,7 +12,6 @@
 
 //! Physical memory management and kernel heap.
 
-use core::mem;
 use core::cmp::min;
 use core::alloc::{GlobalAlloc, Layout};
 
@@ -23,10 +22,10 @@ use alloc::vec::Vec;
 use alloc::sync::Arc;
 
 use crate::paging::{self, kernel_pageset};
-use crate::paging::{PagesetExt, PageType};
+use crate::paging::{PagesetExt, PageType, Page};
 use crate::paging::PAGE_SIZE;
 
-use crate::multiboot::MmapEntry;
+use crate::multiboot;
 use crate::process::Id as ProcessId;
 use crate::sync::{Rcu, LockFreeList};
 use crate::sync::lock_free_list::Node;
@@ -35,6 +34,9 @@ use crate::constants::KERNEL_LOW_END;
 pub mod pool;
 
 mod large_heap;
+mod region_set;
+
+pub use region_set::RegionSet;
 
 /// The first "safe" physical address. Memory below this is not likely to be
 /// safe for general use, and may include parts of the kernel image among other
@@ -42,7 +44,7 @@ mod large_heap;
 ///
 /// 0x0 to SAFE_BOUNDARY are identity-mapped starting at 0xffff_ffff_8000_0000,
 /// so we avoid that region
-const SAFE_BOUNDARY: usize = KERNEL_LOW_END as usize;
+const SAFE_BOUNDARY: usize = 0x100000;
 
 const INITIAL_HEAP_LENGTH: usize = 131072;
 
@@ -64,12 +66,15 @@ extern {
 static mut KERNEL_HEAP: KernelHeap = KernelHeap::InitialHeap(0);
 
 #[cfg(test)]
-static mut KERNEL_HEAP: KernelHeap = KernelHeap::InitialHeap(0);
+static mut KERNEL_HEAP: KernelHeap = KernelHeap::StdHeap;
 
 #[derive(Debug)]
 enum KernelHeap {
+    #[cfg_attr(test, allow(unused))]
     InitialHeap(usize),
-    LargeHeap(large_heap::HeapState)
+    LargeHeap(large_heap::HeapState),
+    #[cfg(test)]
+    StdHeap,
 }
 
 // Support for Rust library allocation using the kernel heap
@@ -123,24 +128,60 @@ struct FreeRegion<T> {
     length: AtomicUsize, // page count
 }
 
+#[derive(Debug, Clone)]
+#[non_exhaustive]
+pub struct InitMemoryMap {
+    pub usable: Vec<(PhysicalAddress, PhysicalAddress)>,
+    pub reserved: Vec<(PhysicalAddress, PhysicalAddress)>,
+    pub boot_mappings: Vec<(VirtualAddress, PageCount, Page<PhysicalAddress>)>,
+}
+
+impl Default for InitMemoryMap {
+    fn default() -> InitMemoryMap {
+        InitMemoryMap {
+            usable: vec![],
+            reserved: vec![],
+            boot_mappings: vec![],
+        }
+    }
+}
+
+impl InitMemoryMap {
+    pub fn heap_usable(&self) -> RegionSet<PhysicalAddress> {
+        let mut set: RegionSet<PhysicalAddress> = RegionSet::new();
+
+        for &(start, end) in &self.usable {
+            set.insert(start..end);
+        }
+
+        for &(start, end) in &self.reserved {
+            set.remove(start..end);
+        }
+
+        for &(_, pages, page) in &self.boot_mappings {
+            if let Some((start, _)) = page {
+                set.remove(start..(start + pages * PAGE_SIZE));
+            }
+        }
+
+        set
+    }
+
+    pub unsafe fn load_from_multiboot(&mut self, info: &multiboot::Info) {
+        info.parse_available(&mut self.usable);
+        info.parse_reserved(&mut self.reserved);
+        info.generate_identity_maps(&mut self.boot_mappings);
+    }
+}
+
 /// Loads the memory map information into the region tree in order to know where
 /// in physical memory it's safe to allocate fresh pages.
-pub unsafe fn initialize(mmap_buffer: *const u8, mmap_length: u32) {
-    let mut current_mmap = mmap_buffer;
-    let mmap_end = mmap_buffer.offset(mmap_length as isize);
-
+pub unsafe fn initialize(memory_map: &InitMemoryMap) {
     let free_regions = LockFreeList::new();
 
-    while current_mmap < mmap_end {
-        let entry_ptr: *const MmapEntry = mem::transmute(current_mmap);
-        let entry = entry_ptr.as_ref().unwrap();
-
-        debug!("Multiboot memory entry: {:08X?}", entry);
-
-        current_mmap = current_mmap.offset(entry.size as isize + 4);
-
-        let addr = entry.addr as usize;
-        let len  = entry.len  as usize;
+    for range in memory_map.heap_usable().iter() {
+        let addr = range.start;
+        let len  = range.end - range.start;
 
         // Align physical base address to page size.
         let mut physical_base = align_addr(addr, PAGE_SIZE);
@@ -161,9 +202,8 @@ pub unsafe fn initialize(mmap_buffer: *const u8, mmap_length: u32) {
             }
         }
 
-        // If the entry is marked as available and has at least one page, add it
-        // to the free regions.
-        if entry.is_available() && pages > 0 {
+        // If the entry has at least one page, add it to the free regions.
+        if pages > 0 {
             free_regions.push(Node::new(FreeRegion {
                 start: physical_base,
                 length: pages.into(),
@@ -189,7 +229,13 @@ pub unsafe fn allocate(size: usize, align: usize) -> *mut u8 {
         KernelHeap::InitialHeap(ref mut counter) =>
             initial_heap_allocate(counter, size, align),
         KernelHeap::LargeHeap(ref state) =>
-            large_heap::allocate(state, size, align)
+            large_heap::allocate(state, size, align),
+
+        #[cfg(test)]
+        KernelHeap::StdHeap => {
+            std::alloc::alloc(
+                std::alloc::Layout::from_size_align(size, align).unwrap())
+        }
     };
 
     ptr
@@ -203,7 +249,13 @@ pub unsafe fn deallocate(ptr: *mut u8, size: usize, align: usize) {
             // Deallocation not supported.
             (),
         KernelHeap::LargeHeap(ref state) =>
-            large_heap::deallocate(state, ptr, size, align)
+            large_heap::deallocate(state, ptr, size, align),
+
+        #[cfg(test)]
+        KernelHeap::StdHeap => {
+            std::alloc::dealloc(ptr,
+                std::alloc::Layout::from_size_align(size, align).unwrap());
+        }
     }
 }
 
@@ -524,6 +576,10 @@ pub fn debug_print_allocator_stats() {
             },
             KernelHeap::LargeHeap(ref state) => {
                 large_heap::debug_print_allocator_stats(state);
+            },
+            #[cfg(test)]
+            KernelHeap::StdHeap => {
+                unimplemented!()
             },
         }
     }
