@@ -22,7 +22,7 @@ pub unsafe fn initialize(modules: *const multiboot::Module,
                          modules_count: u32) -> bool {
 
     unsafe {
-        debug!("modules={:?}",
+        debug!("modules={:08X?}",
             core::slice::from_raw_parts(modules, modules_count as usize));
     }
 

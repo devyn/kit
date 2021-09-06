@@ -80,6 +80,9 @@ pub extern fn kernel_main() -> ! {
 
     info!("BOOT: Hello, I'm Kit.");
 
+    debug!("Kernel command line: {}", cmdline);
+    debug!("Multiboot info: {:08X?}", mb_info);
+
     console().reset().unwrap();
     console().set_color(Color::Red, Color::White).unwrap();
 

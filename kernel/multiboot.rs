@@ -35,7 +35,6 @@
 //! > DEALINGS IN THE SOFTWARE.
 
 use core::mem;
-use core::fmt;
 
 use crate::c_ffi::CStr;
 use crate::constants::translate_low_addr;
@@ -283,6 +282,7 @@ impl MmapEntry {
 }
 
 #[repr(C)]
+#[derive(Debug)]
 pub struct Module {
     // The memory used goes from bytes 'mod_start' to 'mod_end-1' inclusive.
     pub mod_start: u32,
@@ -293,17 +293,6 @@ pub struct Module {
 
     /// Padding to take the structure to 16 bytes (must be zero).
     pub pad: u32,
-}
-
-impl fmt::Debug for Module {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        f.debug_struct("Module")
-            .field("mod_start", &format_args!("0x{:x}", self.mod_start))
-            .field("mod_end", &format_args!("0x{:x}", self.mod_end))
-            .field("cmdline", &format_args!("0x{:x}", self.cmdline))
-            .field("pad", &format_args!("0x{:x}", self.pad))
-            .finish()
-    }
 }
 
 extern {

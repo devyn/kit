@@ -135,6 +135,8 @@ pub unsafe fn initialize(mmap_buffer: *const u8, mmap_length: u32) {
         let entry_ptr: *const MmapEntry = mem::transmute(current_mmap);
         let entry = entry_ptr.as_ref().unwrap();
 
+        debug!("Multiboot memory entry: {:08X?}", entry);
+
         current_mmap = current_mmap.offset(entry.size as isize + 4);
 
         let addr = entry.addr as usize;
