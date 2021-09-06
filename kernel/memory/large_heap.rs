@@ -104,7 +104,7 @@ pub unsafe fn initialize() -> HeapState {
         let size = 8 + index * 8;
         let pool = Pool::new(size, 1);
         pool.insert_region(bootstrap_start + index * PAGE_SIZE).unwrap();
-        debug!("{:?}", pool);
+        trace!("{:?}", pool);
         pools.push((size, Arc::new(pool)));
     }
 
@@ -215,8 +215,8 @@ fn allocate_pages(state: &HeapState, pages: usize, align: usize)
     let regions = &state.regions;
 
     // Find a virtual region large enough that will work for the alignment
-    debug!("regions.free_virtual={:?}", regions.free_virtual);
-    debug!("pages={:?}", pages);
+    trace!("regions.free_virtual={:?}", regions.free_virtual);
+    trace!("pages={:?}", pages);
 
     let alloc_start = 'retry: loop {
         let r = regions.free_virtual.iter().flat_map(|r| {
@@ -232,7 +232,7 @@ fn allocate_pages(state: &HeapState, pages: usize, align: usize)
             let alloc_start = align_addr_down(r_end - pages * page_size, align);
             let alloc_end = alloc_start + pages * page_size;
 
-            debug!("considering  {:016x} < {:016x}, {:016x} > {:016x}", r.start,
+            trace!("considering  {:016x} < {:016x}, {:016x} > {:016x}", r.start,
                 alloc_start, alloc_end, r_end);
 
             // If the allocation would fall out of the region, we can't use it
@@ -263,11 +263,11 @@ fn allocate_pages(state: &HeapState, pages: usize, align: usize)
             continue 'retry;
         }
 
-        debug!("region={:?}", region);
-        debug!("alloc_start=0x{:016x}", alloc_start);
-        debug!("r_length={}", r_length);
-        debug!("new_length={}", new_length);
-        debug!("region_after=({:016x}, {})", region_after.0, region_after.1);
+        trace!("region={:?}", region);
+        trace!("alloc_start=0x{:016x}", alloc_start);
+        trace!("r_length={}", r_length);
+        trace!("new_length={}", new_length);
+        trace!("region_after=({:016x}, {})", region_after.0, region_after.1);
 
         // Insert a node if the after region has length
         let (r_after_start, r_after_length) = region_after;
@@ -426,10 +426,10 @@ fn deallocate_small_object(
     // Find the pool appropriate to the object
     if let Some(pool) = pool_get(state, size_aligned) {
         if let Err(err) = pool.deallocate(vaddr) {
-            debug!("BUG: Pool {} deallocation error: {}", size_aligned, err);
+            warn!("BUG: Pool {} deallocation error: {}", size_aligned, err);
         }
     } else {
-        debug!("BUG: Trying to deallocate unknown pointer 0x{:16x} x {}",
+        warn!("BUG: Trying to deallocate unknown pointer 0x{:16x} x {}",
             vaddr, size_aligned);
     }
 }

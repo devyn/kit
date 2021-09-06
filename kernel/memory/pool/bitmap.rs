@@ -40,8 +40,6 @@ impl FreeBitmap {
     }
 
     pub fn clear(&self) {
-        debug!("clear({}, {:?})", self.bits, self.ptr);
-
         let mut pointer = self.ptr;
 
         for byte in 0..byte_size(self.bits) {

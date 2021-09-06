@@ -187,7 +187,7 @@ pub fn switch_to(process: RcProcess) {
     let old_hw_state = old_process.lock().hw_state;
     let new_hw_state = process.lock().hw_state;
 
-    debug!("SWITCH PID{} {:p} (strong={}) -> PID{} {:p} (strong={})",
+    trace!("SWITCH PID{} {:p} (strong={}) -> PID{} {:p} (strong={})",
         old_id, old_process, Arc::strong_count(&old_process),
         new_id, process, Arc::strong_count(&process));
 

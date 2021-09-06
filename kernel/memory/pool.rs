@@ -197,7 +197,7 @@ impl Pool {
 
         self.objects_capacity.fetch_add(self.config.object_capacity(), Relaxed);
 
-        debug!("pool({}) region inserted: {:016x}, new capacity = {}/{}",
+        trace!("pool({}) region inserted: {:016x}, new capacity = {}/{}",
             self.object_size(), addr,
             self.objects_used(), self.objects_capacity());
 
@@ -243,7 +243,7 @@ impl Pool {
                 self.objects_capacity.fetch_sub(self.config.object_capacity(),
                     Relaxed);
 
-                debug!("pool({}) region removed: 0x{:016x}",
+                trace!("pool({}) region removed: 0x{:016x}",
                     self.object_size(), addr);
                 Ok(())
             },
@@ -265,17 +265,17 @@ impl Pool {
     }
 
     pub fn allocate(&self) -> Result<VirtualAddress, Error> {
-        debug!("pool({},{}) allocate()? capacity={}/{}",
+        trace!("pool({},{}) allocate()? capacity={}/{}",
             self.object_size(), self.region_pages(),
             self.objects_used(), self.objects_capacity());
 
         for all in self.iter(ListSel::All) {
-            debug!("Region: {:?}", unsafe { all.debug(self.config) });
+            trace!("Region: {:?}", unsafe { all.debug(self.config) });
         }
 
         // Walk the free list until we can get an object
         for free in self.iter(ListSel::Free) {
-            debug!("Checking free region {:?}",
+            trace!("Checking free region {:?}",
                 unsafe { free.debug(self.config) });
             // Operations involving the bitmap are safe because we know our
             // config is good and the references we're using to region info are
@@ -286,20 +286,20 @@ impl Pool {
                 // We have it. If it's full, make an effort to remove from the
                 // free list
                 if unsafe { free.bitmap(self.config) }.is_full() {
-                    debug!("pool({},{}) full region {:?}",
+                    trace!("pool({},{}) full region {:?}",
                         self.object_size(), self.region_pages(),
                         unsafe { free.debug(self.config) });
                     self.remove(ListSel::Free, free.region_base(self.config));
                 }
 
-                debug!("pool({},{}) allocated: {:016x} capacity={}/{}",
+                trace!("pool({},{}) allocated: {:016x} capacity={}/{}",
                     self.object_size(), self.region_pages(), free_address,
                     self.objects_used(), self.objects_capacity());
 
                 return Ok(free_address);
             } else {
                 // Is this weird?
-                debug!("Weird: found a full region on the free list: {:?}",
+                trace!("Weird: found a full region on the free list: {:?}",
                     unsafe { free.debug(self.config) });
                 self.remove(ListSel::Free, free.region_base(self.config));
             }
@@ -309,7 +309,7 @@ impl Pool {
     }
 
     pub fn deallocate(&self, addr: usize) -> Result<Deallocated, Error> {
-        debug!("pool({},{}) deallocate({:016x}) capacity={}/{}",
+        trace!("pool({},{}) deallocate({:016x}) capacity={}/{}",
             self.object_size(), self.region_pages(),
             addr,
             self.objects_used(), self.objects_capacity());
@@ -344,7 +344,7 @@ impl Pool {
                     }
                 };
 
-                debug!("pool({},{}) deallocated: {:016x} capacity={}/{} \
+                trace!("pool({},{}) deallocated: {:016x} capacity={}/{} \
                     maybe_empty={:?}",
                     self.object_size(), self.region_pages(),
                     addr,
@@ -593,13 +593,13 @@ struct RegionInfo {
 const BITMAP_OFFSET: usize = size_of::<RegionInfo>();
 
 unsafe fn initialize_region(region_base: usize, config: PoolConfig) {
-    debug!("initialize_region(0x{:016x}, {:?})", region_base, config);
+    trace!("initialize_region(0x{:016x}, {:?})", region_base, config);
 
     let region_info_ptr = ptr::NonNull::new(
         (region_base + config.region_info_offset() as usize) as *mut RegionInfo
     ).unwrap();
 
-    debug!("region_info_ptr = {:?}, size = {:x}", region_info_ptr, config.region_info_size());
+    trace!("region_info_ptr = {:?}, size = {:x}", region_info_ptr, config.region_info_size());
 
     RegionInfo::initialize(region_info_ptr, config);
 }

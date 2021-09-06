@@ -21,6 +21,7 @@ use core::fmt::{self, Display, Debug};
 use core::str;
 
 use alloc::string::String;
+use alloc::vec::Vec;
 
 pub type size_t = usize;
 
@@ -107,10 +108,19 @@ impl<'a> CStr<'a> {
 }
 
 /// Warning: lossy implementation
-impl<'a> Into<String> for CStr<'a> {
-    fn into(self) -> String {
-        String::from_utf8_lossy(self.as_bytes()).into_owned()
+impl<'a> From<CStr<'a>> for String {
+    fn from(cstr: CStr<'a>) -> String {
+        String::from_utf8_lossy(cstr.as_bytes()).into_owned()
     }
+}
+
+/// Make a buffer from a Rust string that's compatible with [CStr::new]
+pub fn cstring_from_str(s: &str) -> Vec<u8> {
+    let bytes = s.as_bytes();
+    let mut vec = Vec::with_capacity(bytes.len() + 1);
+    vec.extend(bytes.iter().cloned());
+    vec.push(0);
+    vec
 }
 
 impl<'a> Display for CStr<'a> {

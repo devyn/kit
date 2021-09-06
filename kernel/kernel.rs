@@ -29,14 +29,16 @@
 
 // These rust libs are specifically configured for Kit.
 #[macro_use] extern crate alloc;
-
 #[macro_use] extern crate static_assertions;
+#[macro_use] extern crate log as log_crate;
 
 use core::panic::PanicInfo;
 
 #[macro_use] pub mod sync;
 #[macro_use] pub mod util;
 
+pub mod log;
+pub mod cmdline;
 pub mod serial;
 pub mod terminal;
 pub mod constants;
@@ -56,14 +58,27 @@ pub mod error;
 pub mod ptr;
 
 use terminal::*;
+use cmdline::Cmdline;
+
+use alloc::string::String;
 
 /// Main kernel entry point.
 #[no_mangle]
 pub extern fn kernel_main() -> ! {
 
+    let mb_info = unsafe { multiboot::get_info() };
+
+    let cmdline_utf8 = unsafe { mb_info.cmdline() }
+        .map(|cstr| String::from(cstr))
+        .unwrap_or("".into());
+
+    let cmdline = Cmdline::new(&cmdline_utf8);
+
     serial::com1().initialize().unwrap();
 
-    debug!("BOOT: Hello, I'm Kit.");
+    log::initialize(&cmdline);
+
+    info!("BOOT: Hello, I'm Kit.");
 
     console().reset().unwrap();
     console().set_color(Color::Red, Color::White).unwrap();
@@ -72,8 +87,6 @@ pub extern fn kernel_main() -> ! {
 
     console().set_color(Color::White, Color::Red).unwrap();
     console().write_char('\n').unwrap();
-
-    let mb_info = unsafe { multiboot::get_info() };
 
     match mb_info.mem_sizes() {
         Some((lower, upper)) => {
@@ -90,17 +103,7 @@ pub extern fn kernel_main() -> ! {
         }
     }
 
-    match unsafe { mb_info.cmdline() } {
-        Some(cmdline) => {
-            write!(console(), "{:<20} ", "Kernel command line:").unwrap();
-
-            console().write_raw_bytes(cmdline.as_bytes()).unwrap();
-            console().write_char('\n').unwrap();
-        },
-        None => {
-            write!(console(), "Kernel command line:\n").unwrap();
-        }
-    }
+    write!(console(), "{:<20} {}\n", "Kernel command line:", cmdline).unwrap();
 
     console().write_char('\n').unwrap();
     console().set_color(Color::LightGrey, Color::Black).unwrap();
@@ -145,11 +148,14 @@ pub extern fn kernel_main() -> ! {
     let pid;
 
     {
-        let cmdline = unsafe { mb_info.cmdline().unwrap() };
+        let init = cmdline.iter().find(|(key, _)| *key == "init")
+            .map(|(_, value)| value);
 
-        if !cmdline.is_empty() {
+        if let Some(init) = init {
+            let init_cstring = c_ffi::cstring_from_str(init);
+
             pid = archive::utils::spawn(
-                cmdline, &[cmdline.as_bytes()]).unwrap();
+                c_ffi::CStr::new(&init_cstring), &[&init_cstring]).unwrap();
 
             process::wait(pid).unwrap();
         } else {

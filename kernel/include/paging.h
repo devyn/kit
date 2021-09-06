@@ -20,6 +20,8 @@
 #include "config.h"
 #include "memory.h"
 
+#define PAGE_SIZE 4096
+
 /* Pageset (management helper) */
 
 struct paging_rc_contents {

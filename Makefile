@@ -64,7 +64,8 @@ build/kit.iso: resources/grub.cfg build/kernel.elf build/system.kit
 	cp build/kernel.elf build/isodir/boot/kernel.elf
 	cp build/system.kit build/isodir/boot/system.kit
 	grub-mkimage --format=i386-pc --output=build/core.img -p '/boot/grub' \
-		--config=build/isodir/boot/grub/grub.cfg biosdisk iso9660 normal multiboot
+		--config=build/isodir/boot/grub/grub.cfg \
+    biosdisk iso9660 normal multiboot vga_text at_keyboard
 	cat ${GRUB_LIB}/i386-pc/cdboot.img build/core.img > build/isodir/grub.img
 	rm build/core.img
 	genisoimage -A "Kit" -input-charset "iso8859-1" -R -b grub.img \

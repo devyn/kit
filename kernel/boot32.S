@@ -246,8 +246,8 @@ _bootstrap:
 
 .initializePaging:
   # Set up (temporary) paging the way x86_64 long mode likes it.
-  # The result of this is a page table in which the first 16 megabytes of physical
-  # memory are identity mapped (0-16MB virtual -> 0-16MB physical), as well as mapped
+  # The result of this is a page table in which the first 64 megabytes of physical
+  # memory are identity mapped (0-64MB virtual -> 0-64MB physical), as well as mapped
   # at 0xffffffff80000000 which is accessible via the kernel code model.
 
   # Disable paging (though it probably isn't enabled at the moment anyway)
@@ -273,18 +273,18 @@ _bootstrap:
   movl $(pdpt_lo + 0x3), (pml4)          # Set pml4[0] to (pdpt_lo + P,R)
   movl $(pd_lo   + 0x3), (pdpt_lo)       # Set pdpt_lo[0] to (pd_lo + P,R)
 
-  # Also map the first 16 physical megabytes of memory at 0xffffffff80000000,
+  # Also map the first 64 physical megabytes of memory at 0xffffffff80000000,
   # which is the start of kernel space. This is a bit more complicated.
 
   movl $(pdpt_hi + 0x3), (pml4 + 0xff8)    # Set pml4[511] to (pdpt_hi + P,R)
   movl $(pd_hi   + 0x3), (pdpt_hi + 0xff0) # Set pdpt_hi[510] to (pd_hi + P,R)
 
-  # Set up PDs to identity map 8 megabytes of memory in both low and high
+  # Set up PDs to identity map 64 megabytes of memory in both low and high
   # memory.
 
   movl $0x00000083,   %eax      # Initial value is address 0 with Present, Read/Write, Page size
   movl $pd_lo,        %esi      # pd_lo table
-  movl $8,            %ecx      # 4 entries * 2 megabytes mapped per entry = 16 megabytes
+  movl $32,            %ecx     # 32 entries * 2 megabytes mapped per entry = 64 megabytes
   movl $pd_hi,        %edi      # pd_hi table
   call .setPageDirectoryEntries
 

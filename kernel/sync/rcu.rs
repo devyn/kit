@@ -12,8 +12,11 @@
 
 use alloc::sync::Arc;
 
-use core::sync::atomic::AtomicPtr;
-use core::sync::atomic::Ordering::*;
+use core::sync::atomic::{
+    AtomicPtr,
+    Ordering::*,
+    fence,
+};
 
 use core::fmt;
 
@@ -24,17 +27,27 @@ pub struct Rcu<T> {
 
 impl<T> Rcu<T> {
     pub fn new(value: Arc<T>) -> Rcu<T> {
+        fence(Release);
+
         Rcu { state: AtomicPtr::new(Arc::into_raw(value) as *mut T) }
     }
 
     pub fn read(&self) -> Arc<T> {
         unsafe {
-            let ptr = self.state.load(Relaxed);
+            let ptr = self.state.load(Acquire);
 
             assert!(!ptr.is_null());
 
             Arc::increment_strong_count(ptr);
             Arc::from_raw(ptr)
+        }
+    }
+
+    /// Write a new value without verifying the existing value.
+    pub fn put(&self, value: Arc<T>) {
+        unsafe {
+            let old = self.state.swap(Arc::into_raw(value) as *mut T, AcqRel);
+            drop(Arc::from_raw(old))
         }
     }
 
@@ -51,13 +64,31 @@ impl<T> Rcu<T> {
                 .compare_exchange(
                     original_ptr as *mut T,
                     raw_ptr as *mut T,
-                    Relaxed,
+                    Release,
                     Relaxed,
                 )
                 .map(|_| ())
                 // Give it back on error.
                 .map_err(|_| Arc::from_raw(raw_ptr))
         }
+    }
+
+    pub fn update_with<F>(&self, mut mapper: F) -> Option<Arc<T>>
+    where
+        F: FnMut(&Arc<T>) -> Option<Arc<T>>,
+    {
+        loop {
+            let original = self.read();
+            if let Some(new) = mapper(&original) {
+                if self.update(&original, new.clone()).is_ok() {
+                    return Some(new);
+                } else {
+                    continue;
+                }
+            } else {
+                return None;
+            }
+        } 
     }
 }
 

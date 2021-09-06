@@ -15,6 +15,9 @@
 #include "memory.h"
 #include "string.h"
 #include "debug.h"
+#include "paging.h"
+
+#define ARCHIVE_OFFSET 0xffffffff82800000
 
 archive_header_t *archive_system;
 
@@ -29,8 +32,24 @@ bool archive_initialize(uint64_t modules_count, multiboot_module_t *modules)
     {
       if (string_compare(cmdline, ARCHIVE_SYSTEM_NAME) == 0)
       {
-        archive_system = (archive_header_t *)
-          (KERNEL_OFFSET + modules[i].mod_start);
+        // Map it at ARCHIVE_OFFSET
+        uint64_t bytes = modules[i].mod_end - modules[i].mod_start + 1;
+        uint64_t pages = bytes/PAGE_SIZE + (bytes%PAGE_SIZE > 0 ? 1 : 0);
+
+        uint64_t mapped = paging_map(
+            paging_kernel_pageset,
+            (void *) ARCHIVE_OFFSET,
+            modules[i].mod_start,
+            pages,
+            PAGING_READONLY);
+
+        if (mapped != pages) {
+          DEBUG_MESSAGE("failed to map archive pages");
+
+          return false;
+        }
+
+        archive_system = (archive_header_t *) ARCHIVE_OFFSET;
 
         return true;
       }

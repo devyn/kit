@@ -21,6 +21,11 @@ use crate::c_ffi::CStr;
 pub unsafe fn initialize(modules: *const multiboot::Module,
                          modules_count: u32) -> bool {
 
+    unsafe {
+        debug!("modules={:?}",
+            core::slice::from_raw_parts(modules, modules_count as usize));
+    }
+
     ffi::archive_initialize(modules_count as u64, modules) == 1
 }
 
@@ -57,7 +62,7 @@ pub mod ffi {
 
     use crate::ptr::UserPtr;
 
-    use crate::c_ffi::{c_int, c_char, int64_t, CStr, c_void};
+    use crate::c_ffi::{c_int, c_char, int64_t, c_void};
 
     use alloc::vec::Vec;
 

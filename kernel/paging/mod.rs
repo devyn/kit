@@ -237,8 +237,9 @@ pub mod ffi {
     #[no_mangle]
     pub unsafe extern fn paging_drop_ref(pageset: *mut PagesetCRef) {
         if !(*pageset).is_null() {
+            // 0xdead - tombstone value so it's obvious if we use-after-free
             drop(mem::replace(&mut *pageset,
-                              PagesetCRef(ptr::null())).into_rc())
+                              PagesetCRef(0xdead as *const c_void)).into_rc())
         }
     }
 

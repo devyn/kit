@@ -15,21 +15,6 @@
 use core::cmp::min;
 use core::intrinsics::{write_bytes, copy_nonoverlapping};
 
-#[macro_export]
-#[allow(unused_macros)]
-macro_rules! debug {
-    ($fmt:expr, $($args:expr),*) => ({
-        use core::fmt::Write;
-        let _ = writeln!($crate::serial::com1(),
-            "DEBUG: {}:{}:{}: {}",
-            file!(),
-            line!(),
-            column!(),
-            format_args!($fmt, $($args),*));
-    });
-    ($fmt:expr) => (debug!($fmt,));
-}
-
 pub fn set_memory(dest: &mut [u8], value: u8) {
     unsafe {
         write_bytes(dest.as_mut_ptr(), value, dest.len());

@@ -181,7 +181,7 @@ pub unsafe fn initialize(mmap_buffer: *const u8, mmap_length: u32) {
 }
 
 pub unsafe fn allocate(size: usize, align: usize) -> *mut u8 {
-    debug!("allocate({}, {})", size, align);
+    trace!("allocate({}, {})", size, align);
 
     let ptr = match KERNEL_HEAP {
         KernelHeap::InitialHeap(ref mut counter) =>
@@ -194,7 +194,7 @@ pub unsafe fn allocate(size: usize, align: usize) -> *mut u8 {
 }
 
 pub unsafe fn deallocate(ptr: *mut u8, size: usize, align: usize) {
-    debug!("deallocate({:p}, {}, {})", ptr, size, align);
+    trace!("deallocate({:p}, {}, {})", ptr, size, align);
 
     match KERNEL_HEAP {
         KernelHeap::InitialHeap(_) =>
@@ -256,7 +256,7 @@ pub fn acquire_region(owner: RegionUser, pages: PageCount)
 
     let free_page_count = state.free_page_count.load(Relaxed);
     if free_page_count < pages {
-        debug!("free_page_count={} < {}", free_page_count, pages);
+        trace!("free_page_count={} < {}", free_page_count, pages);
         return None;
     }
 
@@ -308,7 +308,7 @@ pub fn acquire_region(owner: RegionUser, pages: PageCount)
 
         Some((alloc_start, acq_pages))
     } else {
-        debug!("No free physical region available.");
+        trace!("No free physical region available.");
         None
     }
 }
@@ -405,7 +405,7 @@ fn release_to_free_region_list(
             // We can remove the old free region since it's zero anyway
             list.remove(&free_region);
 
-            debug!("released {} {:016x} + {} + {} by unify start",
+            trace!("released {} {:016x} + {} + {} by unify start",
                 type_, start, length, other_length);
 
             return;
@@ -424,7 +424,7 @@ fn release_to_free_region_list(
             }
         }).is_ok() {
             // We were able to extend it.
-            debug!("released {} {:016x} + {} by unify end into {:?}",
+            trace!("released {} {:016x} + {} by unify end into {:?}",
                 type_, start, length, *free_region);
             return;
         }
@@ -434,7 +434,7 @@ fn release_to_free_region_list(
     // just add it to the free list.
     list.push(new_node);
 
-    debug!("released {} {:016x} + {} as new free region", type_, start, length);
+    trace!("released {} {:016x} + {} as new free region", type_, start, length);
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
