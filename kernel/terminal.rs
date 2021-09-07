@@ -15,6 +15,9 @@
 use core::fmt;
 use core::mem;
 
+use crate::multiboot;
+use crate::constants::translate_low_addr;
+
 /// Colors common to most terminals.
 ///
 /// Numeric values correspond to the VGA text mode palette.
@@ -599,8 +602,16 @@ static mut CONSOLE: Option<Ansi<Vga>> = None;
 pub fn console() -> &'static mut dyn Terminal {
     unsafe {
         if CONSOLE.is_none() {
+            let info = multiboot::get_info();
+
+            assert!(info.framebuffer_addr < u32::MAX as u64);
+
             CONSOLE = Some(Ansi::new(Vga::new(
-                        80, 25, 0xffffffff800b8000 as *mut u16, 0x3d4)));
+                        info.framebuffer_width as usize,
+                        info.framebuffer_height as usize,
+                        translate_low_addr::<u16>(info.framebuffer_addr as u32)
+                            .unwrap() as *mut _,
+                        0x3d4)));
         }
 
         CONSOLE.as_mut().unwrap()

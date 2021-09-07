@@ -75,6 +75,6 @@ build/kit.iso: resources/grub.cfg build/kernel.elf build/system.kit
 # =Testing=
 
 run-qemu: build/kit.iso
-	qemu-system-x86_64 -cdrom build/kit.iso -boot d ${QEMUFLAGS}
+	qemu-system-x86_64 -cdrom build/kit.iso -boot d -serial stdio ${QEMUFLAGS}
 
 .PHONY: run-qemu

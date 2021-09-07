@@ -21,9 +21,16 @@
 # Declare constants used for creating a multiboot header.
 .set ALIGN,    1<<0             # align loaded modules on page boundaries
 .set MEMINFO,  1<<1             # provide memory map
-.set FLAGS,    ALIGN | MEMINFO  # this is the Multiboot 'flag' field
+.set GRAPHICS, 1<<2             # provide video info
+.set FLAGS,    ALIGN | MEMINFO | GRAPHICS # this is the Multiboot 'flag' field
 .set MAGIC,    0x1BADB002       # 'magic number' lets bootloader find the header
 .set CHECKSUM, -(MAGIC + FLAGS) # checksum of above, to prove we are multiboot
+
+# Want 80x25 EGA text
+.set FB_MODE_TYPE, 1
+.set FB_WIDTH, 80 
+.set FB_HEIGHT, 25
+.set FB_DEPTH, 0 # always
 
 # Declare a header as in the Multiboot Standard. We put this into a special
 # section so we can force the header to be in the start of the final program.
@@ -35,6 +42,15 @@
 .long MAGIC
 .long FLAGS
 .long CHECKSUM
+.long 0 # header_addr
+.long 0 # load_addr
+.long 0 # load_end_addr
+.long 0 # bss_end_addr
+.long 0 # entry_addr
+.long FB_MODE_TYPE
+.long FB_WIDTH
+.long FB_HEIGHT
+.long FB_DEPTH
 
 # Currently the stack pointer register (esp) points at anything and using it may
 # cause massive harm. Instead, we'll provide our own stack. We will allocate
@@ -166,7 +182,18 @@ pd_hi:    .skip 4096
 # This is where we will store the multiboot information structure.
 .global kernel_multiboot_info
 kernel_multiboot_info:
-.skip 88 # 88 bytes - see multiboot information format
+.set MULTIBOOT_INFO_LENGTH, 116 # 116 bytes - see multiboot information format
+.skip MULTIBOOT_INFO_LENGTH
+
+# Multiboot flags offset
+.set MULTIBOOT_FLAGS, 0
+# Offset for framebuffer info within multiboot structure
+.set MULTIBOOT_FRAMEBUFFER, 88
+.set MULTIBOOT_FRAMEBUFFER_WIDTH, 100
+.set MULTIBOOT_FRAMEBUFFER_HEIGHT, 104
+.set MULTIBOOT_FRAMEBUFFER_TYPE, 106
+# Bit in multiboot flags that determines if framebuffer was provided
+.set MULTIBOOT_FRAMEBUFFER_PROVIDED, 1 << 12
 
 .section .rodata
 .Lerr_noCPUID:    .ascii "E: Your processor does not support the CPUID instruction.\0"
@@ -196,8 +223,22 @@ _bootstrap:
 
   movl %ebx,                   %esi # *EBX is source
   movl $kernel_multiboot_info, %edi # kernel_multiboot_info is destination
-  movl $(88 >> 2),             %ecx # 88 bytes / 4 bytes per long
+  movl $(MULTIBOOT_INFO_LENGTH >> 2), %ecx # set length / 4 bytes per long
   rep movsl                         # Do the copy
+
+.setDefaultFramebuffer:
+  # Check to see if EGA framebuffer not provided.
+  movl kernel_multiboot_info + MULTIBOOT_FLAGS, %ecx
+  andl $MULTIBOOT_FRAMEBUFFER_PROVIDED, %ecx
+  jnz .checkCPUID
+
+  # It's not provided. Set it to default VGA text address B8000 so we have
+  # something to work with at least.
+  movl $0xB8000, kernel_multiboot_info + MULTIBOOT_FRAMEBUFFER
+  movl $0x0, kernel_multiboot_info + MULTIBOOT_FRAMEBUFFER + 4
+  movl $80, kernel_multiboot_info + MULTIBOOT_FRAMEBUFFER_WIDTH
+  movl $25, kernel_multiboot_info + MULTIBOOT_FRAMEBUFFER_HEIGHT
+  movb $2, kernel_multiboot_info + MULTIBOOT_FRAMEBUFFER_TYPE
 
 .checkCPUID:
   # Is CPUID supported?
@@ -352,7 +393,7 @@ _bootstrap:
 .termclear:
   pushal
 
-  movl $0xB8000, %edi # video memory
+  movl kernel_multiboot_info + MULTIBOOT_FRAMEBUFFER, %edi # video memory
   movl $0xf20,   %eax # white-on-black spaces
   movl $2000,    %ecx # 80 * 25
 
@@ -368,7 +409,7 @@ _bootstrap:
   # EAX: pointer to C-style string
   # EDX: offset to print to
 
-  movl $0xB8000,          %edi       # Load video memory location into EDI
+  movl kernel_multiboot_info + MULTIBOOT_FRAMEBUFFER, %edi # Load video memory location into EDI
   leal (%edi,%edx,2),     %edi       # Add offset to EDI
   xorl %ecx, %ecx                    # Reset counter
 

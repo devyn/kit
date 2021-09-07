@@ -35,6 +35,7 @@
 //! > DEALINGS IN THE SOFTWARE.
 
 use core::mem;
+use core::fmt;
 
 use alloc::vec::Vec;
 
@@ -109,6 +110,9 @@ pub mod info_flags {
 
     /// Is there video information?
     pub const VIDEO_INFO: u32          = 0x00000800;
+
+    /// Is there framebuffer information?
+    pub const FRAMEBUFFER_INFO: u32    = 0x00001000;
 }
 
 #[repr(C)]
@@ -233,6 +237,15 @@ pub struct Info {
     pub vbe_interface_seg: u16,
     pub vbe_interface_off: u16,
     pub vbe_interface_len: u16,
+
+    // Framebuffer information.
+    pub framebuffer_addr:   u64,
+    pub framebuffer_pitch:  u32,
+    pub framebuffer_width:  u32,
+    pub framebuffer_height: u32,
+    pub framebuffer_bpp:    u8,
+    pub framebuffer_type:   u8,
+    pub color_info:         ColorInfo,
 }
 
 impl Info {
@@ -407,6 +420,42 @@ impl Info {
 
         debug!("Multiboot identity map: {:08X?}", &out[initial_len..]);
     }
+}
+
+#[repr(C, packed)]
+#[derive(Clone, Copy)]
+pub union ColorInfo {
+    indexed: IndexedColor,
+    rgb: RgbColor,
+}
+
+impl fmt::Debug for ColorInfo {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        unsafe {
+            f.debug_struct("ColorInfo")
+                .field("indexed", &self.indexed)
+                .field("rgb", &self.rgb)
+                .finish()
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy)]
+#[repr(C, packed)]
+pub struct IndexedColor {
+    framebuffer_palette_addr: u32,
+    framebuffer_palette_num_colors: u16,
+}
+
+#[derive(Debug, Clone, Copy)]
+#[repr(C, packed)]
+pub struct RgbColor {
+    framebuffer_red_field_position: u8,
+    framebuffer_red_mask_size: u8,
+    framebuffer_green_field_position: u8,
+    framebuffer_green_mask_size: u8,
+    framebuffer_blue_field_position: u8,
+    framebuffer_blue_mask_size: u8,
 }
 
 pub const MEMORY_AVAILABLE: u32 = 1;
