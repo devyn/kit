@@ -60,16 +60,38 @@ clean-iso:
 
 build/kit.iso: resources/grub.cfg build/kernel.elf build/system.kit
 	mkdir -p build/isodir/boot/grub
+	mkdir -p build/efidir/EFI/BOOT
 	cp resources/grub.cfg build/isodir/boot/grub/grub.cfg
 	cp build/kernel.elf build/isodir/boot/kernel.elf
 	cp build/system.kit build/isodir/boot/system.kit
 	grub-mkimage --format=i386-pc --output=build/core.img -p '/boot/grub' \
 		--config=build/isodir/boot/grub/grub.cfg \
     biosdisk iso9660 normal multiboot vga_text at_keyboard
-	cat ${GRUB_LIB}/i386-pc/cdboot.img build/core.img > build/isodir/grub.img
-	rm build/core.img
-	genisoimage -A "Kit" -input-charset "iso8859-1" -R -b grub.img \
-		-no-emul-boot -boot-load-size 4 -boot-info-table -o build/kit.iso \
+	cat ${GRUB_LIB}/i386-pc/cdboot.img build/core.img \
+		> build/isodir/grub.img
+	grub-mkimage --format=i386-efi \
+		--output=build/efidir/EFI/BOOT/BOOTIA32.EFI \
+		-p '/boot/grub' \
+		--config=build/isodir/boot/grub/grub.cfg \
+		nativedisk iso9660 normal multiboot efi_gop at_keyboard
+	grub-mkimage --format=x86_64-efi \
+		--output=build/efidir/EFI/BOOT/BOOTX64.EFI \
+		-p '/boot/grub' \
+		--config=build/isodir/boot/grub/grub.cfg \
+		nativedisk iso9660 normal multiboot efi_gop at_keyboard
+	rm -f build/isodir/efi.img
+	fallocate -l 16M build/isodir/efi.img
+	mkfs.vfat build/isodir/efi.img
+	mcopy -i build/isodir/efi.img -s build/efidir/* "::"
+	xorriso -as mkisofs \
+		-R -J -A "Kit" -input-charset "iso8859-1" -R \
+		-no-emul-boot -boot-load-size 4 -boot-info-table \
+		-b grub.img \
+		-c boot.cat \
+		-eltorito-alt-boot -e efi.img \
+		-no-emul-boot -isohybrid-gpt-basdat \
+		-efi-boot-part --efi-boot-image \
+		-o build/kit.iso \
 		build/isodir
 
 # =Testing=
