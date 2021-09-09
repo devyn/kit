@@ -23,6 +23,9 @@ use crate::constants::translate_low_addr;
 mod vga;
 pub use vga::{VgaConfig, Vga};
 
+mod graphical;
+pub use graphical::Graphical;
+
 /// Colors common to most terminals.
 ///
 /// Numeric values correspond to the VGA text mode palette.
@@ -447,6 +450,53 @@ impl fmt::Write for Null {
     }
 }
 
+/// Build chars from streaming bytes
+#[derive(Debug, Clone, Default)]
+struct CharStream {
+    char_buf: [u8; 4],
+    char_index: u8,
+}
+
+impl CharStream {
+    fn consume(&mut self) -> Option<char> {
+        if self.char_index == 0 {
+            return None;
+        }
+
+        let utf8 = &self.char_buf[0..self.char_index as usize];
+
+        match core::str::from_utf8(utf8) {
+            Ok(s) => {
+                self.char_index = 0;
+                s.chars().next()
+            },
+            Err(e) => match e.error_len() {
+                None => {
+                    // ok, wait for more bytes
+                    None
+                },
+                Some(invalid_end) => {
+                    // move invalid end to the beginning
+                    self.char_buf.copy_within(invalid_end.., 0);
+                    self.char_index -= invalid_end as u8;
+                    // produce fffd (replacement char)
+                    Some('\u{fffd}')
+                },
+            }
+        }
+    }
+
+    /// Call consume() in a loop after calling push
+    fn push(&mut self, byte: u8) {
+        self.char_buf[self.char_index as usize] = byte;
+        self.char_index += 1;
+    }
+
+    fn reset(&mut self) {
+        *self = CharStream::default();
+    }
+}
+
 static mut NULL: Null = Null;
 static mut CONSOLE: Option<*mut dyn Terminal> = None;
 
@@ -485,14 +535,9 @@ pub unsafe fn initialize(info: &multiboot::Info) {
                 },
             }, info.framebuffer_addr as usize);
 
-            //fb.fill(50, 50, 200, 200, fb.color_format().format(0xff9900));
-            let color = fb.color_format().format(0xff9900);
-            fb.edit(0, 0, fb.width(), fb.height(),
-                |_, _, old| old & color);
+            let ansi_graphical = Ansi::new(Graphical::new(fb));
 
-            fb.fill(fb.width()*3/9, fb.height()*3/9,
-                fb.width()*3/9, fb.height()*3/9,
-                fb.color_format().format(0xffffff));
+            CONSOLE = Some(Box::leak(Box::new(ansi_graphical)));
         },
         2 /* VGA */ => {
             assert!(info.framebuffer_addr < u32::MAX as u64);
