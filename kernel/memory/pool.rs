@@ -40,10 +40,11 @@ use core::ops::Deref;
 
 use crate::paging::PAGE_SIZE;
 use crate::sync::Spinlock;
+use crate::util::align_up;
 
 use displaydoc::Display;
 
-use super::{PageCount, VirtualAddress, align_addr};
+use super::{PageCount, VirtualAddress};
 
 mod bitmap;
 use bitmap::FreeBitmap;
@@ -76,7 +77,7 @@ impl PoolConfig {
     const fn ideal_object_capacity(self) -> usize {
         let available_bytes =
             self.region_pages * PAGE_SIZE -
-                align_addr(size_of::<RegionInfo>(), align_of::<RegionInfo>());
+                align_up(size_of::<RegionInfo>(), align_of::<RegionInfo>());
 
         available_bytes / self.object_size
     }
@@ -97,7 +98,7 @@ impl PoolConfig {
         let info_size = size_of::<RegionInfo>() + 
             bitmap::byte_size(self.ideal_object_capacity());
 
-        align_addr(info_size, align_of::<RegionInfo>())
+        align_up(info_size, align_of::<RegionInfo>())
     }
 
     /// The offset from the start of a region to the RegionInfo structure

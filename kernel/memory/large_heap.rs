@@ -13,6 +13,7 @@
 use crate::sync::{Spinlock, LockFreeList};
 use crate::sync::lock_free_list::Node;
 use crate::paging::PAGE_SIZE;
+use crate::util::{align_up, align_down};
 
 use alloc::sync::Arc;
 use alloc::vec::Vec;
@@ -23,7 +24,6 @@ use core::sync::atomic::Ordering::*;
 use super::{VirtualAddress, PageCount, FreeRegion};
 use super::KSTACK_SIZE;
 use super::{kernel_acquire_and_map, kernel_unmap_and_release};
-use super::{align_addr, align_addr_down};
 use super::AcquiredMappedRegion;
 use super::pool::Pool;
 
@@ -167,7 +167,7 @@ pub unsafe fn allocate(state: &HeapState, size: usize, align: usize)
     let align = if align < MIN_ALIGN { MIN_ALIGN } else { align };
 
     // Align the requested size up to the alignment.
-    let size_aligned = align_addr(size, align);
+    let size_aligned = align_up(size, align);
 
     // We have two strategies: one for whole pages, one for small objects.
     if size_aligned >= PAGE_SIZE {
@@ -193,7 +193,7 @@ pub unsafe fn deallocate(
     let align = if align < MIN_ALIGN { MIN_ALIGN } else { align };
 
     // Align the requested size up to the alignment.
-    let size_aligned = align_addr(size, align);
+    let size_aligned = align_up(size, align);
 
     if size_aligned >= PAGE_SIZE {
         let pages = size_aligned / PAGE_SIZE +
@@ -229,7 +229,7 @@ fn allocate_pages(state: &HeapState, pages: usize, align: usize)
             //
             // Prefer to put it near the end so that we can just update the
             // length and avoid taking anything out of the list
-            let alloc_start = align_addr_down(r_end - pages * page_size, align);
+            let alloc_start = align_down(r_end - pages * page_size, align);
             let alloc_end = alloc_start + pages * page_size;
 
             trace!("considering  {:016x} < {:016x}, {:016x} > {:016x}", r.start,

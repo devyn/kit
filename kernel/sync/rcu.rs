@@ -19,6 +19,7 @@ use core::sync::atomic::{
 };
 
 use core::fmt;
+use core::mem::ManuallyDrop;
 
 /// Read-copy-update.
 pub struct Rcu<T> {
@@ -27,19 +28,20 @@ pub struct Rcu<T> {
 
 impl<T> Rcu<T> {
     pub fn new(value: Arc<T>) -> Rcu<T> {
+        let rcu = Rcu { state: AtomicPtr::new(Arc::into_raw(value) as *mut T) };
+
         fence(Release);
 
-        Rcu { state: AtomicPtr::new(Arc::into_raw(value) as *mut T) }
+        rcu
     }
 
     pub fn read(&self) -> Arc<T> {
         unsafe {
             let ptr = self.state.load(Acquire);
 
-            assert!(!ptr.is_null());
+            let stored_arc = ManuallyDrop::new(Arc::from_raw(ptr));
 
-            Arc::increment_strong_count(ptr);
-            Arc::from_raw(ptr)
+            (*stored_arc).clone()
         }
     }
 
@@ -47,7 +49,8 @@ impl<T> Rcu<T> {
     pub fn put(&self, value: Arc<T>) {
         unsafe {
             let old = self.state.swap(Arc::into_raw(value) as *mut T, AcqRel);
-            drop(Arc::from_raw(old))
+            let old_arc = Arc::from_raw(old);
+            drop(old_arc);
         }
     }
 
@@ -64,10 +67,10 @@ impl<T> Rcu<T> {
                 .compare_exchange(
                     original_ptr as *mut T,
                     raw_ptr as *mut T,
-                    Release,
+                    AcqRel,
                     Relaxed,
                 )
-                .map(|_| ())
+                .map(|arc| drop(Arc::from_raw(arc)))
                 // Give it back on error.
                 .map_err(|_| Arc::from_raw(raw_ptr))
         }
@@ -116,4 +119,26 @@ impl<T> fmt::Pointer for Rcu<T> {
         let value = self.read();
         write!(f, "{:p}", value)
     }
+}
+
+#[test]
+fn rcu_new_read_update() {
+    let rcu = Rcu::new((5usize, 6usize).into());
+
+    assert_eq!(Arc::strong_count(&rcu.read()), 2);
+    assert_eq!(Arc::strong_count(&rcu.read()), 2);
+
+    assert_eq!(*rcu.read(), (5, 6));
+
+    let original = rcu.read();
+    let new = (7, 8).into();
+
+    assert!(rcu.update(&original, new).is_ok());
+
+    assert_eq!(Arc::strong_count(&original), 1);
+    assert_eq!(Arc::strong_count(&rcu.read()), 2);
+
+    drop(original);
+
+    assert_eq!(*rcu.read(), (7, 8));
 }

@@ -10,19 +10,24 @@
  *
  ******************************************************************************/
 
-//! Early text mode 80x25 terminal handler.
+//! Text mode terminal handler.
 
 use core::fmt;
 use core::mem;
 
+use alloc::boxed::Box;
+
 use crate::multiboot;
 use crate::constants::translate_low_addr;
+
+mod vga;
+pub use vga::{VgaConfig, Vga};
 
 /// Colors common to most terminals.
 ///
 /// Numeric values correspond to the VGA text mode palette.
 #[repr(u8)]
-#[derive(PartialEq, Eq, PartialOrd, Ord, Clone, Copy)]
+#[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone, Copy)]
 pub enum Color {
     Black        = 0,
     Blue         = 1,
@@ -64,6 +69,25 @@ static DARK_COLORS: [Color; 8] = [
     Color::LightGrey,
 ];
 
+static COLORS_RGB: [u32; 16] = [
+    0x000000, //black
+    0x000080, //blue
+    0x008000, //green
+    0x008080, //cyan
+    0x800000, //red
+    0x800080, //magenta
+    0x808000, //brown
+    0xc0c0c0, //light grey
+    0x404040, //dark grey,
+    0x0000ff, //light blue
+    0x00ff00, //light green
+    0x00ffff, //light cyan
+    0xff0000, //light red
+    0xff00ff, //light magenta
+    0xffff00, //light brown (yellow)
+    0xffffff, //white
+];
+
 impl Color {
     pub fn lighten(self) -> Color {
         LIGHT_COLORS[self as usize % 8]
@@ -71,6 +95,10 @@ impl Color {
 
     pub fn darken(self) -> Color {
         DARK_COLORS[self as usize % 8]
+    }
+
+    pub fn to_rgb(self) -> u32 {
+        COLORS_RGB[self as usize]
     }
 }
 
@@ -140,240 +168,6 @@ pub trait Terminal: fmt::Write {
     /// For example, `Vga` uses this to update the cursor, since writing to IO
     /// ports can be slow.
     fn flush(&mut self) -> fmt::Result;
-}
-
-/// Controls a VGA text-mode terminal.
-pub struct Vga {
-    width:  usize,
-    height: usize,
-    row:    usize,
-    col:    usize,
-    fg:     Color,
-    bg:     Color,
-    attr:   u8,
-    buffer: *mut u16,
-    port:   u16
-}
-
-impl Vga {
-    /// Create a new VGA text-mode terminal controller with the given
-    /// dimensions, buffer, and port.
-    pub unsafe fn new(width:  usize,
-                      height: usize,
-                      buffer: *mut u16,
-                      port:   u16)
-                      -> Vga {
-
-        let mut vga = Vga {
-            width:  width,
-            height: height,
-            row:    0,
-            col:    0,
-            fg:     Color::LightGrey,
-            bg:     Color::Black,
-            attr:   Vga::attr(Color::LightGrey, Color::Black),
-            buffer: buffer,
-            port:   port
-        };
-
-        vga.reset().unwrap();
-
-        vga
-    }
-
-    pub fn color(c: Color) -> u8 {
-        c as u8
-    }
-
-    pub fn attr(fg: Color, bg: Color) -> u8 {
-        Vga::color(fg) | (Vga::color(bg) << 4)
-    }
-
-    fn update_attr(&mut self) {
-        self.attr = Vga::attr(self.fg, self.bg);
-    }
-
-    fn update_cursor(&mut self) {
-        unsafe fn outb(byte: u8, port: u16) {
-            asm!("out %al, %dx", in("al") byte, in("dx") port, options(att_syntax));
-        }
-
-        let pos: u16 = ((self.row * self.width) + self.col) as u16;
-
-        unsafe {
-            outb(0x0F,             self.port);
-            outb(pos as u8,        self.port + 1);
-
-            outb(0x0E,             self.port);
-            outb((pos >> 8) as u8, self.port + 1);
-        }
-    }
-
-    pub fn put(&mut self, byte: u8, attr: u8, row: usize, col: usize) {
-        unsafe {
-            *self.buffer.offset((row * self.width + col) as isize) =
-                (byte as u16) | ((attr as u16) << 8);
-        }
-    }
-
-    pub fn put_here(&mut self, byte: u8) {
-        let (attr, row, col) = (self.attr, self.row, self.col);
-
-        self.put(byte, attr, row, col)
-    }
-
-    fn new_line(&mut self) {
-        // Clear to the end of the line.
-        while self.col < self.width {
-            self.put_here(' ' as u8);
-            self.col += 1;
-        }
-
-        // Go to the next line, scrolling if necessary.
-        self.col  = 0;
-        self.row += 1;
-
-        while self.row >= self.height {
-            self.scroll();
-            self.row -= 1;
-        }
-
-        self.update_cursor();
-    }
-
-    fn scroll(&mut self) {
-        // Shift everything one line back.
-        for row in 1..self.height {
-            for col in 0..self.width {
-                let index = (row * self.width + col) as isize;
-
-                unsafe {
-                    *self.buffer.offset(index - self.width as isize) =
-                        *self.buffer.offset(index);
-                }
-
-                // XXX: SSE memory operations fail on memory-mapped I/O in KVM,
-                // so inhibit vectorization
-                unsafe { asm!("nop"); }
-            }
-        }
-
-        // Clear last line.
-        let (attr, height) = (self.attr, self.height);
-
-        for col in 0..self.width {
-            self.put(' ' as u8, attr, height - 1, col);
-        }
-    }
-}
-
-impl Terminal for Vga {
-    fn reset(&mut self) -> fmt::Result {
-        self.fg = Color::LightGrey;
-        self.bg = Color::Black;
-        self.update_attr();
-        self.clear()
-    }
-
-    fn clear(&mut self) -> fmt::Result {
-        self.row = 0;
-        self.col = 0;
-
-        let attr = self.attr;
-
-        for row in 0..self.height {
-            for col in 0..self.width {
-                self.put(' ' as u8, attr, row, col);
-
-                // XXX: SSE memory operations fail on memory-mapped I/O in KVM,
-                // so inhibit vectorization
-                unsafe { asm!("nop"); }
-            }
-        }
-
-        Ok(())
-    }
-
-    fn get_cursor(&self) -> (usize, usize) {
-        (self.row, self.col)
-    }
-
-    fn set_cursor(&mut self, row: usize, col: usize) -> fmt::Result {
-        self.row = row;
-        self.col = col;
-
-        self.update_cursor();
-        Ok(())
-    }
-
-    fn get_color(&self) -> (Color, Color) {
-        (self.fg, self.bg)
-    }
-
-    fn set_color(&mut self, fg: Color, bg: Color) -> fmt::Result {
-        self.fg = fg;
-        self.bg = bg;
-        self.update_attr();
-        Ok(())
-    }
-
-    fn put_raw_byte(&mut self,
-                    byte: u8,
-                    fg:   Color,
-                    bg:   Color,
-                    row:  usize,
-                    col:  usize) -> fmt::Result {
-
-        self.put(byte, Vga::attr(fg, bg), row, col);
-        Ok(())
-    }
-
-    fn write_raw_byte(&mut self, byte: u8) -> fmt::Result {
-        match byte {
-            b'\n' => {
-                self.new_line();
-            },
-
-            0x08 /* backspace */ => {
-                if self.col > 0 {
-                    self.col -= 1;
-                }
-
-                self.put_here(' ' as u8);
-            },
-
-            _ => {
-                self.put_here(byte);
-                self.col += 1;
-
-                if self.col >= self.width {
-                    self.new_line();
-                }
-            }
-        }
-
-        Ok(())
-    }
-
-    fn flush(&mut self) -> fmt::Result {
-        self.update_cursor();
-        Ok(())
-    }
-}
-
-impl fmt::Write for Vga {
-    fn write_char(&mut self, ch: char) -> fmt::Result {
-        let mut buf = [0; 4];
-        self.write_raw_bytes(ch.encode_utf8(&mut buf).as_bytes())?;
-        self.flush()?;
-        Ok(())
-    }
-
-    fn write_str(&mut self, s: &str) -> fmt::Result {
-        self.write_raw_bytes(s.as_bytes())?;
-        self.flush()?;
-        Ok(())
-    }
 }
 
 /// Wraps a Terminal to make it compatible with ANSI escape sequences.
@@ -596,25 +390,138 @@ impl<T: Terminal> fmt::Write for Ansi<T> {
     }
 }
 
-static mut CONSOLE: Option<Ansi<Vga>> = None;
+/// Ignores all commands and does nothing. Useful initial state.
+pub struct Null;
+
+impl Terminal for Null {
+    fn reset(&mut self) -> fmt::Result {
+        Ok(())
+    }
+
+    fn clear(&mut self) -> fmt::Result {
+        Ok(())
+    }
+
+    fn get_cursor(&self) -> (usize, usize) {
+        (0, 0)
+    }
+
+    fn set_cursor(&mut self, _row: usize, _col: usize) -> fmt::Result {
+        Ok(())
+    }
+
+    fn get_color(&self) -> (Color, Color) {
+        (Color::White, Color::Black)
+    }
+
+    fn set_color(&mut self, _fg: Color, _bg: Color) -> fmt::Result {
+        Ok(())
+    }
+
+    fn put_raw_byte(&mut self,
+                    _byte: u8,
+                    _fg:   Color,
+                    _bg:   Color,
+                    _row:  usize,
+                    _col:  usize) -> fmt::Result {
+
+        Ok(())
+    }
+
+    fn write_raw_byte(&mut self, _byte: u8) -> fmt::Result {
+        Ok(())
+    }
+
+    fn flush(&mut self) -> fmt::Result {
+        Ok(())
+    }
+}
+
+impl fmt::Write for Null {
+    fn write_char(&mut self, _ch: char) -> fmt::Result {
+        Ok(())
+    }
+
+    fn write_str(&mut self, _s: &str) -> fmt::Result {
+        Ok(())
+    }
+}
+
+static mut NULL: Null = Null;
+static mut CONSOLE: Option<*mut dyn Terminal> = None;
+
+/// Initialize the global console.
+pub unsafe fn initialize(info: &multiboot::Info) {
+    assert!(CONSOLE.is_none());
+
+    match info.framebuffer_type {
+        1 /* Linear framebuffer, rgb */ => {
+            use crate::framebuffer::*;
+
+            assert!((info.framebuffer_height as usize *
+                info.framebuffer_pitch as usize) < 0x8000_0000);
+
+            assert!(info.framebuffer_addr < usize::MAX as u64);
+
+            let fb = LinearFramebuffer::map(LinearPixelConfig {
+                buffer: 0xffff_ffff_0000_0000 as *mut u8,
+                width: info.framebuffer_width as usize,
+                height: info.framebuffer_height as usize,
+                pitch: info.framebuffer_pitch as usize,
+                bits_per_pixel: info.framebuffer_bpp,
+                color_format: ColorFormat::Rgb {
+                    red: MaskShift {
+                        mask_bits: info.color_info.rgb.framebuffer_red_mask_size,
+                        shift: info.color_info.rgb.framebuffer_red_field_position,
+                    },
+                    green: MaskShift {
+                        mask_bits: info.color_info.rgb.framebuffer_green_mask_size,
+                        shift: info.color_info.rgb.framebuffer_green_field_position,
+                    },
+                    blue: MaskShift {
+                        mask_bits: info.color_info.rgb.framebuffer_blue_mask_size,
+                        shift: info.color_info.rgb.framebuffer_blue_field_position,
+                    },
+                },
+            }, info.framebuffer_addr as usize);
+
+            //fb.fill(50, 50, 200, 200, fb.color_format().format(0xff9900));
+            let color = fb.color_format().format(0xff9900);
+            fb.edit(0, 0, fb.width(), fb.height(),
+                |_, _, old| old & color);
+
+            fb.fill(fb.width()*3/9, fb.height()*3/9,
+                fb.width()*3/9, fb.height()*3/9,
+                fb.color_format().format(0xffffff));
+        },
+        2 /* VGA */ => {
+            assert!(info.framebuffer_addr < u32::MAX as u64);
+
+            let ansi_vga = Ansi::new(Vga::new(VgaConfig {
+                width: info.framebuffer_width as usize,
+                height: info.framebuffer_height as usize,
+                buffer: translate_low_addr::<u16>(info.framebuffer_addr as u32)
+                    .unwrap() as *mut _,
+                port: 0x3d4,
+            }));
+
+            CONSOLE = Some(Box::leak(Box::new(ansi_vga)));
+        },
+        _ => {
+            warn!("Unknown framebuffer type {}. \
+                Terminal will not be initialized", info.framebuffer_type);
+        }
+    }
+}
 
 /// Get the current global console.
 pub fn console() -> &'static mut dyn Terminal {
     unsafe {
         if CONSOLE.is_none() {
-            let info = multiboot::get_info();
-
-            assert!(info.framebuffer_addr < u32::MAX as u64);
-
-            CONSOLE = Some(Ansi::new(Vga::new(
-                        info.framebuffer_width as usize,
-                        info.framebuffer_height as usize,
-                        translate_low_addr::<u16>(info.framebuffer_addr as u32)
-                            .unwrap() as *mut _,
-                        0x3d4)));
+            &mut NULL
+        } else {
+            CONSOLE.unwrap().as_mut().unwrap()
         }
-
-        CONSOLE.as_mut().unwrap()
     }
 }
 

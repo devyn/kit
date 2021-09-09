@@ -29,7 +29,7 @@ use crate::multiboot;
 use crate::process::Id as ProcessId;
 use crate::sync::{Rcu, LockFreeList};
 use crate::sync::lock_free_list::Node;
-use crate::constants::KERNEL_LOW_END;
+use crate::util::align_up;
 
 pub mod pool;
 
@@ -63,7 +63,8 @@ extern {
 
 #[cfg(not(test))]
 #[global_allocator]
-static mut KERNEL_HEAP: KernelHeap = KernelHeap::InitialHeap(0);
+#[export_name = "_kernel_heap"]
+static mut KERNEL_HEAP: KernelHeap = KernelHeap::InitialHeap(128);
 
 #[cfg(test)]
 static mut KERNEL_HEAP: KernelHeap = KernelHeap::StdHeap;
@@ -184,7 +185,7 @@ pub unsafe fn initialize(memory_map: &InitMemoryMap) {
         let len  = range.end - range.start;
 
         // Align physical base address to page size.
-        let mut physical_base = align_addr(addr, PAGE_SIZE);
+        let mut physical_base = align_up(addr, PAGE_SIZE);
 
         // Remove remainder from length and count pages.
         let mut pages = (len - (addr % PAGE_SIZE)) / PAGE_SIZE;
@@ -259,24 +260,10 @@ pub unsafe fn deallocate(ptr: *mut u8, size: usize, align: usize) {
     }
 }
 
-const fn align_addr(mut addr: usize, align: usize) -> usize {
-    if addr % align != 0 {
-        addr += align - (addr % align);
-    }
-    addr
-}
-
-const fn align_addr_down(mut addr: usize, align: usize) -> usize {
-    if addr % align != 0 {
-        addr -= addr % align;
-    }
-    addr
-}
-
 unsafe fn initial_heap_allocate(counter: &mut usize, size: usize, align: usize)
                                 -> *mut u8 {
 
-    let new_counter = align_addr(*counter, align);
+    let new_counter = align_up(*counter, align);
 
     if new_counter + size >= INITIAL_HEAP_LENGTH {
         panic!("not enough memory for ({}, {}) in initial heap!", size, align);

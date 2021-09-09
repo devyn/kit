@@ -19,6 +19,7 @@ LD    = ld
 export CPATH=system/libc/include
 
 GRUB_LIB=/usr/lib/grub
+OVMF_DIR=/usr/share/edk2-ovmf/x64
 
 ECHO_CC    = echo "[36m    CC [0m"
 ECHO_AS    = echo "[36m    AS [0m"
@@ -98,5 +99,15 @@ build/kit.iso: resources/grub.cfg build/kernel.elf build/system.kit
 
 run-qemu: build/kit.iso
 	qemu-system-x86_64 -cdrom build/kit.iso -boot d -serial stdio ${QEMUFLAGS}
+
+build/OVMF_VARS.fd: ${OVMF_DIR}/OVMF_VARS.fd
+	cp $< $@
+
+run-qemu-efi: build/kit.iso build/OVMF_VARS.fd
+	qemu-system-x86_64 -cdrom build/kit.iso -boot d -serial stdio \
+		-machine q35 \
+		-drive if=pflash,format=raw,readonly=on,file=${OVMF_DIR}/OVMF_CODE.fd \
+		-drive if=pflash,format=raw,file=build/OVMF_VARS.fd \
+		${QEMUFLAGS}
 
 .PHONY: run-qemu

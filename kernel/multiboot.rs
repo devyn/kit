@@ -34,7 +34,6 @@
 //! > FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 //! > DEALINGS IN THE SOFTWARE.
 
-use core::mem;
 use core::fmt;
 
 use alloc::vec::Vec;
@@ -43,6 +42,7 @@ use crate::c_ffi::CStr;
 use crate::constants::{KERNEL_OFFSET, translate_low_addr};
 use crate::paging::{PAGE_SIZE, Page, PageType};
 use crate::memory::{VirtualAddress, PageCount, PhysicalAddress};
+use crate::util::align_up;
 
 /// How many bytes from the start of the file we search for the header.
 pub const SEARCH: usize                 = 8192;
@@ -143,7 +143,7 @@ pub struct Header {
 
 /// The symbol table for a.out.
 #[repr(C)]
-#[derive(Debug)]
+#[derive(Debug, Clone, Copy)]
 pub struct AoutSymbolTable {
     pub tabsize:  u32,
     pub strsize:  u32,
@@ -153,7 +153,7 @@ pub struct AoutSymbolTable {
 
 /// The section header table for ELF.
 #[repr(C)]
-#[derive(Debug)]
+#[derive(Debug, Clone, Copy)]
 pub struct ElfSectionHeaderTable {
     pub num:   u32,
     pub size:  u32,
@@ -163,26 +163,36 @@ pub struct ElfSectionHeaderTable {
 
 /// An unsafe union of AoutSymbolTable and ElfSectionHeaderTable.
 #[repr(C)]
-#[derive(Debug)]
-pub struct AoutElfTableUnion {
-    data: [u32; 4],
+#[derive(Clone, Copy)]
+pub union AoutElfTableUnion {
+    aout: AoutSymbolTable,
+    elf: ElfSectionHeaderTable,
 }
 
 impl AoutElfTableUnion {
     /// Interpret the union as AoutSymbolTable.
-    pub unsafe fn as_aout_symbol_table<'a>(&'a self) -> &'a AoutSymbolTable {
-        mem::transmute(self)
+    pub fn as_aout_symbol_table<'a>(&'a self) -> &'a AoutSymbolTable {
+        unsafe { &self.aout }
     }
 
     /// Interpret the union as ElfSectionHeaderTable.
-    pub unsafe fn as_elf_section_header_table<'a>(&'a self)
+    pub fn as_elf_section_header_table<'a>(&'a self)
                                               -> &'a ElfSectionHeaderTable {
-        mem::transmute(self)
+        unsafe { &self.elf }
+    }
+}
+
+impl fmt::Debug for AoutElfTableUnion {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        f.debug_struct("AoutElfTableUnion")
+            .field("aout", self.as_aout_symbol_table())
+            .field("elf", self.as_elf_section_header_table())
+            .finish()
     }
 }
 
 #[repr(C)]
-#[derive(Debug)]
+#[derive(Debug, Clone, Copy)]
 pub struct Info {
     /// Feature flags. (see info_flags)
     pub flags: u32,
@@ -350,12 +360,12 @@ impl Info {
             static _kernel_rodata_end: u8;
             static _kernel_data_begin: u8;
             static _kernel_data_end: u8;
+            static _kernel_bss_begin: u8;
+            static _kernel_bss_end: u8;
             static _kernel_got_begin: u8;
             static _kernel_got_end: u8;
             static _kernel_got_plt_begin: u8;
             static _kernel_got_plt_end: u8;
-            static _kernel_bss_begin: u8;
-            static _kernel_bss_end: u8;
         }
 
         // These symbols are low memory addressed, so we have to add the offset
@@ -364,8 +374,7 @@ impl Info {
 
         {
             let bytes = bootstrap_end - bootstrap_begin;
-            let pages = bytes / PAGE_SIZE +
-                if bytes % PAGE_SIZE != 0 { 1 } else { 0 };
+            let pages = align_up(bytes, PAGE_SIZE) / PAGE_SIZE;
 
             out.push((
                 KERNEL_OFFSET + bootstrap_begin,
@@ -382,18 +391,17 @@ impl Info {
              PageType::default()),
             (&_kernel_data_begin, &_kernel_data_end,
              PageType::default().writable()),
+            (&_kernel_bss_begin, &_kernel_bss_end,
+             PageType::default().writable()),
             (&_kernel_got_begin, &_kernel_got_end,
              PageType::default().writable()),
             (&_kernel_got_plt_begin, &_kernel_got_plt_end,
-             PageType::default().writable()),
-            (&_kernel_bss_begin, &_kernel_bss_end,
              PageType::default().writable()),
         ];
 
         for &(begin, end, page_type) in &sections[..] {
             let bytes = end as usize - begin as usize;
-            let pages = bytes / PAGE_SIZE +
-                if bytes % PAGE_SIZE != 0 { 1 } else { 0 };
+            let pages = align_up(bytes, PAGE_SIZE) / PAGE_SIZE;
 
             out.push((
                 begin as usize,
@@ -407,8 +415,7 @@ impl Info {
             for module in modules {
                 let bytes =
                     module.mod_end as usize - module.mod_start as usize;
-                let pages = bytes / PAGE_SIZE +
-                    if bytes % PAGE_SIZE > 0 { 1 } else { 0 };
+                let pages = align_up(bytes, PAGE_SIZE) / PAGE_SIZE;
 
                 out.push((
                     KERNEL_OFFSET + module.mod_start as usize,
@@ -422,11 +429,11 @@ impl Info {
     }
 }
 
-#[repr(C, packed)]
+#[repr(C)]
 #[derive(Clone, Copy)]
 pub union ColorInfo {
-    indexed: IndexedColor,
-    rgb: RgbColor,
+    pub indexed: IndexedColor,
+    pub rgb: RgbColor,
 }
 
 impl fmt::Debug for ColorInfo {
@@ -441,21 +448,21 @@ impl fmt::Debug for ColorInfo {
 }
 
 #[derive(Debug, Clone, Copy)]
-#[repr(C, packed)]
+#[repr(C)]
 pub struct IndexedColor {
-    framebuffer_palette_addr: u32,
-    framebuffer_palette_num_colors: u16,
+    pub framebuffer_palette_addr: u32,
+    pub framebuffer_palette_num_colors: u16,
 }
 
 #[derive(Debug, Clone, Copy)]
-#[repr(C, packed)]
+#[repr(C)]
 pub struct RgbColor {
-    framebuffer_red_field_position: u8,
-    framebuffer_red_mask_size: u8,
-    framebuffer_green_field_position: u8,
-    framebuffer_green_mask_size: u8,
-    framebuffer_blue_field_position: u8,
-    framebuffer_blue_mask_size: u8,
+    pub framebuffer_red_field_position: u8,
+    pub framebuffer_red_mask_size: u8,
+    pub framebuffer_green_field_position: u8,
+    pub framebuffer_green_mask_size: u8,
+    pub framebuffer_blue_field_position: u8,
+    pub framebuffer_blue_mask_size: u8,
 }
 
 pub const MEMORY_AVAILABLE: u32 = 1;

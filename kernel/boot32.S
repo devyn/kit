@@ -21,12 +21,16 @@
 # Declare constants used for creating a multiboot header.
 .set ALIGN,    1<<0             # align loaded modules on page boundaries
 .set MEMINFO,  1<<1             # provide memory map
-.set GRAPHICS, 1<<2             # provide video info
-.set FLAGS,    ALIGN | MEMINFO | GRAPHICS # this is the Multiboot 'flag' field
+.set GRAPHICS, 1<<2             # provide framebuffer as requested
+.set FLAGS,    ALIGN | MEMINFO  # this is the Multiboot 'flag' field
 .set MAGIC,    0x1BADB002       # 'magic number' lets bootloader find the header
 .set CHECKSUM, -(MAGIC + FLAGS) # checksum of above, to prove we are multiboot
 
 # Want 80x25 EGA text
+#
+# Advertise this if FLAGS includes GRAPHICS (it doesn't right now)
+#
+# We can now handle almost whatever GRUB can give us so not such a big deal
 .set FB_MODE_TYPE, 1
 .set FB_WIDTH, 80 
 .set FB_HEIGHT, 25

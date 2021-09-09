@@ -79,6 +79,15 @@ SECTIONS
     _kernel_data_end = ALIGN(4K);
   }
 
+  /* Read-write data (uninitialized) */
+  .bss ALIGN(4K) : AT(ADDR(.bss) - KERNEL_VMA)
+  {
+    _kernel_bss_begin = .;
+    *(EXCLUDE_FILE(build/kernel/boot*.o) COMMON)
+    *(EXCLUDE_FILE(build/kernel/boot*.o) .bss*)
+    _kernel_bss_end = ALIGN(4K);
+  }
+
   /* Global offset table */
   .got ALIGN(4K) : AT(ADDR(.got) - KERNEL_VMA)
   {
@@ -97,15 +106,6 @@ SECTIONS
     /* TODO: figure out why bogus data necessary to make non-zero offset */
     . = . + 8;
     _kernel_got_plt_end = ALIGN(4K);
-  }
-
-  /* Read-write data (uninitialized) */
-  .bss ALIGN(4K) : AT(ADDR(.bss) - KERNEL_VMA)
-  {
-    _kernel_bss_begin = .;
-    *(EXCLUDE_FILE(build/kernel/boot*.o) COMMON)
-    *(EXCLUDE_FILE(build/kernel/boot*.o) .bss*)
-    _kernel_bss_end = ALIGN(4K);
   }
 
   /* The compiler may produce other sections, by default it will put them in

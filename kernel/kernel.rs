@@ -42,6 +42,7 @@ pub mod log;
 pub mod cmdline;
 pub mod serial;
 pub mod terminal;
+pub mod framebuffer;
 pub mod constants;
 pub mod cpu;
 pub mod multiboot;
@@ -85,6 +86,23 @@ pub extern fn kernel_main() -> ! {
     debug!("Kernel command line: {}", cmdline);
     debug!("Multiboot info: {:08X?}", mb_info);
 
+    let mut init_memory_map = InitMemoryMap::default();
+
+    if mb_info.flags & multiboot::info_flags::MEM_MAP != 0 {
+        unsafe {
+            init_memory_map.load_from_multiboot(&mb_info);
+        }
+    } else {
+        panic!("Bootloader did not provide memory map!");
+    }
+
+    unsafe {
+        memory::initialize(&init_memory_map);
+        interrupt::initialize();
+        paging::initialize(&init_memory_map);
+        terminal::initialize(&mb_info);
+    }
+
     console().reset().unwrap();
     console().set_color(Color::Red, Color::White).unwrap();
 
@@ -114,20 +132,7 @@ pub extern fn kernel_main() -> ! {
     console().set_color(Color::LightGrey, Color::Black).unwrap();
     console().write_char('\n').unwrap();
 
-    let mut init_memory_map = InitMemoryMap::default();
-
-    if mb_info.flags & multiboot::info_flags::MEM_MAP != 0 {
-        unsafe {
-            init_memory_map.load_from_multiboot(&mb_info);
-        }
-    } else {
-        panic!("Bootloader did not provide memory map!");
-    }
-
     unsafe {
-        memory::initialize(&init_memory_map);
-        interrupt::initialize();
-        paging::initialize(&init_memory_map);
         memory::enable_large_heap();
         keyboard::initialize().unwrap();
     }
@@ -183,6 +188,8 @@ pub extern fn kernel_main() -> ! {
 #[cfg(not(test))]
 #[panic_handler]
 fn panic_handler(panic_info: &PanicInfo) -> ! {
+    error!("Kernel panic: {}", panic_info);
+
     let _ = console().set_color(Color::White, Color::Red);
 
     let _ = write!(console(), "\nKernel panic");
