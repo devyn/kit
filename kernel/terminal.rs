@@ -20,10 +20,10 @@ use alloc::boxed::Box;
 use crate::multiboot;
 use crate::constants::translate_low_addr;
 
-mod vga;
+pub mod vga;
 pub use vga::{VgaConfig, Vga};
 
-mod graphical;
+pub mod graphical;
 pub use graphical::Graphical;
 
 /// Colors common to most terminals.
@@ -492,6 +492,7 @@ impl CharStream {
         self.char_index += 1;
     }
 
+    #[allow(dead_code)]
     fn reset(&mut self) {
         *self = CharStream::default();
     }
@@ -535,7 +536,9 @@ pub unsafe fn initialize(info: &multiboot::Info) {
                 },
             }, info.framebuffer_addr as usize);
 
-            let ansi_graphical = Ansi::new(Graphical::new(fb));
+            let font = graphical::u_vga16();
+
+            let ansi_graphical = Ansi::new(Graphical::new(fb, font));
 
             CONSOLE = Some(Box::leak(Box::new(ansi_graphical)));
         },

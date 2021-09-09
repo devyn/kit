@@ -46,6 +46,10 @@ impl LinearPixelConfig {
     pub fn size_in_pages(&self) -> usize {
         align_up(self.size_in_bytes(), PAGE_SIZE) / PAGE_SIZE
     }
+
+    pub fn bytes_per_pixel(&self) -> usize {
+        align_up(self.bits_per_pixel as usize, 8) / 8
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -144,6 +148,8 @@ pub trait Framebuffer {
     fn width(&self) -> usize;
     fn height(&self) -> usize;
 
+    /// Edit the pixels in the specified rectanglar region according to the
+    /// given `mapper` function, which takes `(x, y, old_native_color)`.
     fn edit<F>(
         &self,
         x: usize,
@@ -154,6 +160,7 @@ pub trait Framebuffer {
     ) where
         F: FnMut(usize, usize, u32) -> u32;
 
+    /// Fill rectangular region with the specified native color.
     fn fill(
         &self,
         x: usize,
@@ -164,6 +171,18 @@ pub trait Framebuffer {
     ) {
         self.edit(x, y, width, height, |_, _, _| color);
     }
+
+    /// Copy rectangle within the framebuffer, from the coordinates specified by
+    /// `(sx, sy)` to `(dx, dy)`.
+    fn copy_within(
+        &self,
+        sx: usize,
+        sy: usize,
+        dx: usize,
+        dy: usize,
+        width: usize,
+        height: usize,
+    );
 }
 
 pub struct LinearFramebuffer {
@@ -241,7 +260,6 @@ impl Framebuffer for LinearFramebuffer {
         self.config.height
     }
 
-    /// Mapper function takes `x, y, old_value`
     #[inline]
     fn edit<F>(
         &self,
@@ -269,6 +287,47 @@ impl Framebuffer for LinearFramebuffer {
                 self.edit_gen::<_, u8>(x, y, width, height, adapt!(u8))
             }
             other => panic!("Can't handle bits_per_pixel = {}", other),
+        }
+    }
+
+    fn copy_within(
+        &self,
+        sx: usize,
+        sy: usize,
+        dx: usize,
+        dy: usize,
+        width: usize,
+        height: usize
+    ) {
+        let mut slice = self.slice.lock();
+
+        let pitch = self.config.pitch;
+
+        let bpp = self.config.bytes_per_pixel();
+
+        // Starting positions and width expressed in terms of bytes
+        let sx_offset = sx * bpp;
+        let dx_offset = dx * bpp;
+        let width_bytes = width * bpp;
+
+        let copy_row = |slice: &mut [u8], psy: usize, pdy: usize| {
+            // Copy the bytes from the source row to the dest row, taking the x
+            // offset and width into consideration
+            let start = psy * pitch + sx_offset;
+            let end = start + width_bytes;
+            slice.copy_within(start .. end, pdy * pitch + dx_offset);
+        };
+
+        for index in 0..height {
+            let py = if sy >= dy {
+                // copy downward
+                index
+            } else {
+                // copy upward
+                height - 1 - index
+            };
+
+            copy_row(&mut slice[..], sy + py, dy + py);
         }
     }
 }
