@@ -26,13 +26,13 @@ use displaydoc::Display;
 
 use crate::error;
 
-use crate::paging::{self, Pageset, PagesetExt, RcPageset, PageType};
+use crate::paging::{self, Pageset, PagesetExt, RcPageset, PageType, PAGE_SIZE};
 use crate::paging::generic::Pageset as GenericPageset;
 use crate::memory::{self, RegionUser};
 use crate::memory::{VirtualAddress, PhysicalAddress, PageCount};
 use crate::scheduler;
 use crate::syscall;
-use crate::util::copy_memory;
+use crate::util::{copy_memory, align_up, align_down};
 use crate::sync::WaitQueue;
 use crate::sync::Spinlock;
 
@@ -608,20 +608,17 @@ impl ProcessMem {
                         size: usize,
                         page_type: PageType)
                         -> Result<(), Error> {
-        let page_size = <Pageset as GenericPageset>::page_size();
 
-        let pages =
-            if size % page_size != 0 {
-                size / page_size + 1
-            } else {
-                size / page_size
-            };
+        let vaddr_aligned = align_down(vaddr, PAGE_SIZE);
+        let size_aligned = align_up(size, PAGE_SIZE);
+
+        let pages = size_aligned / PAGE_SIZE;
 
         let mut mapped = 0;
 
         let mut pageset = self.pageset.lock();
 
-        let mut cur_vaddr = vaddr;
+        let mut cur_vaddr = vaddr_aligned;
 
         while mapped < pages {
             let (paddr_start, acq_pages) =
@@ -629,11 +626,11 @@ impl ProcessMem {
                                             pages - mapped)
                      .ok_or(Error::OutOfMemory(mapped))?;
 
-            let paddr_end = paddr_start + acq_pages * page_size;
+            let paddr_end = paddr_start + acq_pages * PAGE_SIZE;
 
             pageset.map_pages_with_type(
                     cur_vaddr,
-                    (paddr_start..paddr_end).step_by(page_size),
+                    (paddr_start..paddr_end).step_by(PAGE_SIZE),
                     page_type.user())
                  .map_err(|e| Error::from(e))?;
 
@@ -644,7 +641,7 @@ impl ProcessMem {
             });
 
             mapped += acq_pages;
-            cur_vaddr += acq_pages * page_size;
+            cur_vaddr += acq_pages * PAGE_SIZE;
         }
 
         Ok(())
@@ -652,16 +649,10 @@ impl ProcessMem {
 
     pub fn unmap_deallocate(&mut self, vaddr: usize, size: usize)
                             -> Result<(), Error> {
-        let page_size = <Pageset as GenericPageset>::page_size();
 
-        let pages =
-            if size % page_size != 0 {
-                size / page_size + 1
-            } else {
-                size / page_size
-            };
+        let size_aligned = align_up(size, PAGE_SIZE);
 
-        let vaddr_end = vaddr + pages * page_size;
+        let vaddr_end = vaddr + size_aligned;
 
         let mut pageset = self.pageset.lock();
 
@@ -670,7 +661,7 @@ impl ProcessMem {
         // probably be added, because most likely user-mode memory allocators
         // would want to do it
         let overlaps = |region: &ProcessOwnedRegion| {
-            let r_vaddr_end = region.vaddr + region.pages * page_size;
+            let r_vaddr_end = region.vaddr + region.pages * PAGE_SIZE;
             region.vaddr >= vaddr && r_vaddr_end <= vaddr_end
         };
 
@@ -688,6 +679,27 @@ impl ProcessMem {
 
         // Remove the selected region
         self.owned_regions.retain(|r| !overlaps(r));
+
+        Ok(())
+    }
+
+    /// Adjusts the permissions of a process region
+    pub fn set_permissions(
+        &mut self,
+        vaddr: usize,
+        size: usize,
+        page_type: PageType
+    ) -> Result<(), Error> {
+        let vaddr_aligned = align_down(vaddr, PAGE_SIZE);
+        let size_aligned = align_up(size, PAGE_SIZE);
+
+        let pages = size_aligned / PAGE_SIZE;
+
+        let mut pageset = self.pageset.lock();
+
+        pageset.modify_pages(vaddr_aligned, pages, |page| {
+            page.map(|(paddr, _)| (paddr, page_type.user()))
+        })?;
 
         Ok(())
     }
@@ -760,7 +772,7 @@ impl ProcessMem {
         let vaddr = target::ARGS_TOP_ADDR - args_size;
         let vaddr = vaddr - vaddr % page_size;
 
-        self.map_allocate(vaddr, args_size, PageType::default())?;
+        self.map_allocate(vaddr, args_size, PageType::default().writable())?;
 
         unsafe {
             // Swap in process pageset.
@@ -794,6 +806,9 @@ impl ProcessMem {
             // Reset to old pageset.
             paging::set_current_pageset(old_pageset);
         }
+
+        // Set the permissions to read-only
+        self.set_permissions(vaddr, args_size, PageType::default())?;
 
         // Return parameters that should be put in HwState
         Ok(Some((args.len() as i32, vaddr)))

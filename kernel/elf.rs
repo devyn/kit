@@ -330,18 +330,24 @@ unsafe fn phdr_load<'a>(phdr: ElfProgramHeader<'a>,
                         mem: &mut ProcessMem)
                         -> Result<(), process::Error> {
 
-    let mut page_type = PageType::default();
+    let mut page_type = PageType::default().user();
 
     if phdr.writable   { page_type = page_type.writable(); }
     if phdr.executable { page_type = page_type.executable(); }
 
-    mem.map_allocate(phdr.mem_offset, phdr.mem_size, page_type)?;
+    // What we need first while writing the pages
+    let page_type_init = PageType::default().writable();
+
+    mem.map_allocate(phdr.mem_offset, phdr.mem_size, page_type_init)?;
 
     // Access the memory directly via a slice into userspace.
     let memory = slice::from_raw_parts_mut(
         phdr.mem_offset as *mut u8, phdr.mem_size);
 
     assert!(phdr.load_into(memory).is_ok());
+
+    // Change the pages to our real page_type
+    mem.set_permissions(phdr.mem_offset, phdr.mem_size, page_type)?;
 
     Ok(())
 }
