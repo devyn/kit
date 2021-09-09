@@ -103,6 +103,8 @@ pub unsafe fn initialize(init_memory_map: &InitMemoryMap) {
         panic!("paging already initialized");
     }
 
+    target::arch_initialize();
+
     KERNEL_PAGESET = Some(Box::into_raw(
         Box::new(Pageset::new_kernel(init_memory_map))));
 
