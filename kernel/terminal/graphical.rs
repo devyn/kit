@@ -106,7 +106,11 @@ impl<T, U> Graphical<T, U> where T: Framebuffer, U: Font {
     }
 
     fn update_cursor(&mut self) {
-        // TODO
+        // TODO: make this non-destructive so we can put back whatever we
+        // replaced. Should merely invert the character really.
+        let (x, y) = self.position_xy(self.row, self.col);
+
+        self.fb.fill(x, y, self.font_w, self.font_h, self.native_fg);
     }
 
     fn put_here(&self, ch: char) {
@@ -142,6 +146,8 @@ impl<T, U> Graphical<T, U> where T: Framebuffer, U: Font {
             self.row = self.rows - 1;
             self.scroll();
         }
+
+        self.update_cursor();
     }
 
     fn write_char(&mut self, ch: char) {
@@ -151,11 +157,13 @@ impl<T, U> Graphical<T, U> where T: Framebuffer, U: Font {
             },
 
             '\x08' /* backspace */ => {
+                self.put_here(' ');
+
                 if self.col > 0 {
                     self.col -= 1;
                 }
 
-                self.put_here(' ');
+                self.update_cursor();
             },
 
             _ => {
@@ -164,6 +172,8 @@ impl<T, U> Graphical<T, U> where T: Framebuffer, U: Font {
 
                 if self.col >= self.cols {
                     self.new_line();
+                } else {
+                    self.update_cursor();
                 }
             }
         }
@@ -183,6 +193,8 @@ impl<T, U> Terminal for Graphical<T, U> where T: Framebuffer, U: Font {
         self.col = 0;
 
         self.fb.fill(0, 0, self.fb.width(), self.fb.height(), self.native_bg);
+
+        self.update_cursor();
 
         Ok(())
     }
