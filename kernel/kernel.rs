@@ -134,6 +134,13 @@ pub extern fn kernel_main() -> ! {
 
     unsafe {
         memory::enable_large_heap();
+    }
+
+    // We have to wait until enable_large_heap() is called before we can
+    // allocate the shadow buffer.
+    console().set_double_buffer(true);
+
+    unsafe {
         keyboard::initialize().unwrap();
     }
 

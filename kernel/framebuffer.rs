@@ -12,6 +12,8 @@
 
 use core::slice;
 
+use alloc::vec::Vec;
+
 use crate::terminal::VgaConfig;
 use crate::paging::{PAGE_SIZE, PagesetExt, kernel_pageset, PageType};
 use crate::util::align_up;
@@ -148,6 +150,8 @@ pub trait Framebuffer {
     fn width(&self) -> usize;
     fn height(&self) -> usize;
 
+    fn set_double_buffer(&self, enabled: bool);
+
     /// Edit the pixels in the specified rectanglar region according to the
     /// given `mapper` function, which takes `(x, y, old_native_color)`.
     fn edit<F>(
@@ -185,18 +189,66 @@ pub trait Framebuffer {
     );
 }
 
+#[derive(Debug)]
 pub struct LinearFramebuffer {
     config: LinearPixelConfig,
-    slice: Spinlock<&'static mut [u8]>,
+    buffer: Spinlock<GuardedBuffer>,
+}
+
+#[derive(Debug)]
+struct GuardedBuffer {
+    slice: &'static mut [u8],
+    shadow: Option<Vec<u8>>,
+}
+
+impl GuardedBuffer {
+    fn slice(&mut self) -> &mut [u8] {
+        if let Some(ref mut shadow) = self.shadow {
+            &mut shadow[..]
+        } else {
+            &mut self.slice[..]
+        }
+    }
+
+    fn dirty(
+        &mut self,
+        config: &LinearPixelConfig,
+        x: usize,
+        y: usize,
+        width: usize,
+        height: usize
+    ) {
+        // If double buffering is enabled
+        if let Some(ref shadow) = self.shadow {
+            let pitch = config.pitch;
+
+            let bpp = config.bytes_per_pixel();
+
+            // Starting position and width expressed in terms of bytes
+            let x_offset = x * bpp;
+            let width_bytes = width * bpp;
+
+            for py in y..(y + height) {
+                // Copy the bytes from the shadow buffer to the real fb, taking
+                // the x offset and width into consideration
+                let start = py * pitch + x_offset;
+                let end = start + width_bytes;
+                self.slice[start..end].copy_from_slice(&shadow[start..end]);
+            };
+        }
+    }
 }
 
 impl LinearFramebuffer {
     pub unsafe fn new(config: LinearPixelConfig) -> LinearFramebuffer {
         LinearFramebuffer {
-            slice: Spinlock::new(slice::from_raw_parts_mut(
-                config.buffer,
-                config.size_in_bytes(),
-            )),
+            buffer: Spinlock::new(GuardedBuffer {
+                slice: slice::from_raw_parts_mut(
+                    config.buffer,
+                    config.size_in_bytes(),
+                ),
+                shadow: None,
+            }),
             config,
         }
     }
@@ -229,21 +281,25 @@ impl LinearFramebuffer {
         F: FnMut(usize, usize, T) -> T,
         T: Copy,
     {
-        let mut slice = self.slice.lock();
+        let mut buf = self.buffer.lock();
 
-        let (_, slice_gen, _) = unsafe { slice.align_to_mut::<T>() };
+        {
+            let (_, slice_gen, _) = unsafe { buf.slice().align_to_mut::<T>() };
 
-        let pitch = self.config.pitch / core::mem::size_of::<T>();
-        let row_width = self.config.width as usize;
+            let pitch = self.config.pitch / core::mem::size_of::<T>();
+            let row_width = self.config.width as usize;
 
-        for cy in 0..height {
-            let row = &mut slice_gen[
-                (y + cy) * pitch .. (y + cy) * pitch + row_width];
+            for cy in 0..height {
+                let row = &mut slice_gen[
+                    (y + cy) * pitch .. (y + cy) * pitch + row_width];
 
-            for cx in 0..width {
-                row[x + cx] = mapper(cx, cy, row[x + cx]);
+                for cx in 0..width {
+                    row[x + cx] = mapper(cx, cy, row[x + cx]);
+                }
             }
         }
+
+        buf.dirty(&self.config, x, y, width, height);
     }
 }
 
@@ -258,6 +314,27 @@ impl Framebuffer for LinearFramebuffer {
 
     fn height(&self) -> usize {
         self.config.height
+    }
+
+    fn set_double_buffer(&self, enabled: bool) {
+        let mut buf = self.buffer.lock();
+
+        if enabled {
+            if buf.shadow.is_none() {
+                let mut new_vec: Vec<u8> = Vec::with_capacity(buf.slice.len());
+
+                debug!("Double buffering on {:p} x {} -> {:p}",
+                    buf.slice, buf.slice.len(), &new_vec[..]);
+
+                // Copy from underlying framebuffer. Likely very slow, so try
+                // not to do this too often.
+                new_vec.extend(buf.slice.iter().cloned());
+
+                buf.shadow = Some(new_vec);
+            }
+        } else {
+            buf.shadow = None;
+        }
     }
 
     #[inline]
@@ -299,7 +376,7 @@ impl Framebuffer for LinearFramebuffer {
         width: usize,
         height: usize
     ) {
-        let mut slice = self.slice.lock();
+        let mut buf = self.buffer.lock();
 
         let pitch = self.config.pitch;
 
@@ -327,7 +404,9 @@ impl Framebuffer for LinearFramebuffer {
                 height - 1 - index
             };
 
-            copy_row(&mut slice[..], sy + py, dy + py);
+            copy_row(buf.slice(), sy + py, dy + py);
         }
+
+        buf.dirty(&self.config, dx, dy, width, height);
     }
 }

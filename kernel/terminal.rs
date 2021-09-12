@@ -164,6 +164,11 @@ pub trait Terminal: fmt::Write {
         Ok(())
     }
 
+    /// Enable or disable double buffering.
+    ///
+    /// This method is a no-op if not supported.
+    fn set_double_buffer(&mut self, enabled: bool) { }
+
     /// Flushes any internally deferred commands or buffers, if applicable.
     ///
     /// The `Write` implementation should automatically call this.
@@ -371,6 +376,10 @@ impl<T: Terminal> Terminal for Ansi<T> {
                 }
             }
         }
+    }
+
+    fn set_double_buffer(&mut self, enabled: bool) {
+        self.term.set_double_buffer(enabled)
     }
 
     fn flush(&mut self) -> fmt::Result {

@@ -237,6 +237,10 @@ impl<T, U> Terminal for Graphical<T, U> where T: Framebuffer, U: Font {
         Ok(())
     }
 
+    fn set_double_buffer(&mut self, enabled: bool) {
+        self.fb.set_double_buffer(enabled);
+    }
+
     fn flush(&mut self) -> fmt::Result {
         self.update_cursor();
         Ok(())
