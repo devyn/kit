@@ -21,6 +21,10 @@ export CPATH=system/libc/include
 GRUB_LIB=/usr/lib/grub
 OVMF_DIR=/usr/share/edk2-ovmf/x64
 
+GRUB_MODULES_ALL  = normal iso9660 multiboot at_keyboard
+GRUB_MODULES_EFI  = efi_gop gfxterm
+GRUB_MODULES_BIOS = biosdisk vga_text
+
 ECHO_CC    = echo "[36m    CC [0m"
 ECHO_AS    = echo "[36m    AS [0m"
 ECHO_RUSTC = echo "[36m RUSTC [0m"
@@ -67,19 +71,19 @@ build/kit.iso: resources/grub.cfg build/kernel.elf build/system.kit
 	cp build/system.kit build/isodir/boot/system.kit
 	grub-mkimage --format=i386-pc --output=build/core.img -p '/boot/grub' \
 		--config=build/isodir/boot/grub/grub.cfg \
-    biosdisk iso9660 normal multiboot vga_text at_keyboard
+    ${GRUB_MODULES_ALL} ${GRUB_MODULES_BIOS}
 	cat ${GRUB_LIB}/i386-pc/cdboot.img build/core.img \
 		> build/isodir/grub.img
 	grub-mkimage --format=i386-efi \
 		--output=build/efidir/EFI/BOOT/BOOTIA32.EFI \
 		-p '/boot/grub' \
 		--config=build/isodir/boot/grub/grub.cfg \
-		nativedisk iso9660 normal multiboot efi_gop at_keyboard
+    ${GRUB_MODULES_ALL} ${GRUB_MODULES_EFI}
 	grub-mkimage --format=x86_64-efi \
 		--output=build/efidir/EFI/BOOT/BOOTX64.EFI \
 		-p '/boot/grub' \
 		--config=build/isodir/boot/grub/grub.cfg \
-		nativedisk iso9660 normal multiboot efi_gop at_keyboard
+    ${GRUB_MODULES_ALL} ${GRUB_MODULES_EFI}
 	rm -f build/isodir/efi.img
 	fallocate -l 16M build/isodir/efi.img
 	mkfs.vfat build/isodir/efi.img
