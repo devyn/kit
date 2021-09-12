@@ -24,29 +24,26 @@ SECTIONS
   .                = KERNEL_LMA;
   _bootstrap_begin = .;
 
-  .bootstrap :
+  .bootstrap ALIGN(4K) :
   {
     build/kernel/boot32.o (.multiboot)
     build/kernel/boot32.o (.text)
-    . = ALIGN(4K);
   }
 
-  .bootstrap64 :
+  .bootstrap64 ALIGN(4K) :
   {
     build/kernel/boot64.o (.text)
-    . = ALIGN(4K);
   }
 
   _bootstrap_data_begin = .;
 
-  .bootstrap_data :
+  .bootstrap_data ALIGN(4K) :
   {
-    build/kernel/boot32.o (.bootstrap_gdt64)
     build/kernel/boot32.o (.bootstrap_stack)
+    build/kernel/boot32.o (.bootstrap_gdt64)
     build/kernel/boot32.o (.rodata)
     build/kernel/boot64.o (.rodata)
     build/kernel/boot32.o (.data)
-    . = ALIGN(4K);
   }
 
   _bootstrap_end = .;

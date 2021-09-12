@@ -353,6 +353,7 @@ impl Info {
         // Load kernel section symbols
         extern {
             static _bootstrap_begin: u8;
+            static _bootstrap_data_begin: u8;
             static _bootstrap_end: u8;
             static _kernel_text_begin: u8;
             static _kernel_text_end: u8;
@@ -369,22 +370,19 @@ impl Info {
         }
 
         // These symbols are low memory addressed, so we have to add the offset
-        let bootstrap_begin = &_bootstrap_begin as *const u8 as usize;
-        let bootstrap_end = &_bootstrap_end as *const u8 as usize;
+        let bootstrap_begin =
+            (&_bootstrap_begin as *const u8).wrapping_add(KERNEL_OFFSET);
+        let bootstrap_data_begin =
+            (&_bootstrap_begin as *const u8).wrapping_add(KERNEL_OFFSET);
+        let bootstrap_end =
+            (&_bootstrap_end as *const u8).wrapping_add(KERNEL_OFFSET);
 
-        {
-            let bytes = bootstrap_end - bootstrap_begin;
-            let pages = align_up(bytes, PAGE_SIZE) / PAGE_SIZE;
-
-            out.push((
-                KERNEL_OFFSET + bootstrap_begin,
-                pages,
-                Some((bootstrap_begin, PageType::default().writable()))
-            ));
-        }
-
-        // The rest are high memory addressed, just map them accordingly
-        let sections: [(*const u8, *const u8, PageType); 6] = [
+        let sections: [(*const u8, *const u8, PageType); 8] = [
+            (bootstrap_begin, bootstrap_data_begin,
+             PageType::default()),
+            (bootstrap_data_begin, bootstrap_end,
+             PageType::default().writable()),
+            // The rest are high memory addressed, just map them accordingly
             (&_kernel_text_begin, &_kernel_text_end,
              PageType::default().executable()),
             (&_kernel_rodata_begin, &_kernel_rodata_end,

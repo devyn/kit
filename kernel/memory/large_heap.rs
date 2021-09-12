@@ -20,42 +20,73 @@ use alloc::vec::Vec;
 
 use core::sync::atomic::AtomicUsize;
 use core::sync::atomic::Ordering::*;
+use core::cmp;
 
 use super::{VirtualAddress, PageCount, FreeRegion};
 use super::KSTACK_SIZE;
 use super::{kernel_acquire_and_map, kernel_unmap_and_release};
 use super::AcquiredMappedRegion;
 use super::pool::Pool;
+use super::region_math;
 
 pub const LARGE_HEAP_START: usize = 0xffff_ffff_9000_0000;
 pub const LARGE_HEAP_LENGTH: usize = 0x20000; // pages
 pub const STACKS_START: usize = 0xffff_ffff_f000_0000;
-pub const BOOTSTRAP_HEAP_PAGES: usize = 16;
+
+const BOOTSTRAP_HEAP_PAGES: usize = 24;
+const BOOTSTRAP_HEAP_POOLS: usize = 16;
+
+const_assert!(BOOTSTRAP_HEAP_POOLS < BOOTSTRAP_HEAP_PAGES);
+
+const MIN_UNUSED_ALLOCATED: usize = 16; // acquire if under
+const MAX_UNUSED_ALLOCATED: usize = 64; // release if over
+const UNUSED_ALLOCATED_ACQUIRE_SIZE: usize = 16;
+
+/// Ensure there are regions at least this size (in pages). This should be
+/// determined based on the size of allocator and paging data structures
+/// required to allocate more memory.
+const REQUIRED_MIN_REGION_LENGTH: usize = 2;
 
 type RcPool = Arc<Pool>;
 
 #[derive(Debug)]
 pub struct HeapState {
+    // Total dimensions of the virtual address space for the heap
     start: VirtualAddress,
     end: VirtualAddress,
     length: PageCount,
-    // For allocating smaller than page size objects - one pool for each object
-    // size
-    //
-    // Using a sorted Vec that's always at least a page big in order to avoid
-    // lock issues
+
+    /// For allocating smaller than page size objects - one pool for each object
+    /// size
+    ///
+    /// Using a sorted Vec that's always at least a page big in order to avoid
+    /// lock issues
     pools: Spinlock<Vec<(usize, RcPool)>>,
+
     // For allocating stacks
     stacks_start: *mut u8,
     stacks_end: Spinlock<*mut u8>,
-    // Tracked memory regions
+
+    /// Tracked memory regions
     regions: HeapRegionState,
 }
 
 #[derive(Debug)]
 struct HeapRegionState {
+    /// Physical memory allocated to the heap
     alloc_physical: LockFreeList<AcquiredMappedRegion>,
+
+    /// Free virtual space in the heap area
     free_virtual: LockFreeList<FreeRegion<VirtualAddress>>,
+
+    /// Pre-allocated pages for the page allocator
+    ///
+    /// Helps avoid issues where page allocation requires pages to put
+    /// page-table structures on
+    unused_allocated: LockFreeList<FreeRegion<VirtualAddress>>,
+
+    /// Lock for maintaining (restock, shrink) unused_allocated
+    maintain_unused_allocated_lock: Spinlock<()>,
 }
 
 const fn preferred_region_size(object_size: usize) -> PageCount {
@@ -75,8 +106,9 @@ pub unsafe fn initialize() -> HeapState {
 
     let free_virtual = LockFreeList::new();
 
-    // We reserve some space in order to have some healthy initial pools for
-    // small object sizes, since these are required almost immediately.
+    // We reserve some space in order to have some pages pre-mapped, as well as
+    // some healthy initial pools for small object sizes, since these are
+    // required almost immediately.
     let bootstrap_start = LARGE_HEAP_START +
         (LARGE_HEAP_LENGTH - BOOTSTRAP_HEAP_PAGES) * PAGE_SIZE;
 
@@ -99,14 +131,24 @@ pub unsafe fn initialize() -> HeapState {
     let mut pools = Vec::with_capacity(min_size_of_pools);
 
     // It's a big problem if we don't at least have some common sizes in here
-    // first. Let's initialize the bootstrap pages in multiples of 8
-    for index in 0..BOOTSTRAP_HEAP_PAGES {
+    // first. Let's initialize the bootstrap pools in multiples of 8
+    for index in 0..BOOTSTRAP_HEAP_POOLS {
         let size = 8 + index * 8;
         let pool = Pool::new(size, 1);
         pool.insert_region(bootstrap_start + index * PAGE_SIZE).unwrap();
         trace!("{:?}", pool);
         pools.push((size, Arc::new(pool)));
     }
+
+    // Put the rest of the pages as unused_allocated
+    let initial_unused_allocated = FreeRegion {
+        start: bootstrap_start + BOOTSTRAP_HEAP_POOLS * PAGE_SIZE,
+        length: AtomicUsize::new(BOOTSTRAP_HEAP_PAGES - BOOTSTRAP_HEAP_POOLS),
+    };
+
+    let unused_allocated = LockFreeList::new();
+
+    unused_allocated.push(Node::new(initial_unused_allocated));
 
     HeapState {
         start: LARGE_HEAP_START,
@@ -118,6 +160,8 @@ pub unsafe fn initialize() -> HeapState {
         regions: HeapRegionState {
             alloc_physical,
             free_virtual,
+            unused_allocated,
+            maintain_unused_allocated_lock: Spinlock::new(()),
         },
     }
 }
@@ -205,32 +249,80 @@ pub unsafe fn deallocate(
     }
 }
 
+/// Allocate pages, preferring already unused mapped pages first.
 fn allocate_pages(state: &HeapState, pages: usize, align: usize)
     -> Result<VirtualAddress, ()> {
 
     if pages == 0 { return Err(()); }
 
-    let page_size = PAGE_SIZE;
-
     let regions = &state.regions;
 
+    // First, try to allocate from unused_allocated. If we can get what we need
+    // from here, we don't need to map the pages - they're already mapped to
+    // usable physical memory
+    let from_unused_allocated = allocate_pages_from(
+        &regions.unused_allocated, pages, align);
+
+    if let Some(alloc_start) = from_unused_allocated {
+        trace!("Got from unused_allocated: {:016x} x {}", alloc_start, pages);
+        // Check to see if we need to restock unused_allocated
+        restock_unused_allocated(&regions);
+        return Ok(alloc_start);
+    }
+
+    // Otherwise, allocate virtual from the free_virtual list and acquire and
+    // map physical pages.
+    acquire_allocate_pages(regions, pages, align)
+}
+
+/// Always acquire fresh physical pages and allocate them.
+fn acquire_allocate_pages(regions: &HeapRegionState, pages: usize, align: usize)
+    -> Result<VirtualAddress, ()> {
+
+    // Allocate virtual from the free_virtual list and acquire and map physical
+    // pages.
+    let alloc_start = allocate_pages_from(
+        &regions.free_virtual, pages, align).ok_or(())?;
+
+    // Map the pages
+    let map_res = kernel_acquire_and_map(
+        alloc_start as *mut u8,
+        pages,
+        |acq| {
+            regions.alloc_physical.push(Node::new(acq));
+        }
+    );
+
+    if !map_res.is_ok() {
+        return Err(());
+    }
+
+    // We successfully allocated!
+    Ok(alloc_start)
+}
+
+fn allocate_pages_from(
+    vaddr_free: &LockFreeList<FreeRegion<VirtualAddress>>,
+    pages: usize,
+    align: usize
+) -> Option<VirtualAddress> {
     // Find a virtual region large enough that will work for the alignment
-    trace!("regions.free_virtual={:?}", regions.free_virtual);
+    trace!("vaddr_free={0:p} {0:?}", vaddr_free);
     trace!("pages={:?}", pages);
 
-    let alloc_start = 'retry: loop {
-        let r = regions.free_virtual.iter().flat_map(|r| {
+    'retry: loop {
+        let r = vaddr_free.iter().flat_map(|r| {
             let r_length = r.length.load(Relaxed);
 
             // Find the end of the region
-            let r_end = r.start + r_length * page_size;
+            let r_end = r.start + r_length * PAGE_SIZE;
 
             // Figure out where our allocation would need to be placed
             //
             // Prefer to put it near the end so that we can just update the
             // length and avoid taking anything out of the list
-            let alloc_start = align_down(r_end - pages * page_size, align);
-            let alloc_end = alloc_start + pages * page_size;
+            let alloc_start = align_down(r_end - pages * PAGE_SIZE, align);
+            let alloc_end = alloc_start + pages * PAGE_SIZE;
 
             trace!("considering  {:016x} < {:016x}, {:016x} > {:016x}", r.start,
                 alloc_start, alloc_end, r_end);
@@ -240,8 +332,8 @@ fn allocate_pages(state: &HeapState, pages: usize, align: usize)
             if r_end < alloc_end { return None; }
 
             // Figure out what the regions before and after would be
-            let new_length = (alloc_start - r.start) / page_size;
-            let region_after = (r_end, (r_end - alloc_end) / page_size);
+            let new_length = (alloc_start - r.start) / PAGE_SIZE;
+            let region_after = (r_end, (r_end - alloc_end) / PAGE_SIZE);
 
             // We could allocate
             Some((r, alloc_start, r_length, new_length, region_after))
@@ -249,7 +341,7 @@ fn allocate_pages(state: &HeapState, pages: usize, align: usize)
 
         let (region, alloc_start, r_length, new_length, region_after) = match r {
             Some(r) => r,
-            None => return Err(())
+            None => return None
         };
 
         // Try to compare_exchange the region length to the new length
@@ -273,7 +365,7 @@ fn allocate_pages(state: &HeapState, pages: usize, align: usize)
         let (r_after_start, r_after_length) = region_after;
 
         if r_after_length > 0 {
-            regions.free_virtual.push(Node::new(FreeRegion {
+            vaddr_free.push(Node::new(FreeRegion {
                 start: r_after_start,
                 length: AtomicUsize::new(r_after_length),
             }));
@@ -281,55 +373,142 @@ fn allocate_pages(state: &HeapState, pages: usize, align: usize)
 
         // If new_length = 0, try to remove it from the list
         if new_length == 0 {
-            regions.free_virtual.remove(&region);
+            vaddr_free.remove(&region);
         }
 
-        break alloc_start;
-    };
-
-    // Map the pages
-    let map_res = kernel_acquire_and_map(
-        alloc_start as *mut u8,
-        pages,
-        |acq| {
-            regions.alloc_physical.push(Node::new(acq));
-        }
-    );
-
-    if !map_res.is_ok() {
-        return Err(());
+        break Some(alloc_start);
     }
+}
 
-    // We successfully allocated!
-    Ok(alloc_start)
+fn restock_unused_allocated(regions: &HeapRegionState) {
+    // Prevent recursion
+    if let Some(lock) = regions.maintain_unused_allocated_lock.try_lock() {
+        // Get an estimate of how many pages are unused-allocated, as well as
+        // what the biggest region size is.
+        let (total_unused_allocated, max_region_length) =
+            regions.unused_allocated.iter()
+                .fold((0, 0),
+                    |(total_unused_allocated, max_region_length), region| {
+                        let length = region.length.load(Relaxed);
+                        (
+                            total_unused_allocated + length,
+                            cmp::max(max_region_length, length)
+                        )
+                    });
+
+        if total_unused_allocated < MIN_UNUSED_ALLOCATED ||
+            max_region_length < REQUIRED_MIN_REGION_LENGTH {
+
+            // Try to allocate more
+            let allocated = acquire_allocate_pages(regions,
+                UNUSED_ALLOCATED_ACQUIRE_SIZE,
+                PAGE_SIZE);
+
+            if let Ok(start) = allocated {
+                let new_region = FreeRegion {
+                    start,
+                    length: AtomicUsize::new(UNUSED_ALLOCATED_ACQUIRE_SIZE)
+                };
+                trace!("restock_unused_allocated: {:016x?}", new_region);
+                regions.unused_allocated.push(Node::new(new_region));
+            } else {
+                warn!("Unable to restock_unused_allocated. Out of memory?");
+            }
+        }
+
+        drop(lock);
+    }
 }
 
 fn deallocate_pages(state: &HeapState, vaddr: VirtualAddress, pages: usize) {
+    // TODO: release pages to unused_allocated first so we don't fiddle with the
+    // pageset so often
+
     if pages == 0 {
         return;
     }
 
     let vaddr_end = vaddr + pages * PAGE_SIZE;
 
-    let matching_regions = state.regions.alloc_physical.drain_filter(|acq| {
-        let acq_vaddr_end = acq.vaddr as usize + acq.pages * PAGE_SIZE;
-
-        // Don't remove a region that overlaps but isn't contained by our
-        // request to pages. We will throw an error if we don't manage to
-        // deallocate all of the pages instead.
-        acq.vaddr as usize >= vaddr && acq_vaddr_end <= vaddr_end
-    });
+    let vaddr_range = vaddr..vaddr_end;
 
     let mut pages_to_deallocate = pages;
 
-    // For each matching region we can grab from the list, immediately unmap &
-    // release it.
-    for acq in matching_regions {
-        kernel_unmap_and_release(*acq);
-        pages_to_deallocate -= acq.pages;
+    let mut tries = 0;
+
+    // Try a finite number of times to find the matching pages
+    while pages_to_deallocate > 0 && tries < 1000 {
+        let matching_regions = state.regions.alloc_physical.drain_filter(|acq| {
+            let acq_vaddr_end = acq.vaddr as usize + acq.pages * PAGE_SIZE;
+
+            region_math::overlaps(
+                &((acq.vaddr as usize)..acq_vaddr_end),
+                &vaddr_range
+            )
+        });
+
+        let mut matched_regions = 0;
+
+        // For each matching region we can grab from the list, rip the matching
+        // part out of it, put the non-matching parts back, and then unmap and
+        // release that
+        for acq in matching_regions {
+            matched_regions += 1;
+
+            trace!("matching_regions[_] = {:016x?}", acq);
+
+            let acq_vaddr_end = acq.vaddr as usize + acq.pages * PAGE_SIZE;
+
+            let acq_range = (acq.vaddr as usize)..acq_vaddr_end;
+
+            let cut =
+                region_math::cut(acq_range, vaddr_range.clone()).unwrap();
+
+            trace!("cut = {:016x?}", cut);
+
+            // Create a new acq that's going to be only the region we want to
+            // actually release
+            let matching_acq = AcquiredMappedRegion {
+                // we use max because we want the beginning of the acq if my
+                // vaddr is less than it
+                vaddr: cut.excluded.start as *mut u8,
+                paddr: acq.paddr + (cut.excluded.start - acq.vaddr as usize),
+                // the matching pages within the acq region
+                pages: (cut.excluded.end - cut.excluded.start)/PAGE_SIZE,
+            };
+
+            trace!("matching_acq={:016x?}", matching_acq);
+
+            if let Some(ref before) = cut.before {
+                let acq_before = AcquiredMappedRegion {
+                    vaddr: before.start as *mut u8,
+                    paddr: acq.paddr,
+                    pages: (before.end - before.start)/PAGE_SIZE,
+                };
+                trace!("acq_before={:016x?}", acq_before);
+                state.regions.alloc_physical.push(Node::new(acq_before));
+            }
+
+            if let Some(ref after) = cut.after {
+                let acq_after = AcquiredMappedRegion {
+                    vaddr: after.start as *mut u8,
+                    paddr: acq.paddr + (after.start - acq.vaddr as usize),
+                    pages: (after.end - after.start)/PAGE_SIZE,
+                };
+                trace!("acq_after={:016x?}", acq_after);
+                state.regions.alloc_physical.push(Node::new(acq_after));
+            }
+
+            kernel_unmap_and_release(matching_acq);
+            pages_to_deallocate -= matching_acq.pages;
+        }
+
+        if matched_regions == 0 {
+            tries += 1;
+        }
     }
 
-    if pages_to_deallocate != 0 {
+    if pages_to_deallocate > 0 {
         panic!(
             "deallocate_pages({:016x}, {}) had {} leftover pages to \
             deallocate that it couldn't find.",

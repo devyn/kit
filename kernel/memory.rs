@@ -13,6 +13,7 @@
 //! Physical memory management and kernel heap.
 
 use core::cmp::min;
+use core::ops::Range;
 use core::alloc::{GlobalAlloc, Layout};
 
 use core::sync::atomic::AtomicUsize;
@@ -27,16 +28,16 @@ use crate::paging::PAGE_SIZE;
 
 use crate::multiboot;
 use crate::process::Id as ProcessId;
-use crate::sync::{Rcu, LockFreeList};
+use crate::sync::LockFreeList;
 use crate::sync::lock_free_list::Node;
 use crate::util::align_up;
 
 pub mod pool;
 
 mod large_heap;
-mod region_set;
 
-pub use region_set::RegionSet;
+pub mod region_math;
+pub use region_math::RegionSet;
 
 /// The first "safe" physical address. Memory below this is not likely to be
 /// safe for general use, and may include parts of the kernel image among other
@@ -114,7 +115,13 @@ pub type PageCount = usize;
 struct AllocRegionState {
     start: PhysicalAddress,
     length: PageCount,
-    users: Rcu<Vec<RegionUser>>
+    users: Arc<Vec<RegionUser>>
+}
+
+impl AllocRegionState {
+    fn range(&self) -> Range<PhysicalAddress> {
+        self.start .. (self.start + self.length * PAGE_SIZE)
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
@@ -364,55 +371,73 @@ pub fn release_region(
         REGION_STATE.as_ref().expect("memory::initialize() not called")
     };
 
-    // Find the region in the alloc list
-    let region = state.alloc_regions.iter()
-        .find(|region| region.start == paddr);
+    let region_to_release = paddr .. (paddr + pages * PAGE_SIZE);
 
-    if let Some(region) = region {
-        assert_eq!(region.length, pages, "release_region with wrong size");
+    let mut pages_to_release = pages;
+    let mut tries = 0;
 
-        // First, update the users list. If we remove our user but there's still
-        // other users, just return early.
-        'users_update: loop {
-            let users = region.users.read();
+    while pages_to_release > 0 && tries < 1000 {
+        // Find an overlapping region
+        let region = state.alloc_regions
+            .drain_filter(|region| {
+                region_math::overlaps(
+                    &region.range(), &region_to_release) &&
+                region.users.contains(&user)
+            })
+            .next();
 
-            // Make sure the users contains our user
-            if !users.contains(&user) {
-                panic!("Wanted to release physical region {:016x}, \
-                    but user {:?} does not own it (owners: {:?})",
-                    paddr, user, users);
+        if let Some(region) = region {
+            let cut = region_math::cut(
+                region.range(),
+                region_to_release.clone()).unwrap();
+
+            // Insert the before and after regions that still exist
+            for r in [cut.before, cut.after].iter().flatten() {
+                state.alloc_regions.push(Node::new(AllocRegionState {
+                    start: r.start,
+                    length: (r.end - r.start)/PAGE_SIZE,
+                    users: region.users.clone(),
+                }));
             }
 
-            let new_users: Arc<Vec<_>> = Arc::new(
-                users.iter().cloned().filter(|u| *u != user).collect());
+            let excluded_length =
+                (cut.excluded.end - cut.excluded.start)/PAGE_SIZE;
 
-            let is_exclusively_owned = new_users.is_empty();
-
-            if region.users.update(&users, new_users).is_err() {
-                // retry
-                continue 'users_update;
-            }
-
-            if !is_exclusively_owned {
-                // we don't exclusively own it.
-                return;
+            if region.users.len() > 1 {
+                // If there are other users, re-insert the excluded region with
+                // the other users
+                let reinsert = AllocRegionState {
+                    start: cut.excluded.start,
+                    length: excluded_length,
+                    users: region.users.iter().cloned()
+                        .filter(|u| *u != user)
+                        .collect::<Vec<_>>()
+                        .into(),
+                };
+                state.alloc_regions.push(Node::new(reinsert));
             } else {
-                break;
+                // We owned it exclusively. Just release the data to the free
+                // region list.
+
+                release_to_free_region_list(&state.free_regions,
+                    cut.excluded.start, excluded_length, "physical");
+
+                // Update the counter
+                state.free_page_count.fetch_add(excluded_length, Relaxed);
             }
+
+            pages_to_release -= excluded_length;
+        } else {
+            // Increment retry counter. It's possible it'll be there if we look
+            // again
+            tries += 1;
         }
+    }
 
-        // We have the right to destroy the region now. It won't be updated any
-        // further.
-        assert!(state.alloc_regions.remove(&region));
-
-        release_to_free_region_list(&state.free_regions,
-            region.start, region.length, "physical");
-
-        // Update the counter
-        state.free_page_count.fetch_add(region.length, Relaxed);
-    } else {
-        panic!("Wanted to release physical region {:?}, {:016x}, \
-            but can't find it.", user, paddr);
+    if pages_to_release > 0 {
+        panic!("Wanted to release physical region {:?}, {:016x} x {}, \
+            but can't find at least {} pages.",
+            user, paddr, pages, pages_to_release);
     }
 }
 
@@ -493,6 +518,8 @@ fn kernel_acquire_and_map<F>(
 ) -> Result<(), PageCount>
     where F: FnMut(AcquiredMappedRegion) {
 
+    trace!("kernel_acquire_and_map({:?}, {})", vaddr, pages);
+
     let mut cur_vaddr = vaddr as usize;
     let mut cur_pages = pages;
 
@@ -527,6 +554,9 @@ fn kernel_acquire_and_map<F>(
 }
 
 fn kernel_unmap_and_release(r: AcquiredMappedRegion) {
+    trace!("kernel_unmap_and_release({:?}, {:016x}, {})",
+        r.vaddr, r.paddr, r.pages);
+
     // First, unmap the pages so that they aren't in use anymore
     unsafe {
         kernel_pageset()

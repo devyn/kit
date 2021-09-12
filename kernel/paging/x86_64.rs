@@ -67,34 +67,6 @@ fn safe_lookup<T>(ptr: *const T) -> Option<usize> {
 
 /// Architecture-specific initialization.
 pub unsafe fn arch_initialize() {
-    // Set our specific parameters in the architectural registers related to
-    // paging.
-    let cr0: u64;
-    let cr4: u64;
-
-    asm!("mov {:r}, cr0; mov {:r}, cr4", out(reg) cr0, out(reg) cr4);
-
-    let cr0_new: u64 =
-        (1 << 0) | // protected mode
-        (1 << 1) | // monitor coprocessor
-        (1 << 5) | // native x87 exceptions
-        (1 << 16) | // protect read-only pages in supervisor mode
-        (1 << 18) | // allow alignment checking
-        (1 << 31) | // paging enable
-        cr0;
-
-    let cr4_new: u64 =
-        (1 << 5) | // Physical Address Extension, required on x86_64
-        (1 << 6) | // enable Machine Check
-        (1 << 7) | // allow use of global flag on page table
-        (1 << 9) | // FXSAVE and FXRSTOR enable, SSE
-        (1 << 10) | // OSXMMEXCPT
-        (1 << 11) | // UMIP - disable SGDT, SIDT, SLDT, SMSW, STR in user mode
-        (1 << 16) | // FSGSBASE instructions
-        (1 << 20) | // Supervisor-mode execution prevention
-        cr4;
-
-    asm!("mov cr0, {:r}; mov cr4, {:r}", in(reg) cr0, in(reg) cr4);
 }
 
 #[repr(align(4096))]
@@ -502,6 +474,9 @@ impl<T: InnerPageDirectory> ModifyWhile for T {
                 state = T::Next::modify_while(&mut my_next, vaddr, callback);
 
                 if my_next.is_some() {
+                    trace!("Allocating {} for vaddr={:016x}",
+                        core::any::type_name::<T>(), vaddr);
+
                     let mut me = T::alloc();
 
                     *me.get_mut_hole(index) = my_next;
@@ -555,6 +530,8 @@ impl ModifyWhile for Pt {
                 }
             } else {
                 if let Some(page) = callback(None) {
+                    trace!("Allocating Pt for vaddr={:016x}", vaddr);
+
                     let mut pt = Pt::alloc();
 
                     pt.set(index, page);
@@ -614,6 +591,7 @@ impl Pml4 {
     }
 
     fn alloc(kind: Pml4Kind) -> Box<Pml4> {
+        trace!("Pml4::alloc({:?})", kind);
         box Pml4::new(kind)
     }
 
@@ -718,6 +696,7 @@ impl PageDirectory for Pdpt {
 
 impl InnerPageDirectory for Pdpt {
     fn alloc() -> Box<Pdpt> {
+        trace!("Pdpt::alloc()");
         box Pdpt::new()
     }
 
@@ -775,6 +754,7 @@ impl PageDirectory for Pd {
 
 impl InnerPageDirectory for Pd {
     fn alloc() -> Box<Pd> {
+        trace!("Pd::alloc()");
         box Pd::new()
     }
 
@@ -818,6 +798,7 @@ impl Pt {
     }
 
     fn alloc() -> Box<Pt> {
+        trace!("Pt::alloc()");
         box Pt::new()
     }
 

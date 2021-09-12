@@ -95,10 +95,13 @@ impl PoolConfig {
     #[inline]
     const fn region_info_size(self) -> usize {
         // How much space is required for the RegionInfo + bitmap
-        let info_size = size_of::<RegionInfo>() + 
+        let info_only_size = align_up(size_of::<RegionInfo>(),
+            align_of::<RegionInfo>());
+
+        let total_info_size = info_only_size + 
             bitmap::byte_size(self.ideal_object_capacity());
 
-        align_up(info_size, align_of::<RegionInfo>())
+        align_up(total_info_size, align_of::<RegionInfo>())
     }
 
     /// The offset from the start of a region to the RegionInfo structure
@@ -591,7 +594,8 @@ struct RegionInfo {
 }
 
 // Bitmap comes immediately after RegionInfo, always.
-const BITMAP_OFFSET: usize = size_of::<RegionInfo>();
+const BITMAP_OFFSET: usize =
+    align_up(size_of::<RegionInfo>(), align_of::<RegionInfo>());
 
 unsafe fn initialize_region(region_base: usize, config: PoolConfig) {
     trace!("initialize_region(0x{:016x}, {:?})", region_base, config);
