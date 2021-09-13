@@ -117,19 +117,28 @@ impl<T, U> Graphical<T, U> where T: Framebuffer, U: Font {
         self.render(ch, self.row, self.col, (self.native_fg, self.native_bg));
     }
 
-    fn scroll(&self) {
-        let (x0, y0) = self.position_xy(1, 0);
-        let (x1, y1) = self.position_xy(0, 0);
+    fn scroll(&mut self) {
+        if self.fb.double_buffer_enabled() {
+            let (x0, y0) = self.position_xy(1, 0);
+            let (x1, y1) = self.position_xy(0, 0);
 
-        // Move the contents of everything but the first row up one row
-        self.fb.copy_within(x0, y0, x1, y1,
-            self.font_w * self.cols, self.font_h * (self.rows-1));
+            // Move the contents of everything but the first row up one row
+            self.fb.copy_within(x0, y0, x1, y1,
+                self.font_w * self.cols, self.font_h * (self.rows-1));
 
-        // Clear the last row
-        let (x2, y2) = self.position_xy(self.rows - 1, 0);
-        self.fb.fill(x2, y2,
-            self.font_w * self.cols, self.font_h,
-            self.native_bg);
+            // Clear the last row
+            let (x2, y2) = self.position_xy(self.rows - 1, 0);
+            self.fb.fill(x2, y2,
+                self.font_w * self.cols, self.font_h,
+                self.native_bg);
+        } else {
+            // If double buffer is not enabled, we can't really do a scroll
+            // without it being super slow... so instead, we'll just jump up to
+            // the top
+            self.row = 0;
+            self.col = 0;
+            self.update_cursor();
+        }
     }
 
     fn new_line(&mut self) {

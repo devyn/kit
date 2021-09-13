@@ -150,6 +150,7 @@ pub trait Framebuffer {
     fn width(&self) -> usize;
     fn height(&self) -> usize;
 
+    fn double_buffer_enabled(&self) -> bool;
     fn set_double_buffer(&self, enabled: bool);
 
     /// Edit the pixels in the specified rectanglar region according to the
@@ -314,6 +315,10 @@ impl Framebuffer for LinearFramebuffer {
 
     fn height(&self) -> usize {
         self.config.height
+    }
+
+    fn double_buffer_enabled(&self) -> bool {
+        self.buffer.lock().shadow.is_some()
     }
 
     fn set_double_buffer(&self, enabled: bool) {
