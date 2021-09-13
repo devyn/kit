@@ -11,7 +11,7 @@
 #
 ################################################################################
 
-KERNEL_CFLAGS=-O1 -g -std=c99 -pedantic -Wall -Wextra -Werror -ffreestanding \
+KERNEL_CFLAGS=-O3 -g -std=c99 -pedantic -Wall -Wextra -Werror -ffreestanding \
               -fno-exceptions -fno-omit-frame-pointer -mcmodel=kernel \
               -march=core2 -mtune=generic -mno-red-zone -mno-mmx -mno-sse3 \
               -mno-ssse3 -mno-3dnow
@@ -74,5 +74,6 @@ build/kernel/kernel.a: kernel/kernel.rs kernel/Cargo.toml kernel/x86_64-unknown-
 		${CARGO} +nightly rustc --target ./x86_64-unknown-kit-elf.json \
 		--target-dir ../build/kernel/target \
 		--lib \
-		-Z build-std=core,alloc
+		-Z build-std=core,alloc \
+		-Z build-std-features=compiler-builtins-mem
 	@cp build/kernel/target/x86_64-unknown-kit-elf/debug/libkernel.a build/kernel/kernel.a
