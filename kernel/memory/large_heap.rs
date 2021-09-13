@@ -112,16 +112,23 @@ pub unsafe fn initialize() -> HeapState {
     let bootstrap_start = LARGE_HEAP_START +
         (LARGE_HEAP_LENGTH - BOOTSTRAP_HEAP_PAGES) * PAGE_SIZE;
 
+    debug!("Large heap initializing with bootstrap pages {:016x} x {}",
+        bootstrap_start, BOOTSTRAP_HEAP_PAGES);
+
     kernel_acquire_and_map(
         bootstrap_start as *mut u8,
         BOOTSTRAP_HEAP_PAGES,
         |acq| alloc_physical.push(Node::new(acq))
     ).unwrap();
 
-    free_virtual.push(Node::new(FreeRegion {
+    let initial_free_virtual = FreeRegion {
         start: LARGE_HEAP_START,
         length: AtomicUsize::new(LARGE_HEAP_LENGTH - BOOTSTRAP_HEAP_PAGES),
-    }));
+    };
+
+    trace!("Initial free_virtual = {:016x?}", initial_free_virtual);
+
+    free_virtual.push(Node::new(initial_free_virtual));
 
     // At least a page large, in order to avoid triggering the small object
     // allocator
@@ -136,7 +143,7 @@ pub unsafe fn initialize() -> HeapState {
         let size = 8 + index * 8;
         let pool = Pool::new(size, 1);
         pool.insert_region(bootstrap_start + index * PAGE_SIZE).unwrap();
-        trace!("{:?}", pool);
+        trace!("bootstrap pool {} = {:?}", size, pool);
         pools.push((size, Arc::new(pool)));
     }
 
@@ -145,6 +152,8 @@ pub unsafe fn initialize() -> HeapState {
         start: bootstrap_start + BOOTSTRAP_HEAP_POOLS * PAGE_SIZE,
         length: AtomicUsize::new(BOOTSTRAP_HEAP_PAGES - BOOTSTRAP_HEAP_POOLS),
     };
+
+    trace!("Initial unused_allocated = {:016x?}", initial_unused_allocated);
 
     let unused_allocated = LockFreeList::new();
 

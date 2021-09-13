@@ -12,6 +12,8 @@
 
 //! x86-64 architecture-specific page tables.
 
+// FIXME: race conditions. needs atomics.
+
 use core::ops::Range;
 use core::mem;
 use core::fmt;
@@ -477,13 +479,21 @@ impl<T: InnerPageDirectory> ModifyWhile for T {
                     trace!("Allocating {} for vaddr={:016x}",
                         core::any::type_name::<T>(), vaddr);
 
-                    let mut me = T::alloc();
+                    let me_new = T::alloc();
+
+                    // It's possible that while allocating, we ended up setting
+                    // it anyway... so re-check hole.
+                    //
+                    // FIXME: make this atomic
+                    if hole.is_none() {
+                        *hole = Some(me_new);
+                    }
+
+                    let me = hole.as_mut().unwrap();
 
                     *me.get_mut_hole(index) = my_next;
 
                     me.update_entry(index);
-
-                    *hole = Some(me);
                 }
             }
 
@@ -519,6 +529,9 @@ impl ModifyWhile for Pt {
         while index < 512 {
             if let Some(ref mut pt) = *hole {
                 if let Some(page) = callback(pt.get(index)) {
+                    trace!("Setting page pte={:p}, vaddr={:016x}, {:016x?}",
+                        &pt.entries.0[index], vaddr, page);
+
                     pt.set(index, page);
 
                     // FIXME: not necessary if this is neither the current nor
@@ -532,15 +545,26 @@ impl ModifyWhile for Pt {
                 if let Some(page) = callback(None) {
                     trace!("Allocating Pt for vaddr={:016x}", vaddr);
 
-                    let mut pt = Pt::alloc();
+                    let pt_new = Pt::alloc();
+
+                    // It's possible that while allocating, we ended up setting
+                    // it anyway... so re-check hole.
+                    //
+                    // FIXME: make this atomic
+                    if hole.is_none() {
+                        *hole = Some(pt_new);
+                    }
+
+                    let pt = hole.as_mut().unwrap();
+
+                    trace!("Setting page pte={:p}, vaddr={:016x}, {:016x?}",
+                        &pt.entries.0[index], vaddr, page);
 
                     pt.set(index, page);
 
                     // FIXME: not necessary if this is neither the current nor
                     // kernel pageset
                     invlpg(vaddr);
-
-                    *hole = Some(pt);
                 } else {
                     return Done;
                 }

@@ -604,7 +604,8 @@ unsafe fn initialize_region(region_base: usize, config: PoolConfig) {
         (region_base + config.region_info_offset() as usize) as *mut RegionInfo
     ).unwrap();
 
-    trace!("region_info_ptr = {:?}, size = {:x}", region_info_ptr, config.region_info_size());
+    trace!("region_info_ptr = {:?}, size = 0x{:x}", region_info_ptr,
+        config.region_info_size());
 
     RegionInfo::initialize(region_info_ptr, config);
 }

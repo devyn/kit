@@ -252,10 +252,21 @@ pub unsafe fn allocate(size: usize, align: usize) -> *mut u8 {
 pub unsafe fn deallocate(ptr: *mut u8, size: usize, align: usize) {
     trace!("deallocate({:p}, {}, {})", ptr, size, align);
 
+    let initial_heap_begin = &MEMORY_INITIAL_HEAP as *const u8;
+    let initial_heap_end = initial_heap_begin.wrapping_add(INITIAL_HEAP_LENGTH);
+    let ptr_const = ptr as *const _;
+
+    if ptr_const >= initial_heap_begin && ptr_const < initial_heap_end {
+        trace!("Initial heap region deallocate({:p}) = no-op", ptr);
+        return;
+    }
+
     match KERNEL_HEAP {
         KernelHeap::InitialHeap(_) =>
             // Deallocation not supported.
-            (),
+            panic!("deallocate({:p}) called while in InitialHeap, but pointer \
+                not initial heap region", ptr),
+
         KernelHeap::LargeHeap(ref state) =>
             large_heap::deallocate(state, ptr, size, align),
 
@@ -292,6 +303,8 @@ pub unsafe fn enable_large_heap() {
     }
 
     KERNEL_HEAP = KernelHeap::LargeHeap(large_heap::initialize());
+
+    debug!("Large heap enabled.");
 }
 
 pub fn acquire_region(owner: RegionUser, pages: PageCount)
