@@ -11,7 +11,7 @@
 #
 ################################################################################
 
-KERNEL_CFLAGS=-O3 -g -std=c99 -pedantic -Wall -Wextra -Werror -ffreestanding \
+KERNEL_CFLAGS=-O1 -g -std=c99 -pedantic -Wall -Wextra -Werror -ffreestanding \
               -fno-exceptions -fno-omit-frame-pointer -mcmodel=kernel \
               -march=core2 -mtune=generic -mno-red-zone -mno-mmx -mno-sse3 \
               -mno-ssse3 -mno-3dnow
