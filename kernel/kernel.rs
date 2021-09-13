@@ -77,7 +77,9 @@ pub extern fn kernel_main() -> ! {
 
     let cmdline = Cmdline::new(&cmdline_utf8);
 
-    serial::com1().initialize().unwrap();
+    if !cmdline.iter().any(|p| p == ("serial", "disable")) {
+        serial::com1().initialize().unwrap();
+    }
 
     log::initialize(&cmdline);
 
