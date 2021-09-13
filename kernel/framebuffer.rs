@@ -322,23 +322,35 @@ impl Framebuffer for LinearFramebuffer {
     }
 
     fn set_double_buffer(&self, enabled: bool) {
-        let mut buf = self.buffer.lock();
-
         if enabled {
-            if buf.shadow.is_none() {
-                let mut new_vec: Vec<u8> = Vec::with_capacity(buf.slice.len());
+            let (slice_ptr, slice_len, shadow_is_none) = {
+                let buf = self.buffer.lock();
+                (&buf.slice[0] as *const u8,
+                 buf.slice.len(),
+                 buf.shadow.is_none())
+            };
+
+            if shadow_is_none {
+                let mut new_vec: Vec<u8> = Vec::with_capacity(slice_len);
 
                 debug!("Double buffering on {:p} x {} -> {:p}",
-                    buf.slice, buf.slice.len(), &new_vec[..]);
+                    slice_ptr, slice_len, &new_vec[..]);
 
-                // Copy from underlying framebuffer. Likely very slow, so try
-                // not to do this too often.
-                new_vec.extend(buf.slice.iter().cloned());
+                // We can't take the lock until now - don't want any logging,
+                // memory allocation, etc. happening
+                let mut buf = self.buffer.lock();
 
-                buf.shadow = Some(new_vec);
+                // Re-check since we released the lock.
+                if buf.shadow.is_none() {
+                    // Copy from underlying framebuffer. Likely very slow, so
+                    // try not to do this too often.
+                    new_vec.extend(buf.slice.iter().cloned());
+
+                    buf.shadow = Some(new_vec);
+                }
             }
         } else {
-            buf.shadow = None;
+            self.buffer.lock().shadow = None;
         }
     }
 
