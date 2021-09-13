@@ -142,6 +142,8 @@ pub extern fn kernel_main() -> ! {
     // allocate the shadow buffer.
     console().set_double_buffer(true);
 
+    debug!("Pre-keyboard checkpoint. Multiboot info: {:08X?}", mb_info);
+
     unsafe {
         keyboard::initialize().unwrap();
     }

@@ -183,7 +183,7 @@ pd_hi:    .skip 4096
 # This is where we will store the multiboot information structure.
 .global kernel_multiboot_info
 kernel_multiboot_info:
-.set MULTIBOOT_INFO_LENGTH, 116 # 116 bytes - see multiboot information format
+.set MULTIBOOT_INFO_LENGTH, 256 # reserve up to this length to be safe
 .skip MULTIBOOT_INFO_LENGTH
 
 # Multiboot flags offset
